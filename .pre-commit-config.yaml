@@ -1,0 +1,31 @@
+repos:
+- repo: https://github.com/astral-sh/ruff-pre-commit
+  rev: v0.15.21
+  hooks:
+  - id: ruff-check
+    args:
+    - --fix
+  - id: ruff-format
+
+- repo: https://github.com/ComPWA/taplo-pre-commit
+  rev: v0.9.3
+  hooks:
+  - id: taplo-format
+    args:
+    - --option
+    - array_auto_collapse=false
+    - --option
+    - "indent_string=    "
+  - id: taplo-lint
+    args:
+    - --schema
+    - https://json.schemastore.org/pyproject.json
+    files: ^pyproject\.toml$
+
+- repo: https://github.com/google/yamlfmt
+  rev: v0.21.0
+  hooks:
+  - id: yamlfmt
+    args:
+    - -formatter
+    - force_array_style=block,indentless_arrays=true,retain_line_breaks_single=true
