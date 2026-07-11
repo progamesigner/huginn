@@ -5,4 +5,5 @@ huginn.yaml
 
 # Tool artifacts
 __pycache__/
+.ruff_cache/
 .venv/
