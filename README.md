@@ -1,1 +1,18 @@
 # Huginn
+
+Huginn is a self-hosted agent harness. It runs as a long-lived FastAPI service that owns the agent loop, the tool registry, MCP client connections, and response streaming.
+
+Plain LLM chat is stateless: you send a message, you get one back, and nothing carries over. Huginn turns that into a persistent agent service with state, tools, and memory. Conversations are stored in PostgreSQL, messages come in over multiple channels (Telegram first), and each request is routed to the right agent. New tools and skills plug in without changes to the core.
+
+Configuration and secrets, including agent names and instructions, never live in this repository. That boundary is what keeps the code itself safe to publish.
+
+## Requirements
+
+- Python 3.14
+- [uv](https://docs.astral.sh/uv/)
+
+## Development
+
+## Configuration
+
+## Deployment
