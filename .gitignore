@@ -1,5 +1,8 @@
+# Local config & secrets
+.env
+*.local.yaml
 huginn.yaml
 
-.env
-
-*.local.yaml
+# Tool artifacts
+__pycache__/
+.venv/
