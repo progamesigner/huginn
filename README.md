@@ -13,6 +13,13 @@ Configuration and secrets, including agent names and instructions, never live in
 
 ## Development
 
+```sh
+uv sync                 # create .venv and install everything from uv.lock
+uv run <cmd>            # run a command inside the project environment
+```
+
+Dependencies go through uv. Add them with `uv add <pkg>==<version>`, always pinned to an exact version, never a floating specifier like `^` or `latest`. `pyproject.toml` states what the project wants; `uv.lock` records the exact tree that satisfies it. Both belong in git.
+
 ## Configuration
 
 ## Deployment
