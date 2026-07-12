@@ -20,10 +20,10 @@ uv sync                 # create .venv and install everything from uv.lock
 uv run <cmd>            # run a command inside the project environment
 ```
 
-The HTTP service is built by the `app.main:build_app` factory. Start it locally with:
+The HTTP service is built by the `app.main:create` factory. Start it locally with:
 
 ```sh
-uv run uvicorn app.main:build_app --factory --reload
+uv run uvicorn app.main:create --factory --reload
 ```
 
 `/healthz` answers 200 as long as the process is alive; `/readyz` answers 200 when the service is ready to take traffic:
@@ -32,6 +32,8 @@ uv run uvicorn app.main:build_app --factory --reload
 curl http://localhost:8000/healthz
 curl http://localhost:8000/readyz
 ```
+
+Runtime objects are wired through a homemade DI container in `lib/container`. The application object `App` is itself a `Container` subclass that declares the provider list; `App().build()` wires the container from that list, where each provider subclasses `ProviderContract` with a `register(container)` method and an optional `dependencies` tuple of provider classes. `create()` assembles the FastAPI app around the built container, which lives on `app.state.container`. Long-lived resources are bound as shared managers; the lifespan opens the container on startup and closes created instances in reverse order on shutdown. Endpoints receive container objects with `Depends(Provide(SomeType))` from `app.core.dependencies`. Tests swap implementations at the container level: boot an `App` with a different provider list, copy the wiring into a fresh container with `container.to(Container)`, or wrap a call in `container.use(SomeType, fake)`.
 
 Dependencies go through uv. Add them with `uv add <pkg>==<version>`, always pinned to an exact version, never a floating specifier like `^` or `latest`. `pyproject.toml` states what the project wants; `uv.lock` records the exact tree that satisfies it. Both belong in git.
 
