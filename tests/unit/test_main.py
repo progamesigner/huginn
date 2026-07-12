@@ -1,3 +1,4 @@
+from app.core.providers import SettingsProvider
 from app.core.settings import AppSettings
 from app.main import App, create
 
@@ -10,8 +11,8 @@ def test_create_binds_settings_in_container() -> None:
     assert settings is app.state.settings
 
 
-def test_build_wires_default_providers() -> None:
-    application = App().build()
+def test_build_wires_providers() -> None:
+    application = App().build(SettingsProvider())
 
     assert application.bound(AppSettings)
 

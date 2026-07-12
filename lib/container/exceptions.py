@@ -6,9 +6,5 @@ class BindingError(ContainerError):
     pass
 
 
-class BuildError(ContainerError):
-    pass
-
-
 class ResolutionError(ContainerError):
     pass

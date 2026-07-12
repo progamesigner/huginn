@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from collections.abc import Callable, Sequence
+from collections.abc import Callable
 from contextlib import AbstractContextManager
 from types import TracebackType
 from typing import ClassVar, Protocol, Self, runtime_checkable
@@ -16,8 +16,6 @@ class Disposable(Protocol):
 
 
 class ContainerContract(ABC):
-    providers: ClassVar[tuple[ProviderContract, ...]] = ()
-
     @abstractmethod
     def alias[T](self, binding: type[T], alias: type[T]) -> None: ...
 
@@ -34,9 +32,6 @@ class ContainerContract(ABC):
 
     @abstractmethod
     def bound[T](self, binding: type[T]) -> bool: ...
-
-    @abstractmethod
-    def build(self, providers: Sequence[ProviderContract] | None = None) -> Self: ...
 
     @abstractmethod
     def resolve[T](self, binding: type[T]) -> T: ...

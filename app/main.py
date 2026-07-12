@@ -1,13 +1,18 @@
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
-from typing import ClassVar
+from graphlib import CycleError, TopologicalSorter
+from logging import getLogger
+from typing import Self
 
 from fastapi import FastAPI
 
+from app.core.exceptions import BuildError
 from app.core.health import router as health_router
 from app.core.providers import SettingsProvider
 from app.core.settings import AppSettings
 from lib.container import Container, ProviderContract
+
+logger = getLogger(__name__)
 
 
 @asynccontextmanager
@@ -17,11 +22,37 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
 
 class App(Container):
-    providers: ClassVar[tuple[ProviderContract, ...]] = (SettingsProvider(),)
+    def build(self, *providers: ProviderContract) -> Self:
+        items = {type(provider): provider for provider in providers}
+        graph = {type(provider): set(provider.dependencies) for provider in providers}
+
+        for provider in providers:
+            if items[type(provider)] is not provider:
+                raise BuildError(f'duplicate provider {type(provider).__name__}')
+
+        for provider in providers:
+            for dependency in provider.dependencies:
+                if dependency not in items:
+                    raise BuildError(
+                        f'provider {type(provider).__name__} depends on'
+                        f' unknown provider {dependency.__name__}'
+                    )
+
+        try:
+            keys = list(TopologicalSorter(graph).static_order())
+        except CycleError as error:
+            names = ', '.join(node.__name__ for node in error.args[1])
+            raise BuildError(f'provider dependency cycle: {names}') from error
+
+        for key in keys:
+            logger.info('Registering provider %s', key.__name__)
+            items[key].register(self)
+
+        return self
 
 
 def create() -> FastAPI:
-    container = App().build()
+    container = App().build(SettingsProvider())
     app = FastAPI(lifespan=lifespan, docs_url=None, redoc_url=None)
     app.state.container = container
     app.state.settings = container.resolve(AppSettings)

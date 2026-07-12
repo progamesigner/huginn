@@ -1,14 +1,10 @@
-from collections.abc import Callable, Iterator, Sequence
+from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
-from graphlib import CycleError, TopologicalSorter
-from logging import getLogger
-from typing import Self, cast, override
+from typing import cast, override
 
-from .contracts import ContainerContract, Disposable, ProviderContract, Startable
-from .exceptions import BindingError, BuildError, ResolutionError
-
-logger = getLogger(__name__)
+from .contracts import ContainerContract, Disposable, Startable
+from .exceptions import BindingError, ResolutionError
 
 type Instances = dict[type[object], object]
 type Registry = dict[type[object], Registration]
@@ -76,38 +72,6 @@ class Container(ContainerContract):
             raise BindingError(f'{name} cannot be eager without shared')
 
         self.registry[binding] = Registration(factory, shared=shared, eager=eager)
-
-    @override
-    def build(self, providers: Sequence[ProviderContract] | None = None) -> Self:
-        if providers is None:
-            providers = self.providers
-
-        items = {type(provider): provider for provider in providers}
-        graph = {type(provider): set(provider.dependencies) for provider in providers}
-
-        for provider in providers:
-            if items[type(provider)] is not provider:
-                raise BuildError(f'duplicate provider {type(provider).__name__}')
-
-        for provider in providers:
-            for dependency in provider.dependencies:
-                if dependency not in items:
-                    raise BuildError(
-                        f'provider {type(provider).__name__} depends on'
-                        f' unknown provider {dependency.__name__}'
-                    )
-
-        try:
-            keys = list(TopologicalSorter(graph).static_order())
-        except CycleError as error:
-            names = ', '.join(node.__name__ for node in error.args[1])
-            raise BuildError(f'provider dependency cycle: {names}') from error
-
-        for key in keys:
-            logger.info('Registering provider %s', key.__name__)
-            items[key].register(self)
-
-        return self
 
     @override
     def bound[T](self, binding: type[T]) -> bool:

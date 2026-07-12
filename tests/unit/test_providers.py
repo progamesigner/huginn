@@ -2,7 +2,9 @@ from typing import override
 
 import pytest
 
-from lib.container import BuildError, Container, ContainerContract, ProviderContract
+from app.core.exceptions import BuildError
+from app.main import App
+from lib.container import ContainerContract, ProviderContract
 
 
 def test_build_registers_dependencies_first() -> None:
@@ -20,7 +22,7 @@ def test_build_registers_dependencies_first() -> None:
         def register(self, container: ContainerContract) -> None:
             journal.append('dependent')
 
-    Container().build((Dependent(), Base()))
+    App().build(Dependent(), Base())
 
     assert journal.index('base') < journal.index('dependent')
 
@@ -39,7 +41,7 @@ def test_build_rejects_unknown_dependency() -> None:
             pass
 
     with pytest.raises(BuildError, match='unknown provider'):
-        Container().build((Orphan(),))
+        App().build(Orphan())
 
 
 def test_build_rejects_dependency_cycle() -> None:
@@ -58,7 +60,7 @@ def test_build_rejects_dependency_cycle() -> None:
     First.dependencies = (Second,)
 
     with pytest.raises(BuildError, match='cycle'):
-        Container().build((First(), Second()))
+        App().build(First(), Second())
 
 
 def test_build_rejects_duplicate_providers() -> None:
@@ -68,7 +70,7 @@ def test_build_rejects_duplicate_providers() -> None:
             pass
 
     with pytest.raises(BuildError, match='duplicate'):
-        Container().build((Twin(), Twin()))
+        App().build(Twin(), Twin())
 
 
 def test_build_logs_each_provider(caplog: pytest.LogCaptureFixture) -> None:
@@ -77,7 +79,7 @@ def test_build_logs_each_provider(caplog: pytest.LogCaptureFixture) -> None:
         def register(self, container: ContainerContract) -> None:
             pass
 
-    with caplog.at_level('INFO', logger='lib.container.container'):
-        Container().build((Settings(),))
+    with caplog.at_level('INFO', logger='app.main'):
+        App().build(Settings())
 
     assert any('Settings' in message for message in caplog.messages)
