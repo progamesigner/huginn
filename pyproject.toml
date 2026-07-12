@@ -11,6 +11,7 @@ dev = [
     "pytest==9.1.1",
     "pytest-asyncio==1.4.0",
     "ruff==0.15.21",
+    "ty==0.0.58",
 ]
 
 [build-system]
@@ -63,3 +64,6 @@ banned-api."__future__".msg = "__future__ has no valid use since Python 3.14 (PE
 
 [tool.ruff.format]
 quote-style = "single"
+
+[tool.ty.rules]
+all = "error"
