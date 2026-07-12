@@ -3,6 +3,7 @@ from logging import getLogger
 from typing import Self
 
 from app.core.exceptions import BuildError
+from app.core.settings import AppSettings, Environment
 from lib.container import Container, ProviderContract
 
 logger = getLogger(__name__)
@@ -36,3 +37,6 @@ class App(Container):
             items[key].register(self)
 
         return self
+
+    def running_in_mode(self, *modes: Environment) -> bool:
+        return self.resolve(AppSettings).environment in modes

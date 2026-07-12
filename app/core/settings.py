@@ -3,6 +3,8 @@ from typing import Annotated, Literal
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+type Environment = Literal['dev', 'staging', 'prod']
+
 
 class AppSettings(BaseSettings):
     model_config = SettingsConfigDict(
@@ -11,4 +13,4 @@ class AppSettings(BaseSettings):
         extra='ignore',
     )
 
-    environment: Annotated[Literal['dev', 'staging', 'prod'], Field(default='dev')]
+    environment: Annotated[Environment, Field(default='dev')]
