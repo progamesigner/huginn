@@ -20,6 +20,19 @@ uv sync                 # create .venv and install everything from uv.lock
 uv run <cmd>            # run a command inside the project environment
 ```
 
+The HTTP service is built by the `app.main:build_app` factory. Start it locally with:
+
+```sh
+uv run uvicorn app.main:build_app --factory --reload
+```
+
+`/healthz` answers 200 as long as the process is alive; `/readyz` answers 200 when the service is ready to take traffic:
+
+```sh
+curl http://localhost:8000/healthz
+curl http://localhost:8000/readyz
+```
+
 Dependencies go through uv. Add them with `uv add <pkg>==<version>`, always pinned to an exact version, never a floating specifier like `^` or `latest`. `pyproject.toml` states what the project wants; `uv.lock` records the exact tree that satisfies it. Both belong in git.
 
 Tests run with `uv run pytest`. Tests in `tests/unit/` carry no marker and must pass without external resources (no network, no database). Tests in `tests/integration/` declare `pytestmark = pytest.mark.integration` at file level and may require real resources (PostgreSQL, Redis, network); deselect them with `-m 'not integration'`. Async tests need no decorator: `asyncio_mode = "auto"` treats every `async def test_*` as an asyncio test.
