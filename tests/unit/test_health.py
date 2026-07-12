@@ -3,12 +3,12 @@ from collections.abc import AsyncIterator
 import httpx
 import pytest
 
-from app.main import build_app
+from app.main import create
 
 
 @pytest.fixture
 async def client() -> AsyncIterator[httpx.AsyncClient]:
-    transport = httpx.ASGITransport(app=build_app())
+    transport = httpx.ASGITransport(app=create())
     async with httpx.AsyncClient(
         transport=transport,
         base_url='http://huginn',
