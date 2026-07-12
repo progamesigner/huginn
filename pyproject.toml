@@ -3,18 +3,24 @@ name = "huginn"
 version = "0.1.0"
 requires-python = "==3.14.*"
 dependencies = [
+    "fastapi==0.139.0",
+    "httptools==0.8.0",
     "pydantic==2.13.4",
     "pydantic-settings==2.14.2",
+    "uvicorn==0.51.0",
+    "uvloop==0.22.1",
 ]
 
 [dependency-groups]
 dev = [
+    "httpx==0.28.1",
     "import-linter==2.13",
     "pre-commit==4.6.0",
     "pytest==9.1.1",
     "pytest-asyncio==1.4.0",
     "ruff==0.15.21",
     "ty==0.0.58",
+    "watchfiles==1.2.0",
 ]
 
 [build-system]
