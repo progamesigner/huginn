@@ -2,8 +2,10 @@ from typing import override
 
 import pytest
 
+from app.core.application import App
 from app.core.exceptions import BuildError
-from app.main import App
+from app.core.providers import SettingsProvider
+from app.core.settings import AppSettings
 from lib.container import ContainerContract, ProviderContract
 
 
@@ -79,7 +81,13 @@ def test_build_logs_each_provider(caplog: pytest.LogCaptureFixture) -> None:
         def register(self, container: ContainerContract) -> None:
             pass
 
-    with caplog.at_level('INFO', logger='app.main'):
+    with caplog.at_level('INFO', logger='app.core.application'):
         App().build(Settings())
 
     assert any('Settings' in message for message in caplog.messages)
+
+
+def test_build_wires_providers() -> None:
+    application = App().build(SettingsProvider())
+
+    assert application.bound(AppSettings)
