@@ -20,11 +20,21 @@ uv sync                 # create .venv and install everything from uv.lock
 uv run <cmd>            # run a command inside the project environment
 ```
 
-The HTTP service is built by the `app.main:create` factory. Start it locally with:
+The HTTP service is built by the `server:build` factory in `server.py` at the project root. Start it locally with:
 
 ```sh
-uv run uvicorn app.main:create --factory --reload
+uv run python server.py
 ```
+
+`server.py` owns the uvicorn runtime layer. It reads three optional environment variables (real process env only, not `.env`), each with the `HUGINN_SERVER_` prefix:
+
+| Variable | Default | Meaning |
+| --- | --- | --- |
+| `HUGINN_SERVER_HOST` | `127.0.0.1` | Address to bind. |
+| `HUGINN_SERVER_PORT` | `8000` | Port to listen on. |
+| `HUGINN_SERVER_RELOAD` | `false` | Auto-reload on source changes; local development only. |
+
+The `HUGINN_SERVER_` prefix is deliberate: a bare `HUGINN_PORT` would collide with the `HUGINN_PORT=tcp://<ip>:<port>` value Kubernetes injects for a same-named service, breaking int parsing. These deploy-layer knobs stay separate from `AppSettings` (app behavior), which lives in `app/core/settings.py` and does read `.env`.
 
 `/healthz` answers 200 as long as the process is alive; `/readyz` answers 200 when the service is ready to take traffic:
 
@@ -33,7 +43,7 @@ curl http://localhost:8000/healthz
 curl http://localhost:8000/readyz
 ```
 
-Runtime objects are wired through a homemade DI container in `lib/container`; `Container` itself only knows bind, resolve, and lifecycle. The application object `App` in `app/core/application.py` extends it with `build(*providers)`, which registers providers in dependency order, and `running_in_mode(*modes)` for mode checks. Each provider subclasses `ProviderContract` with a `register(container)` method and an optional `dependencies` tuple of provider classes. `create()` wires the container explicitly with `App().build(SettingsProvider(), LoggingProvider())` and assembles the FastAPI app around it, which lives on `app.state.container`. Long-lived resources are bound as shared managers; the lifespan opens the container on startup and closes created instances in reverse order on shutdown. Endpoints receive container objects with `Depends(Provide(SomeType))` from `app.core.dependencies`. Tests swap implementations at the container level: build an `App` from a different provider list, copy the wiring into a fresh container with `container.to(Container)`, or wrap a call in `container.use(SomeType, fake)`.
+Runtime objects are wired through a homemade DI container in `lib/container`; `Container` itself only knows bind, resolve, and lifecycle. The application object `App` in `app/core/application.py` extends it with `build(*providers)`, which registers providers in dependency order, and `running_in_mode(*modes)` for mode checks. Each provider subclasses `ProviderContract` with a `register(container)` method and an optional `dependencies` tuple of provider classes. `build()` in `server.py` wires the container explicitly with `App().build(SettingsProvider(), LoggingProvider(), RouterProvider())` and returns the FastAPI app that `RouterProvider` assembles; `server:build` is the sole ASGI factory entrypoint. Long-lived resources are bound as shared managers; the lifespan opens the container on startup and closes created instances in reverse order on shutdown. Endpoints receive container objects with `Depends(Provide(SomeType))` from `app.core.dependencies`. Tests swap implementations at the container level: build an `App` from a different provider list, copy the wiring into a fresh container with `container.to(Container)`, or wrap a call in `container.use(SomeType, fake)`.
 
 Logs form a single structlog pipeline: JSON lines on stdout by default, colored console lines when `configure_logging` gets `develop=True`. `configure_logging` in `lib/observability` also bridges stdlib logging into the same processors, so third-party records come out in the same shape and carry the same request context; its `capture` and `silence` parameters take logger names to route through the root pipeline or drop entirely. Application code does not call `structlog.get_logger` itself. `LoggingProvider` owns the policy: it maps the container's `running_in_mode('dev')` to `develop`, captures the uvicorn loggers, silences uvicorn access logs, and binds `Logger` in the container. Endpoints take one with `Depends(Provide(Logger))`, and services receive one at construction time, tagged with `.bind(component=...)`. Code under `lib/` logs like any third-party package, through `logging.getLogger(__name__)`, and the bridge picks those records up. `RequestContextMiddleware` binds a short `request_id` into structlog contextvars for every request except the health probes, and every log line downstream carries it automatically. Never log tokens, Authorization headers, or full message bodies.
 
