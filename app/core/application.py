@@ -19,20 +19,31 @@ class App(Container):
 
     def build(self, *providers: ProviderContract) -> Self:
         items = {type(provider): provider for provider in providers}
-        graph = {type(provider): set(provider.dependencies) for provider in providers}
 
         for provider in providers:
             if items[type(provider)] is not provider:
                 raise BuildError(f'duplicate provider {type(provider).__name__}')
 
-        for provider in providers:
+        pending = list(providers)
+        while pending:
+            provider = pending.pop()
             for dependency in provider.dependencies:
-                if dependency not in items:
+                if dependency in items:
+                    continue
+
+                try:
+                    instance = dependency()
+                except TypeError as error:
                     raise BuildError(
                         f'provider {type(provider).__name__} depends on'
-                        f' unknown provider {dependency.__name__}'
-                    )
+                        f' {dependency.__name__}, which needs explicit construction'
+                        f' arguments and must be listed'
+                    ) from error
 
+                items[dependency] = instance
+                pending.append(instance)
+
+        graph = {key: set(provider.dependencies) for key, provider in items.items()}
         try:
             keys = list(TopologicalSorter(graph).static_order())
         except CycleError as error:
