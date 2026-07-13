@@ -37,7 +37,7 @@ root_packages = ["app", "lib"]
 [[tool.importlinter.contracts]]
 name = "top-level layers"
 type = "layers"
-layers = ["app.features", "app.exts", "app.core", "lib"]
+layers = ["app.entrypoints", "app.features", "app.exts", "app.core", "lib"]
 
 [[tool.importlinter.contracts]]
 name = "lib must not import app"

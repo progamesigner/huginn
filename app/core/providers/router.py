@@ -16,6 +16,9 @@ from .settings import SettingsProvider
 class RouterProvider(ProviderContract):
     dependencies = (SettingsProvider, LoggingProvider)
 
+    def __init__(self, *, excludes: frozenset[str] = frozenset()) -> None:
+        self.excludes = excludes
+
     @override
     def register(self, container: ContainerContract) -> None:
         develop = container.resolve(AppSettings).running_in_mode('dev')
@@ -29,11 +32,6 @@ class RouterProvider(ProviderContract):
             debug=develop,
             docs=develop,
             lifespan=lifespan,
-            middlewares=[
-                Middleware(
-                    RequestContextMiddleware,
-                    excludes=frozenset({'/healthz', '/readyz'}),
-                )
-            ],
+            middlewares=[Middleware(RequestContextMiddleware, excludes=self.excludes)],
         )
         container.bind(RouterContract, instance=manager)

@@ -8,8 +8,8 @@ from app.core.application import App
 from app.core.providers.logging import LoggingProvider
 from app.core.providers.router import RouterProvider
 from app.core.providers.settings import SettingsProvider
+from app.entrypoints.server import ServerOptions, create
 from lib.router import RouterContract, RouterManager
-from server import ServerOptions, build
 
 
 def test_create_resolves_router_manager() -> None:
@@ -23,7 +23,7 @@ def test_create_resolves_router_manager() -> None:
 
 
 async def test_dev_environment_exposes_docs() -> None:
-    transport = httpx.ASGITransport(app=build())
+    transport = httpx.ASGITransport(app=create())
     async with httpx.AsyncClient(
         transport=transport,
         base_url='http://huginn',
@@ -36,7 +36,7 @@ async def test_dev_environment_exposes_docs() -> None:
 async def test_prod_environment_hides_docs(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv('HUGINN_ENVIRONMENT', 'prod')
 
-    transport = httpx.ASGITransport(app=build())
+    transport = httpx.ASGITransport(app=create())
     async with httpx.AsyncClient(
         transport=transport,
         base_url='http://huginn',
@@ -47,7 +47,7 @@ async def test_prod_environment_hides_docs(monkeypatch: pytest.MonkeyPatch) -> N
 
 
 async def test_lifespan_runs_container_through_probes() -> None:
-    app = cast(Starlette, build())
+    app = cast(Starlette, create())
 
     async with app.router.lifespan_context(app):
         transport = httpx.ASGITransport(app=app)
