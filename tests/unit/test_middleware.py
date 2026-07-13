@@ -54,13 +54,24 @@ async def test_binds_fresh_request_id_per_request() -> None:
 
 
 @pytest.mark.parametrize('path', ['/healthz', '/readyz'])
-async def test_skips_probe_paths(path: str) -> None:
+async def test_skips_excluded_paths(path: str) -> None:
     seen: dict[str, Any] = {}
-    middleware = RequestContextMiddleware(capturing_app(seen))
+    middleware = RequestContextMiddleware(
+        capturing_app(seen), excludes=frozenset({'/healthz', '/readyz'})
+    )
 
     await middleware({'type': 'http', 'path': path}, receive, send)
 
     assert 'request_id' not in seen
+
+
+async def test_binds_request_id_when_no_excludes_configured() -> None:
+    seen: dict[str, Any] = {}
+    middleware = RequestContextMiddleware(capturing_app(seen))
+
+    await middleware({'type': 'http', 'path': '/healthz'}, receive, send)
+
+    assert seen['request_id']
 
 
 async def test_passes_lifespan_scope_through() -> None:

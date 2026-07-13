@@ -48,7 +48,12 @@ class RouterProvider(ProviderContract):
             debug=develop,
             docs=develop,
             lifespan=lifespan,
-            middlewares=[Middleware(RequestContextMiddleware)],
+            middlewares=[
+                Middleware(
+                    RequestContextMiddleware,
+                    excludes=frozenset({'/healthz', '/readyz'}),
+                )
+            ],
         )
         manager.include(health_router)
         container.bind(RouterContract, instance=manager)
