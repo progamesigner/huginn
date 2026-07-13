@@ -1,9 +1,8 @@
 from dataclasses import dataclass
 from typing import cast
 
-from fastapi import Request
-
 from lib.container import Container
+from lib.router import Request
 
 
 @dataclass(frozen=True)

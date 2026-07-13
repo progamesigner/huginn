@@ -1,6 +1,6 @@
-from fastapi import APIRouter
+from lib.router import Router
 
-router = APIRouter()
+router = Router()
 
 
 @router.get('/healthz')
