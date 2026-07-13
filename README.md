@@ -62,3 +62,23 @@ uv run ruff check . && uv run ruff format --check . && uv run lint-imports && uv
 ## Configuration
 
 ## Deployment
+
+The service ships as a container image at `ghcr.io/progamesigner/huginn`, built from the multi-stage `Dockerfile` at the repository root. The image is multi-arch (`linux/amd64` and `linux/arm64`), so a mixed cluster pulls the right architecture per node from a single manifest.
+
+CI builds the image on every push and pull request, which surfaces packaging breakage (a missing arm64 wheel, a broken layer) as early as any other check. It only pushes to the registry on `main` and on tags; pull requests build without pushing. Each push is tagged `sha-<short>` for the commit, and `main` additionally moves `latest`.
+
+The runtime stage runs as a non-root user and defaults `HUGINN_SERVER_HOST` to `0.0.0.0` so the process binds inside the container. Override the `HUGINN_SERVER_` knobs (see [Development](#development)) through the environment at deploy time.
+
+Build and run it locally with:
+
+```sh
+docker build -t huginn .
+docker run --rm -p 8000:8000 huginn
+curl http://localhost:8000/healthz
+```
+
+Inspect the published multi-arch manifest with:
+
+```sh
+docker buildx imagetools inspect ghcr.io/progamesigner/huginn:latest
+```
