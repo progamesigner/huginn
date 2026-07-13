@@ -7,6 +7,7 @@ from uvicorn import run
 
 from app.core.application import App
 from app.core.providers import LoggingProvider, RouterProvider, SettingsProvider
+from app.features.probes.providers import ProbesProvider
 from lib.router import RouterContract
 
 
@@ -23,6 +24,7 @@ def build() -> ASGIApp:
         SettingsProvider(),
         LoggingProvider(),
         RouterProvider(),
+        ProbesProvider(),
     )
     return container.resolve(RouterContract).app
 

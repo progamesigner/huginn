@@ -5,7 +5,6 @@ from typing import cast, override
 from starlette.middleware import Middleware
 
 from app.core.application import App
-from app.core.health import router as health_router
 from app.core.middleware import RequestContextMiddleware
 from app.core.settings import AppSettings
 from lib.container import ContainerContract, ProviderContract
@@ -55,5 +54,4 @@ class RouterProvider(ProviderContract):
                 )
             ],
         )
-        manager.include(health_router)
         container.bind(RouterContract, instance=manager)
