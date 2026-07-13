@@ -5,7 +5,8 @@ import pytest
 
 from app.core.application import App
 from app.core.exceptions import BuildError
-from app.core.providers import LoggingProvider, SettingsProvider
+from app.core.providers.logging import LoggingProvider
+from app.core.providers.settings import SettingsProvider
 from app.core.settings import AppSettings
 from lib.container import ContainerContract, ProviderContract
 from lib.observability import Logger

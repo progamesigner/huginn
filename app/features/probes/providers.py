@@ -1,11 +1,11 @@
 from typing import override
 
-from app.core.providers import RouterProvider
+from app.core.providers.router import RouterProvider
 from lib.container import ContainerContract, ProviderContract
 from lib.router import RouterContract
 
 
-class ProbesProvider(ProviderContract):
+class ProbesEndpointProvider(ProviderContract):
     dependencies = (RouterProvider,)
 
     @override

@@ -1,8 +1,10 @@
 from graphlib import CycleError, TopologicalSorter
 from logging import getLogger
-from typing import Self
+from typing import ClassVar, Self
 
 from app.core.exceptions import BuildError
+from app.core.providers.logging import LoggingProvider
+from app.core.providers.settings import SettingsProvider
 from app.core.settings import AppSettings, Environment
 from lib.container import Container, ProviderContract
 
@@ -10,6 +12,11 @@ logger = getLogger(__name__)
 
 
 class App(Container):
+    providers: ClassVar[tuple[ProviderContract, ...]] = (
+        SettingsProvider(),
+        LoggingProvider(),
+    )
+
     def build(self, *providers: ProviderContract) -> Self:
         items = {type(provider): provider for provider in providers}
         graph = {type(provider): set(provider.dependencies) for provider in providers}
@@ -39,4 +46,4 @@ class App(Container):
         return self
 
     def running_in_mode(self, *modes: Environment) -> bool:
-        return self.resolve(AppSettings).environment in modes
+        return self.resolve(AppSettings).running_in_mode(*modes)

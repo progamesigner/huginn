@@ -5,7 +5,9 @@ import pytest
 from starlette.applications import Starlette
 
 from app.core.application import App
-from app.core.providers import LoggingProvider, RouterProvider, SettingsProvider
+from app.core.providers.logging import LoggingProvider
+from app.core.providers.router import RouterProvider
+from app.core.providers.settings import SettingsProvider
 from lib.router import RouterContract, RouterManager
 from server import ServerOptions, build
 

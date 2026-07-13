@@ -14,3 +14,6 @@ class AppSettings(BaseSettings):
     )
 
     environment: Annotated[Environment, Field(default='dev')]
+
+    def running_in_mode(self, *modes: Environment) -> bool:
+        return self.environment in modes

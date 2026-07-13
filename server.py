@@ -6,8 +6,8 @@ from starlette.types import ASGIApp
 from uvicorn import run
 
 from app.core.application import App
-from app.core.providers import LoggingProvider, RouterProvider, SettingsProvider
-from app.features.probes.providers import ProbesProvider
+from app.core.providers.router import RouterProvider
+from app.features.probes.providers import ProbesEndpointProvider
 from lib.router import RouterContract
 
 
@@ -21,10 +21,9 @@ class ServerOptions(BaseSettings):
 
 def build() -> ASGIApp:
     container = App().build(
-        SettingsProvider(),
-        LoggingProvider(),
+        *App.providers,
         RouterProvider(),
-        ProbesProvider(),
+        ProbesEndpointProvider(),
     )
     return container.resolve(RouterContract).app
 

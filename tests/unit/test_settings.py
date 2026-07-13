@@ -43,3 +43,11 @@ def test_invalid_environment_fails_at_construction(
 
     with pytest.raises(ValidationError, match='environment'):
         IsolatedSettings()
+
+
+def test_running_in_mode_matches_any_given_mode() -> None:
+    settings = IsolatedSettings(environment='staging')
+
+    assert settings.running_in_mode('staging')
+    assert settings.running_in_mode('staging', 'prod')
+    assert not settings.running_in_mode('dev')
