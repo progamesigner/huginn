@@ -4,6 +4,7 @@ from typing import override
 
 from starlette.middleware import Middleware
 
+from app.core.exceptions import AppError, handle_app_error, handle_unexpected_error
 from app.core.middleware import RequestContextMiddleware
 from app.core.settings import AppSettings
 from lib.container import ContainerContract, ProviderContract
@@ -31,6 +32,10 @@ class RouterProvider(ProviderContract):
         manager = RouterManager(
             debug=develop,
             docs=develop,
+            exception_handlers={
+                AppError: handle_app_error,
+                Exception: handle_unexpected_error,
+            },
             lifespan=lifespan,
             middlewares=[Middleware(RequestContextMiddleware, excludes=self.excludes)],
         )

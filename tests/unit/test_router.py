@@ -12,7 +12,14 @@ from starlette.applications import Starlette
 from starlette.middleware import Middleware
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
-from lib.router import Depends, Request, Response, Router, RouterManager
+from lib.router import (
+    Depends,
+    PlainTextResponse,
+    Request,
+    Response,
+    Router,
+    RouterManager,
+)
 
 
 def probe_router(path: str = '/ping') -> APIRouter:
@@ -141,6 +148,25 @@ async def test_middlewares_wrap_the_app() -> None:
     response = await fetch(manager.app, '/ping')
 
     assert response.headers['x-mark'] == '1'
+
+
+async def test_exception_handlers_are_wired_to_the_app() -> None:
+    async def handle_value_error(_: Request, error: ValueError) -> Response:
+        return PlainTextResponse(f'handled: {error}', status_code=400)
+
+    router = probe_router()
+
+    @router.get('/explode')
+    async def explode() -> None:
+        raise ValueError('boom')
+
+    manager = RouterManager(exception_handlers={ValueError: handle_value_error})
+    manager.include(router)
+
+    response = await fetch(manager.app, '/explode')
+
+    assert response.status_code == 400
+    assert response.text == 'handled: boom'
 
 
 async def test_lifespan_is_entered_and_exited() -> None:
