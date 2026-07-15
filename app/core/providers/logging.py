@@ -11,7 +11,7 @@ class LoggingProvider(ProviderContract):
     dependencies = (SettingsProvider,)
 
     @override
-    def register(self, container: ContainerContract) -> None:
+    def __call__(self, container: ContainerContract) -> None:
         configure_logging(
             develop=container.resolve(AppSettings).running_in_mode('dev'),
             capture=('uvicorn', 'uvicorn.error'),

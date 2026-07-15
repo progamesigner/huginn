@@ -21,7 +21,7 @@ class RouterProvider(ProviderContract):
         self.excludes = excludes
 
     @override
-    def register(self, container: ContainerContract) -> None:
+    def __call__(self, container: ContainerContract) -> None:
         develop = container.resolve(AppSettings).running_in_mode('dev')
 
         @asynccontextmanager

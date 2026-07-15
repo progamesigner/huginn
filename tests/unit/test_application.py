@@ -17,14 +17,14 @@ def test_build_registers_dependencies_first() -> None:
 
     class Base(ProviderContract):
         @override
-        def register(self, container: ContainerContract) -> None:
+        def __call__(self, container: ContainerContract) -> None:
             journal.append('base')
 
     class Dependent(ProviderContract):
         dependencies = (Base,)
 
         @override
-        def register(self, container: ContainerContract) -> None:
+        def __call__(self, container: ContainerContract) -> None:
             journal.append('dependent')
 
     App().build(Dependent(), Base())
@@ -37,14 +37,14 @@ def test_build_auto_includes_declared_dependency() -> None:
 
     class Base(ProviderContract):
         @override
-        def register(self, container: ContainerContract) -> None:
+        def __call__(self, container: ContainerContract) -> None:
             journal.append('base')
 
     class Dependent(ProviderContract):
         dependencies = (Base,)
 
         @override
-        def register(self, container: ContainerContract) -> None:
+        def __call__(self, container: ContainerContract) -> None:
             journal.append('dependent')
 
     App().build(Dependent())
@@ -57,21 +57,21 @@ def test_build_auto_includes_transitive_dependencies() -> None:
 
     class Root(ProviderContract):
         @override
-        def register(self, container: ContainerContract) -> None:
+        def __call__(self, container: ContainerContract) -> None:
             journal.append('root')
 
     class Middle(ProviderContract):
         dependencies = (Root,)
 
         @override
-        def register(self, container: ContainerContract) -> None:
+        def __call__(self, container: ContainerContract) -> None:
             journal.append('middle')
 
     class Leaf(ProviderContract):
         dependencies = (Middle,)
 
         @override
-        def register(self, container: ContainerContract) -> None:
+        def __call__(self, container: ContainerContract) -> None:
             journal.append('leaf')
 
     App().build(Leaf())
@@ -84,14 +84,14 @@ def test_build_prefers_explicit_instance_over_auto_include() -> None:
 
     class Base(ProviderContract):
         @override
-        def register(self, container: ContainerContract) -> None:
+        def __call__(self, container: ContainerContract) -> None:
             seen.append(self)
 
     class Dependent(ProviderContract):
         dependencies = (Base,)
 
         @override
-        def register(self, container: ContainerContract) -> None:
+        def __call__(self, container: ContainerContract) -> None:
             pass
 
     explicit = Base()
@@ -106,14 +106,14 @@ def test_build_reports_dependency_needing_construction_arguments() -> None:
             self.value = value
 
         @override
-        def register(self, container: ContainerContract) -> None:
+        def __call__(self, container: ContainerContract) -> None:
             pass
 
     class Dependent(ProviderContract):
         dependencies = (NeedsArgs,)
 
         @override
-        def register(self, container: ContainerContract) -> None:
+        def __call__(self, container: ContainerContract) -> None:
             pass
 
     with pytest.raises(BuildError, match='NeedsArgs'):
@@ -123,14 +123,14 @@ def test_build_reports_dependency_needing_construction_arguments() -> None:
 def test_build_rejects_dependency_cycle() -> None:
     class First(ProviderContract):
         @override
-        def register(self, container: ContainerContract) -> None:
+        def __call__(self, container: ContainerContract) -> None:
             pass
 
     class Second(ProviderContract):
         dependencies = (First,)
 
         @override
-        def register(self, container: ContainerContract) -> None:
+        def __call__(self, container: ContainerContract) -> None:
             pass
 
     First.dependencies = (Second,)
@@ -142,7 +142,7 @@ def test_build_rejects_dependency_cycle() -> None:
 def test_build_rejects_duplicate_providers() -> None:
     class Twin(ProviderContract):
         @override
-        def register(self, container: ContainerContract) -> None:
+        def __call__(self, container: ContainerContract) -> None:
             pass
 
     with pytest.raises(BuildError, match='duplicate'):
@@ -152,13 +152,20 @@ def test_build_rejects_duplicate_providers() -> None:
 def test_build_logs_each_provider(caplog: pytest.LogCaptureFixture) -> None:
     class Settings(ProviderContract):
         @override
-        def register(self, container: ContainerContract) -> None:
+        def __call__(self, container: ContainerContract) -> None:
             pass
 
     with caplog.at_level('INFO', logger='app.core.application'):
         App().build(Settings())
 
     assert any('Settings' in message for message in caplog.messages)
+
+
+def test_provider_is_callable() -> None:
+    provider = SettingsProvider()
+
+    assert isinstance(provider, ProviderContract)
+    assert callable(provider)
 
 
 def test_build_wires_app_providers() -> None:

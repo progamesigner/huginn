@@ -11,6 +11,51 @@ from lib.container import Container, ProviderContract
 logger = getLogger(__name__)
 
 
+def reject_duplicate_providers(
+    providers: tuple[ProviderContract, ...],
+    items: dict[type[ProviderContract], ProviderContract],
+) -> None:
+    for provider in providers:
+        if items[type(provider)] is not provider:
+            raise BuildError(f'duplicate provider {type(provider).__name__}')
+
+
+def include_transitive_dependencies(
+    providers: tuple[ProviderContract, ...],
+    items: dict[type[ProviderContract], ProviderContract],
+) -> None:
+    pending = list(providers)
+
+    while pending:
+        provider = pending.pop()
+        for dependency in provider.dependencies:
+            if dependency in items:
+                continue
+
+            try:
+                instance = dependency()
+            except TypeError as error:
+                raise BuildError(
+                    f'provider {type(provider).__name__} depends on'
+                    f' {dependency.__name__}, which needs explicit construction'
+                    f' arguments and must be listed'
+                ) from error
+
+            items[dependency] = instance
+            pending.append(instance)
+
+
+def sort_providers(
+    items: dict[type[ProviderContract], ProviderContract],
+) -> list[type[ProviderContract]]:
+    graph = {key: set(provider.dependencies) for key, provider in items.items()}
+    try:
+        return list(TopologicalSorter(graph).static_order())
+    except CycleError as error:
+        names = ', '.join(node.__name__ for node in error.args[1])
+        raise BuildError(f'provider dependency cycle: {names}') from error
+
+
 class App(Container):
     providers: ClassVar[tuple[ProviderContract, ...]] = (
         SettingsProvider(),
@@ -20,39 +65,13 @@ class App(Container):
     def build(self, *providers: ProviderContract) -> Self:
         items = {type(provider): provider for provider in providers}
 
-        for provider in providers:
-            if items[type(provider)] is not provider:
-                raise BuildError(f'duplicate provider {type(provider).__name__}')
+        reject_duplicate_providers(providers, items)
+        include_transitive_dependencies(providers, items)
 
-        pending = list(providers)
-        while pending:
-            provider = pending.pop()
-            for dependency in provider.dependencies:
-                if dependency in items:
-                    continue
-
-                try:
-                    instance = dependency()
-                except TypeError as error:
-                    raise BuildError(
-                        f'provider {type(provider).__name__} depends on'
-                        f' {dependency.__name__}, which needs explicit construction'
-                        f' arguments and must be listed'
-                    ) from error
-
-                items[dependency] = instance
-                pending.append(instance)
-
-        graph = {key: set(provider.dependencies) for key, provider in items.items()}
-        try:
-            keys = list(TopologicalSorter(graph).static_order())
-        except CycleError as error:
-            names = ', '.join(node.__name__ for node in error.args[1])
-            raise BuildError(f'provider dependency cycle: {names}') from error
-
-        for key in keys:
+        for key in sort_providers(items):
             logger.info('Registering provider %s', key.__name__)
-            items[key].register(self)
+            provider = items[key]
+            provider(self)
 
         return self
 

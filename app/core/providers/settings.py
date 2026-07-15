@@ -6,5 +6,5 @@ from lib.container import ContainerContract, ProviderContract
 
 class SettingsProvider(ProviderContract):
     @override
-    def register(self, container: ContainerContract) -> None:
+    def __call__(self, container: ContainerContract) -> None:
         container.bind(AppSettings, instance=AppSettings())

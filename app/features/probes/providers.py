@@ -9,7 +9,7 @@ class ProbesEndpointProvider(ProviderContract):
     dependencies = (RouterProvider,)
 
     @override
-    def register(self, container: ContainerContract) -> None:
+    def __call__(self, container: ContainerContract) -> None:
         from .endpoints import router
 
         container.resolve(RouterContract).include(router)
