@@ -1,3 +1,5 @@
+from .client import Adapter, LLMClient, ProviderConfig, ProviderRegistry
+from .manager import LLMManager
 from .types import (
     CompletionChunk,
     CompletionRequest,
@@ -17,12 +19,17 @@ from .types import (
 )
 
 __all__ = [
+    'Adapter',
     'CompletionChunk',
     'CompletionRequest',
     'Effort',
     'FinishChunk',
     'FinishReason',
+    'LLMClient',
+    'LLMManager',
     'Message',
+    'ProviderConfig',
+    'ProviderRegistry',
     'Role',
     'Segment',
     'TextChunk',

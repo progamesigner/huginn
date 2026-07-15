@@ -5,10 +5,12 @@ import pytest
 
 from app.core.application import App
 from app.core.exceptions import BuildError
+from app.core.providers.llm import LLMProvider
 from app.core.providers.logging import LoggingProvider
 from app.core.providers.settings import SettingsProvider
 from app.core.settings import AppSettings
 from lib.container import ContainerContract, ProviderContract
+from lib.llm import LLMManager
 from lib.observability import Logger
 
 
@@ -191,6 +193,19 @@ def test_build_routes_uvicorn_loggers_through_root() -> None:
     access = logging.getLogger('uvicorn.access')
     assert access.handlers == []
     assert not access.propagate
+
+
+def test_build_wires_llm_provider() -> None:
+    application = App().build(SettingsProvider(), LLMProvider())
+
+    assert application.bound(LLMManager)
+
+
+async def test_llm_manager_disposes_cleanly_through_container() -> None:
+    application = App().build(SettingsProvider(), LLMProvider())
+    application.resolve(LLMManager)
+
+    await application.dispose()
 
 
 def test_running_in_mode_matches_any_given_mode() -> None:

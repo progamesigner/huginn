@@ -1,8 +1,9 @@
 import pytest
-from pydantic import ValidationError
+from pydantic import SecretStr, ValidationError
 from pydantic_settings import SettingsConfigDict
 
 from app.core.settings import AppSettings
+from lib.llm import ProviderConfig
 
 
 class IsolatedSettings(AppSettings):
@@ -18,6 +19,7 @@ def test_defaults() -> None:
     settings = IsolatedSettings()
 
     assert settings.environment == 'dev'
+    assert settings.providers == ()
 
 
 def test_env_override(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -51,3 +53,16 @@ def test_running_in_mode_matches_any_given_mode() -> None:
     assert settings.running_in_mode('staging')
     assert settings.running_in_mode('staging', 'prod')
     assert not settings.running_in_mode('dev')
+
+
+def test_providers_accepts_constructor_override() -> None:
+    provider = ProviderConfig(
+        name='anthropic',
+        adapter='anthropic',
+        api_key=SecretStr('secret'),
+        models=('claude-opus-4-8',),
+    )
+
+    settings = IsolatedSettings(providers=(provider,))
+
+    assert settings.providers == (provider,)
