@@ -11,7 +11,7 @@ class BuildError(Exception):
 
 
 class AppError(Exception):
-    codes: ClassVar[dict[int, type[AppError]]] = {}
+    claimed: ClassVar[dict[int, type[AppError]]] = {}
 
     status: ClassVar[int]
     code: ClassVar[int]
@@ -37,9 +37,9 @@ class AppError(Exception):
                     f'{cls.__name__} code {cls.code} outside {cls.codespace}'
                 )
 
-            if (registered := AppError.codes.setdefault(cls.code, cls)) is not cls:
+            if (owner := AppError.claimed.setdefault(cls.code, cls)) is not cls:
                 raise TypeError(
-                    f'{cls.__name__} reuses code {cls.code} of {registered.__name__}'
+                    f'{cls.__name__} reuses code {cls.code} of {owner.__name__}'
                 )
 
     def __init__(
