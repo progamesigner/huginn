@@ -14,9 +14,9 @@ from lib.router import RouterContract
 class ServerOptions(BaseSettings):
     model_config = SettingsConfigDict(env_prefix='HUGINN_SERVER_')
 
-    host: Annotated[str, Field(default='127.0.0.1')]
-    port: Annotated[int, Field(default=8000)]
-    reload: Annotated[bool, Field(default=False)]
+    host: Annotated[str, Field()] = '127.0.0.1'
+    port: Annotated[int, Field()] = 8000
+    reload: Annotated[bool, Field()] = False
 
 
 def create() -> ASGIApp:
