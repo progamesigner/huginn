@@ -1,39 +1,6 @@
-import httpx
 import pytest
-from starlette.types import ASGIApp
 
-from app.core.exceptions import (
-    AppError,
-    InternalServerError,
-    handle_app_error,
-    handle_unexpected_error,
-)
-from lib.router import Router, RouterManager
-
-
-async def fetch(
-    app: ASGIApp,
-    path: str,
-    *,
-    raise_app_exceptions: bool = True,
-) -> httpx.Response:
-    transport = httpx.ASGITransport(app=app, raise_app_exceptions=raise_app_exceptions)
-    async with httpx.AsyncClient(
-        transport=transport,
-        base_url='http://huginn',
-    ) as client:
-        return await client.get(path)
-
-
-def app_with(router: Router) -> ASGIApp:
-    manager = RouterManager(
-        exception_handlers={
-            AppError: handle_app_error,
-            Exception: handle_unexpected_error,
-        },
-    )
-    manager.include(router)
-    return manager.app
+from app.core.exceptions import AppError
 
 
 def test_reason_is_derived_from_class_name() -> None:
@@ -101,47 +68,3 @@ def test_subclass_without_codespace_is_unrestricted() -> None:
         code = 9400
 
     assert UnrestrictedError.code == 9400
-
-
-async def test_app_error_becomes_envelope_response() -> None:
-    class ExampleError(AppError):
-        status = 418
-        code = 9500
-
-    router = Router()
-
-    @router.get('/boom')
-    async def boom() -> None:
-        raise ExampleError('teapot', details={'reason': 'because'})
-
-    response = await fetch(app_with(router), '/boom')
-
-    assert response.status_code == 418
-    assert response.json() == {
-        'code': 9500,
-        'reason': 'EXAMPLE',
-        'message': 'teapot',
-        'details': {'reason': 'because'},
-        'extra': None,
-    }
-
-
-async def test_unexpected_exception_becomes_generic_envelope() -> None:
-    router = Router()
-
-    @router.get('/explode')
-    async def explode() -> None:
-        raise RuntimeError('leaked secret')
-
-    response = await fetch(app_with(router), '/explode', raise_app_exceptions=False)
-
-    assert response.status_code == 500
-    body = response.json()
-    assert body == {
-        'code': InternalServerError.code,
-        'reason': 'UNKNOWN_ERROR',
-        'message': 'internal server error',
-        'details': None,
-        'extra': None,
-    }
-    assert 'leaked secret' not in response.text
