@@ -1,7 +1,12 @@
 import asyncio
 import logging
-from collections.abc import AsyncIterator, Callable
+import time
+from collections.abc import AsyncIterator, Callable, Iterator
 from dataclasses import dataclass
+from typing import cast
+from uuid import uuid4
+
+from structlog.contextvars import bound_contextvars
 
 from app.core.tools import ToolRegistry
 from lib.llm import (
@@ -29,6 +34,13 @@ _DEFAULT_TOOL_TIMEOUT = 60.0
 
 
 @dataclass(frozen=True)
+class ToolExecution:
+    name: str
+    duration: float
+    ok: bool
+
+
+@dataclass(frozen=True)
 class TurnInput:
     instructions: str
     user_input: str
@@ -43,6 +55,12 @@ class TurnInput:
 class TurnOutput:
     text: str
     completed: bool = True
+    steps: tuple[Step, ...] = ()
+
+
+@dataclass(frozen=True)
+class Step:
+    tools: tuple[ToolExecution, ...] = ()
 
 
 class ToolCallBuilder:
@@ -56,12 +74,10 @@ class ToolCallBuilder:
         self.arguments = ''
 
 
-def build_messages(turn: TurnInput) -> list[Message]:
-    return [
-        Message(role='system', segments=(TextSegment(text=turn.instructions),)),
-        *turn.prior_turns,
-        Message(role='user', segments=(TextSegment(text=turn.user_input),)),
-    ]
+def build_messages(turn: TurnInput) -> Iterator[Message]:
+    yield Message(role='system', segments=(TextSegment(text=turn.instructions),))
+    yield from turn.prior_turns
+    yield Message(role='user', segments=(TextSegment(text=turn.user_input),))
 
 
 def assistant_message(text: str, tool_calls: tuple[ToolCallSegment, ...]) -> Message:
@@ -71,35 +87,52 @@ def assistant_message(text: str, tool_calls: tuple[ToolCallSegment, ...]) -> Mes
     return Message(role='assistant', segments=segments)
 
 
-def tool_result_messages(results: tuple[ToolResultSegment, ...]) -> tuple[Message, ...]:
-    return tuple(Message(role='tool', segments=(result,)) for result in results)
+def tool_result_messages(results: tuple[ToolResultSegment, ...]) -> Iterator[Message]:
+    return (Message(role='tool', segments=(result,)) for result in results)
 
 
 async def execute(
     registry: ToolRegistry,
     call: ToolCallSegment,
     tool_timeout: float,
-) -> ToolResultSegment:
+) -> tuple[ToolResultSegment, ToolExecution]:
+    started = time.monotonic()
     try:
         async with asyncio.timeout(tool_timeout):
-            return await registry.execute(call)
+            result = await registry.execute(call)
     except TimeoutError:
         logger.warning('Tool %s timed out after %.1fs', call.name, tool_timeout)
-        return ToolResultSegment(
+        result = ToolResultSegment(
             tool_call_id=call.id,
             content=f'tool {call.name!r} timed out',
             error=True,
         )
+
+    record = ToolExecution(
+        name=call.name,
+        duration=time.monotonic() - started,
+        ok=not result.error,
+    )
+    logger.info(
+        'Tool %s finished in %.3fs (ok=%s)',
+        record.name,
+        record.duration,
+        record.ok,
+    )
+    return result, record
 
 
 async def execute_calls(
     registry: ToolRegistry,
     calls: tuple[ToolCallSegment, ...],
     tool_timeout: float,
-) -> tuple[ToolResultSegment, ...]:
-    return tuple(
-        await asyncio.gather(*(execute(registry, call, tool_timeout) for call in calls))
+) -> tuple[tuple[ToolResultSegment, ...], Step]:
+    tasks = (execute(registry, call, tool_timeout) for call in calls)
+    results, records = cast(
+        tuple[tuple[ToolResultSegment, ...], tuple[ToolExecution, ...]],
+        zip(*await asyncio.gather(*tasks), strict=True),
     )
+    return results, Step(tools=records)
 
 
 async def consume(
@@ -142,12 +175,21 @@ class AgentRunner:
         self.registry = registry
 
     async def run(self, turn: TurnInput, on_text: Callable[[str], None]) -> TurnOutput:
-        history = build_messages(turn)
+        with bound_contextvars(turn_id=uuid4().hex):
+            return await self._process(turn, on_text)
+
+    async def _process(
+        self,
+        turn: TurnInput,
+        on_text: Callable[[str], None],
+    ) -> TurnOutput:
+        history = list(build_messages(turn))
+        steps = []
         text = ''
 
         try:
             async with asyncio.timeout(turn.turn_timeout):
-                for _ in range(turn.max_iterations):
+                for iteration in range(turn.max_iterations):
                     request = CompletionRequest(
                         model=turn.model,
                         messages=tuple(history),
@@ -156,13 +198,23 @@ class AgentRunner:
                     text, tool_calls = await consume(self.llm.stream(request), on_text)
 
                     if not tool_calls:
-                        return TurnOutput(text=text)
+                        logger.info(
+                            'Turn completed after %d iterations',
+                            iteration + 1,
+                        )
+                        return TurnOutput(text=text, steps=(*steps, Step()))
 
-                    results = await execute_calls(
+                    logger.info(
+                        'Iteration %d executing %d tool calls',
+                        iteration,
+                        len(tool_calls),
+                    )
+                    results, step = await execute_calls(
                         self.registry,
                         tool_calls,
                         turn.tool_timeout,
                     )
+                    steps.append(step)
                     history.append(assistant_message(text, tool_calls))
                     history.extend(tool_result_messages(results))
         except TimeoutError as error:
@@ -175,4 +227,4 @@ class AgentRunner:
             'Turn hit max_iterations=%d without finishing',
             turn.max_iterations,
         )
-        return TurnOutput(text=text, completed=False)
+        return TurnOutput(text=text, completed=False, steps=tuple(steps))

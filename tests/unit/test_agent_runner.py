@@ -5,6 +5,7 @@ from typing import Annotated, override
 
 import pytest
 from pydantic import Field
+from structlog.contextvars import get_contextvars
 
 from app.core.tools import Tool, ToolOutput, ToolParams, ToolRegistry
 from app.features.agents.exceptions import TurnTimeout
@@ -66,6 +67,26 @@ class SleepTool(Tool[SleepParams]):
     async def run(self, params: SleepParams) -> ToolOutput:
         await asyncio.sleep(params.seconds)
         return 'slept'
+
+
+class ProbeParams(ToolParams):
+    pass
+
+
+class ProbeTool(Tool[ProbeParams]):
+    name = 'probe'
+    description = 'Capture the contextvars bound during execution'
+    params = ProbeParams
+
+    seen: dict[str, object]
+
+    def __init__(self) -> None:
+        self.seen = {}
+
+    @override
+    async def run(self, params: ProbeParams) -> ToolOutput:
+        self.seen = dict(get_contextvars())
+        return 'probed'
 
 
 def make_registry() -> ToolRegistry:
@@ -317,3 +338,111 @@ async def test_run_raises_turn_timeout_when_whole_turn_exceeds_budget(
         await runner.run(make_turn(turn_timeout=0.05), lambda _: None)
 
     assert any('turn_timeout' in record.message for record in caplog.records)
+
+
+async def test_run_records_steps_for_each_iteration(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    llm = FakeLLM(
+        [
+            [
+                ToolCallChunk(
+                    index=0,
+                    id='call_1',
+                    name='echo',
+                    arguments='{"text": "a"}',
+                ),
+                FinishChunk(reason='tool_calls'),
+            ],
+            [
+                ToolCallChunk(
+                    index=0,
+                    id='call_2',
+                    name='echo',
+                    arguments='{"text": "b"}',
+                ),
+                FinishChunk(reason='tool_calls'),
+            ],
+            [TextChunk(text='done'), FinishChunk(reason='stop')],
+        ]
+    )
+    runner = AgentRunner(llm, make_registry())
+
+    with caplog.at_level('INFO'):
+        output = await runner.run(make_turn(), lambda _: None)
+
+    executions = [tool for step in output.steps for tool in step.tools]
+    assert len(output.steps) == 3
+    assert output.steps[-1].tools == ()
+    assert [execution.name for execution in executions] == ['echo', 'echo']
+    assert all(execution.ok for execution in executions)
+    assert all(execution.duration >= 0 for execution in executions)
+    assert any('finished' in record.message for record in caplog.records)
+    assert all('"text"' not in record.message for record in caplog.records)
+
+
+async def test_run_records_failed_tool_execution_in_steps() -> None:
+    llm = FakeLLM(
+        [
+            [
+                ToolCallChunk(
+                    index=0,
+                    id='call_1',
+                    name='sleep',
+                    arguments='{"seconds": 1.0}',
+                ),
+                FinishChunk(reason='tool_calls'),
+            ],
+            [TextChunk(text='done'), FinishChunk(reason='stop')],
+        ]
+    )
+    runner = AgentRunner(llm, make_registry())
+
+    output = await runner.run(make_turn(tool_timeout=0.05), lambda _: None)
+
+    execution = output.steps[0].tools[0]
+    assert execution.name == 'sleep'
+    assert execution.ok is False
+
+
+def probe_response() -> list[CompletionChunk]:
+    return [
+        ToolCallChunk(index=0, id='call_1', name='probe', arguments='{}'),
+        FinishChunk(reason='tool_calls'),
+    ]
+
+
+async def test_run_binds_turn_id_during_tool_execution() -> None:
+    llm = FakeLLM(
+        [probe_response(), [TextChunk(text='done'), FinishChunk(reason='stop')]]
+    )
+    probe = ProbeTool()
+    registry = ToolRegistry()
+    registry.register(probe)
+    runner = AgentRunner(llm, registry)
+
+    await runner.run(make_turn(), lambda _: None)
+
+    assert probe.seen.get('turn_id')
+    assert 'turn_id' not in get_contextvars()
+
+
+async def test_run_generates_unique_turn_id_per_turn() -> None:
+    llm = FakeLLM(
+        [
+            probe_response(),
+            [TextChunk(text='done'), FinishChunk(reason='stop')],
+            probe_response(),
+            [TextChunk(text='done'), FinishChunk(reason='stop')],
+        ]
+    )
+    probe = ProbeTool()
+    registry = ToolRegistry()
+    registry.register(probe)
+    runner = AgentRunner(llm, registry)
+
+    await runner.run(make_turn(), lambda _: None)
+    first = probe.seen['turn_id']
+    await runner.run(make_turn(), lambda _: None)
+
+    assert probe.seen['turn_id'] != first
