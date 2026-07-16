@@ -17,9 +17,9 @@ class ProviderConfig(BaseValue):
 
 
 class LLMClient(Protocol):
-    def complete_stream(
-        self, request: CompletionRequest
-    ) -> AsyncIterator[CompletionChunk]: ...
+    def stream(self, request: CompletionRequest) -> AsyncIterator[CompletionChunk]: ...
+
+    async def dispose(self) -> None: ...
 
 
 class ProviderRegistry:
