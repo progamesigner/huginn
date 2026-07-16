@@ -8,7 +8,9 @@ from app.core.exceptions import BuildError
 from app.core.providers.llm import LLMProvider
 from app.core.providers.logging import LoggingProvider
 from app.core.providers.settings import SettingsProvider
+from app.core.providers.tools import ToolRegistryProvider
 from app.core.settings import AppSettings
+from app.core.tools import DuplicateToolError, ToolRegistry
 from lib.container import ContainerContract, ProviderContract
 from lib.llm import LLMManager
 from lib.observability import Logger
@@ -206,6 +208,21 @@ async def test_llm_manager_disposes_cleanly_through_container() -> None:
     application.resolve(LLMManager)
 
     await application.dispose()
+
+
+def test_build_wires_tool_registry_provider() -> None:
+    application = App().build(ToolRegistryProvider())
+
+    assert application.bound(ToolRegistry)
+
+
+def test_build_fails_when_discovered_tools_collide() -> None:
+    provider = ToolRegistryProvider(
+        packages=('tests.fixtures.tool_packages.duplicate',)
+    )
+
+    with pytest.raises(DuplicateToolError, match='echo'):
+        App().build(provider)
 
 
 def test_running_in_mode_matches_any_given_mode() -> None:
