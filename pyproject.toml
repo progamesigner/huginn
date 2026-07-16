@@ -3,10 +3,8 @@ name = "huginn"
 version = "0.1.0"
 requires-python = "==3.14.*"
 dependencies = [
-    "anthropic==0.116.0",
     "fastapi==0.139.0",
     "httptools==0.8.0",
-    "openai==2.45.0",
     "pydantic==2.13.4",
     "pydantic-settings==2.14.2",
     "structlog==26.1.0",
@@ -14,11 +12,16 @@ dependencies = [
     "uvloop==0.22.1",
 ]
 
+[project.optional-dependencies]
+anthropic = ["anthropic==0.116.0"]
+openai = ["openai==2.45.0"]
+
 [project.scripts]
 server = "app.entrypoints.server:main"
 
 [dependency-groups]
 dev = [
+    "huginn[anthropic,openai]",
     "httpx==0.28.1",
     "import-linter==2.13",
     "pre-commit==4.6.0",

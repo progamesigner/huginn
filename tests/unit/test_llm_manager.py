@@ -1,3 +1,6 @@
+import sys
+
+import pytest
 from pydantic import SecretStr
 
 from lib.container import Disposable
@@ -74,3 +77,17 @@ async def test_dispose_closes_cached_adapter_clients() -> None:
     manager.client_for('gpt-5')
 
     await manager.dispose()
+
+
+def test_client_for_reports_missing_extra(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setitem(sys.modules, 'lib.llm.adapters.openai', None)
+    provider = ProviderConfig(
+        name='openai',
+        adapter='openai',
+        api_key=SecretStr('secret'),
+        models=('gpt-5',),
+    )
+    manager = LLMManager((provider,))
+
+    with pytest.raises(ModuleNotFoundError, match=r'huginn\[openai\]'):
+        manager.client_for('gpt-5')

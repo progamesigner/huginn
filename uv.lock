@@ -238,10 +238,8 @@ name = "huginn"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [
-    { name = "anthropic" },
     { name = "fastapi" },
     { name = "httptools" },
-    { name = "openai" },
     { name = "pydantic" },
     { name = "pydantic-settings" },
     { name = "structlog" },
@@ -249,9 +247,18 @@ dependencies = [
     { name = "uvloop" },
 ]
 
+[package.optional-dependencies]
+anthropic = [
+    { name = "anthropic" },
+]
+openai = [
+    { name = "openai" },
+]
+
 [package.dev-dependencies]
 dev = [
     { name = "httpx" },
+    { name = "huginn", extra = ["anthropic", "openai"] },
     { name = "import-linter" },
     { name = "pre-commit" },
     { name = "pytest" },
@@ -263,20 +270,22 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "anthropic", specifier = "==0.116.0" },
+    { name = "anthropic", marker = "extra == 'anthropic'", specifier = "==0.116.0" },
     { name = "fastapi", specifier = "==0.139.0" },
     { name = "httptools", specifier = "==0.8.0" },
-    { name = "openai", specifier = "==2.45.0" },
+    { name = "openai", marker = "extra == 'openai'", specifier = "==2.45.0" },
     { name = "pydantic", specifier = "==2.13.4" },
     { name = "pydantic-settings", specifier = "==2.14.2" },
     { name = "structlog", specifier = "==26.1.0" },
     { name = "uvicorn", specifier = "==0.51.0" },
     { name = "uvloop", specifier = "==0.22.1" },
 ]
+provides-extras = ["anthropic", "openai"]
 
 [package.metadata.requires-dev]
 dev = [
     { name = "httpx", specifier = "==0.28.1" },
+    { name = "huginn", extras = ["anthropic", "openai"] },
     { name = "import-linter", specifier = "==2.13" },
     { name = "pre-commit", specifier = "==4.6.0" },
     { name = "pytest", specifier = "==9.1.1" },

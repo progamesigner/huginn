@@ -1,14 +1,23 @@
-from .adapters.anthropic import AnthropicAdapter
-from .adapters.openai import OpenAIAdapter
 from .client import LLMClient, ProviderConfig, ProviderRegistry
 
 
 def build_adapter(provider: ProviderConfig) -> LLMClient:
-    match provider.adapter:
-        case 'anthropic':
-            return AnthropicAdapter(provider)
-        case 'openai':
-            return OpenAIAdapter(provider)
+    try:
+        match provider.adapter:
+            case 'anthropic':
+                from .adapters.anthropic import AnthropicAdapter
+
+                return AnthropicAdapter(provider)
+            case 'openai':
+                from .adapters.openai import OpenAIAdapter
+
+                return OpenAIAdapter(provider)
+    except ImportError as error:
+        message = (
+            f'provider {provider.name!r} needs the {provider.adapter!r} extra; '
+            f'install huginn[{provider.adapter}]'
+        )
+        raise ModuleNotFoundError(message) from error
 
 
 class LLMManager:
