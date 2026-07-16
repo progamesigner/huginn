@@ -8,6 +8,7 @@ from .exceptions import BindingError, ResolutionError
 
 type Instances = dict[type[object], object]
 type Registry = dict[type[object], Registration]
+type Resolving = list[type[object]]
 
 
 @dataclass(frozen=True)
@@ -21,11 +22,13 @@ class Container(ContainerContract):
     instances: Instances
     overrides: Instances
     registry: Registry
+    resolving: Resolving
 
     def __init__(self) -> None:
         self.instances = cast(Instances, {})
         self.overrides = cast(Instances, {})
         self.registry = cast(Registry, {})
+        self.resolving = cast(Resolving, [])
 
     @override
     def alias[T](self, binding: type[T], alias: type[T]) -> None:
@@ -85,13 +88,21 @@ class Container(ContainerContract):
         if not (registration := self.registry.get(binding)):
             raise ResolutionError(f'{binding.__qualname__} is not bound')
 
-        if not registration.shared:
-            return cast(T, registration.factory(self))
+        if binding in self.resolving:
+            chain = ' -> '.join(t.__qualname__ for t in (*self.resolving, binding))
+            raise ResolutionError(f'circular dependency: {chain}')
 
-        if binding not in self.instances:
-            self.instances[binding] = registration.factory(self)
+        self.resolving.append(binding)
+        try:
+            if not registration.shared:
+                return cast(T, registration.factory(self))
 
-        return cast(T, self.instances[binding])
+            if binding not in self.instances:
+                self.instances[binding] = registration.factory(self)
+
+            return cast(T, self.instances[binding])
+        finally:
+            self.resolving.pop()
 
     @contextmanager
     @override

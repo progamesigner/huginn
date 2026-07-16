@@ -90,6 +90,42 @@ def test_unbound_resolve_raises() -> None:
         container.resolve(Greeter)
 
 
+def test_resolve_detects_direct_cycle() -> None:
+    container = Container()
+    container.bind(Greeter, factory=lambda c: c.resolve(Greeter))
+
+    with pytest.raises(ResolutionError, match='Greeter -> Greeter'):
+        container.resolve(Greeter)
+
+
+def test_resolve_detects_indirect_cycle_with_chain() -> None:
+    container = Container()
+    container.bind(Greeter, factory=lambda c: c.resolve(Farewell).greeter)
+    container.bind(Farewell, factory=lambda c: Farewell(c.resolve(Greeter)))
+
+    with pytest.raises(ResolutionError, match='Greeter -> Farewell -> Greeter'):
+        container.resolve(Greeter)
+
+
+def test_resolve_cleans_stack_after_cycle_error() -> None:
+    container = Container()
+    container.bind(Greeter, factory=lambda c: c.resolve(Greeter))
+
+    with pytest.raises(ResolutionError, match=r'Greeter -> Greeter$'):
+        container.resolve(Greeter)
+    with pytest.raises(ResolutionError, match=r'Greeter -> Greeter$'):
+        container.resolve(Greeter)
+
+
+def test_use_override_breaks_cycle() -> None:
+    container = Container()
+    container.bind(Greeter, factory=lambda c: c.resolve(Farewell).greeter)
+    container.bind(Farewell, factory=lambda c: Farewell(c.resolve(Greeter)))
+
+    with container.use(Greeter, Greeter('fake')):
+        assert container.resolve(Farewell).greeter.name == 'fake'
+
+
 def test_binding_requires_exactly_one_source() -> None:
     container = Container()
 
