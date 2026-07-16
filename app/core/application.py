@@ -2,13 +2,16 @@ from graphlib import CycleError, TopologicalSorter
 from logging import getLogger
 from typing import ClassVar, Self
 
-from app.core.exceptions import BuildError
 from app.core.providers.logging import LoggingProvider
 from app.core.providers.settings import SettingsProvider
 from app.core.settings import Environment, HuginnSettings
 from lib.container import Container, ProviderContract
 
 logger = getLogger(__name__)
+
+
+class BuildError(Exception):
+    pass
 
 
 def reject_duplicate_providers(

@@ -6,10 +6,6 @@ from pydantic import JsonValue
 _REASON_BOUNDARY = re.compile(r'(?<=[a-z0-9])(?=[A-Z])|(?<=[A-Z])(?=[A-Z][a-z])')
 
 
-class BuildError(Exception):
-    pass
-
-
 class AppError(Exception):
     claimed: ClassVar[dict[int, type[AppError]]] = {}
 

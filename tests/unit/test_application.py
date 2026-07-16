@@ -3,8 +3,7 @@ from typing import override
 
 import pytest
 
-from app.core.application import App
-from app.core.exceptions import BuildError
+from app.core.application import App, BuildError
 from app.core.providers.llm import LLMProvider
 from app.core.providers.logging import LoggingProvider
 from app.core.providers.settings import SettingsProvider
