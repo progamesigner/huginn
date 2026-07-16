@@ -1,4 +1,4 @@
-from typing import override
+from typing import Annotated, override
 
 import pytest
 
@@ -16,6 +16,22 @@ class Greeter(Greeting):
 
 class Farewell:
     def __init__(self, greeter: Greeter) -> None:
+        self.greeter = greeter
+
+
+class Ceremony:
+    def __init__(self, farewell: Farewell, greeter: Greeter) -> None:
+        self.farewell = farewell
+        self.greeter = greeter
+
+
+class Unannotated:
+    def __init__(self, mystery) -> None:
+        self.mystery = mystery
+
+
+class Announcement:
+    def __init__(self, greeter: Annotated[Greeter, 'primary']) -> None:
         self.greeter = greeter
 
 
@@ -303,3 +319,68 @@ async def test_async_with_starts_and_closes() -> None:
     async with container:
         assert journal == ['managed:start']
     assert journal == ['managed:start', 'managed:dispose']
+
+
+def test_constructor_binding_builds_dependency_chain() -> None:
+    container = Container()
+    container.bind(Greeter, constructor=Greeter, shared=True)
+    container.bind(Farewell, constructor=Farewell)
+    container.bind(Ceremony, constructor=Ceremony)
+
+    ceremony = container.resolve(Ceremony)
+
+    assert ceremony.farewell.greeter is ceremony.greeter
+    assert ceremony.greeter is container.resolve(Greeter)
+
+
+def test_constructor_binding_supports_contract_key() -> None:
+    container = Container()
+    container.bind(Greeting, constructor=Greeter)
+
+    assert isinstance(container.resolve(Greeting), Greeter)
+
+
+def test_constructor_binding_skips_defaulted_parameters() -> None:
+    container = Container()
+    container.bind(Greeter, constructor=Greeter)
+
+    assert container.resolve(Greeter).name == 'huginn'
+
+
+def test_constructor_binding_unwraps_annotated_parameters() -> None:
+    container = Container()
+    container.bind(Greeter, instance=Greeter('annotated'))
+    container.bind(Announcement, constructor=Announcement)
+
+    assert container.resolve(Announcement).greeter.name == 'annotated'
+
+
+def test_constructor_binding_requires_annotations() -> None:
+    container = Container()
+
+    with pytest.raises(BindingError, match='mystery'):
+        container.bind(Unannotated, constructor=Unannotated)
+
+
+def test_constructor_binding_requires_bound_dependencies() -> None:
+    container = Container()
+    container.bind(Farewell, constructor=Farewell)
+
+    with pytest.raises(ResolutionError):
+        container.resolve(Farewell)
+
+
+def test_constructor_binding_excludes_other_sources() -> None:
+    container = Container()
+
+    with pytest.raises(BindingError):
+        container.bind(Greeter, constructor=Greeter, factory=lambda _: Greeter())
+
+
+def test_constructor_binding_resolves_use_overrides() -> None:
+    container = Container()
+    container.bind(Greeter, constructor=Greeter, shared=True)
+    container.bind(Farewell, constructor=Farewell)
+
+    with container.use(Greeter, Greeter('fake')):
+        assert container.resolve(Farewell).greeter.name == 'fake'

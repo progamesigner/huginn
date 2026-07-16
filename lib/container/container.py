@@ -1,7 +1,8 @@
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
-from typing import cast, override
+from inspect import Parameter, signature
+from typing import Annotated, cast, get_args, get_origin, override
 
 from .contracts import ContainerContract, Disposable, Startable
 from .exceptions import BindingError, ResolutionError
@@ -16,6 +17,37 @@ class Registration:
     factory: Callable[[ContainerContract], object]
     shared: bool
     eager: bool
+
+
+def wire[T](constructor: type[T]) -> Callable[[ContainerContract], T]:
+    bindings = cast(dict[str, type[object]], {})
+
+    for parameter in signature(constructor).parameters.values():
+        if parameter.kind in (Parameter.VAR_KEYWORD, Parameter.VAR_POSITIONAL):
+            continue
+
+        if parameter.default is not Parameter.empty:
+            continue
+
+        if parameter.annotation is Parameter.empty:
+            raise BindingError(
+                f'{constructor.__qualname__} parameter {parameter.name!r}'
+                f' has no annotation to resolve'
+            )
+
+        annotation = parameter.annotation
+        if get_origin(annotation) is Annotated:
+            annotation = get_args(annotation)[0]
+
+        bindings[parameter.name] = annotation
+
+    def factory(container: ContainerContract) -> T:
+        kwargs = {
+            name: container.resolve(binding) for name, binding in bindings.items()
+        }
+        return constructor(**kwargs)
+
+    return factory
 
 
 class Container(ContainerContract):
@@ -49,8 +81,9 @@ class Container(ContainerContract):
         self,
         binding: type[T],
         *,
-        instance: T | None = None,
+        constructor: type[T] | None = None,
         factory: Callable[[ContainerContract], T] | None = None,
+        instance: T | None = None,
         shared: bool = False,
         eager: bool = False,
     ) -> None:
@@ -59,8 +92,11 @@ class Container(ContainerContract):
         if binding in self.registry:
             raise BindingError(f'{name} is already bound')
 
-        if not (instance is None) ^ (factory is None):
-            raise BindingError(f'{name} needs exactly one of instance or factory')
+        if sum(source is not None for source in (constructor, factory, instance)) != 1:
+            raise BindingError(f'{name} needs one of constructor/factory/instance')
+
+        if constructor is not None:
+            factory = wire(constructor)
 
         if factory is None:
             self.instances[binding] = instance

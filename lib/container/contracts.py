@@ -24,8 +24,9 @@ class ContainerContract(ABC):
         self,
         binding: type[T],
         *,
-        instance: T | None = None,
+        constructor: type[T] | None = None,
         factory: Callable[[ContainerContract], T] | None = None,
+        instance: T | None = None,
         shared: bool = False,
         eager: bool = False,
     ) -> None: ...
