@@ -2,11 +2,11 @@ import pytest
 from pydantic import SecretStr, ValidationError
 from pydantic_settings import SettingsConfigDict
 
-from app.core.settings import AppSettings
+from app.core.settings import HuginnSettings
 from lib.llm import ProviderConfig
 
 
-class IsolatedSettings(AppSettings):
+class IsolatedSettings(HuginnSettings):
     model_config = SettingsConfigDict(env_file=None, extra='ignore')
 
 

@@ -1,6 +1,6 @@
 from typing import override
 
-from app.core.settings import AppSettings
+from app.core.settings import HuginnSettings
 from lib.container import ContainerContract, ProviderContract
 from lib.observability import Logger, configure_logging, create_logger
 
@@ -13,7 +13,7 @@ class LoggingProvider(ProviderContract):
     @override
     def __call__(self, container: ContainerContract) -> None:
         configure_logging(
-            develop=container.resolve(AppSettings).running_in_mode('dev'),
+            develop=container.resolve(HuginnSettings).running_in_mode('dev'),
             capture=('uvicorn', 'uvicorn.error'),
             silence=('uvicorn.access',),
         )

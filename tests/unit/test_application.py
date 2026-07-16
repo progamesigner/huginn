@@ -9,7 +9,7 @@ from app.core.providers.llm import LLMProvider
 from app.core.providers.logging import LoggingProvider
 from app.core.providers.settings import SettingsProvider
 from app.core.providers.tools import ToolRegistryProvider
-from app.core.settings import AppSettings
+from app.core.settings import HuginnSettings
 from app.core.tools import DuplicateToolError, ToolRegistry
 from lib.container import ContainerContract, ProviderContract
 from lib.llm import LLMManager
@@ -175,7 +175,7 @@ def test_provider_is_callable() -> None:
 def test_build_wires_app_providers() -> None:
     application = App().build(SettingsProvider(), LoggingProvider())
 
-    assert application.bound(AppSettings)
+    assert application.bound(HuginnSettings)
     assert application.bound(Logger)
 
 
@@ -228,7 +228,7 @@ def test_build_fails_when_discovered_tools_collide() -> None:
 def test_running_in_mode_matches_any_given_mode() -> None:
     application = App().build(SettingsProvider())
 
-    with application.use(AppSettings, AppSettings(environment='staging')):
+    with application.use(HuginnSettings, HuginnSettings(environment='staging')):
         assert application.running_in_mode('staging')
         assert application.running_in_mode('staging', 'prod')
         assert not application.running_in_mode('dev')

@@ -5,7 +5,7 @@ from typing import ClassVar, Self
 from app.core.exceptions import BuildError
 from app.core.providers.logging import LoggingProvider
 from app.core.providers.settings import SettingsProvider
-from app.core.settings import AppSettings, Environment
+from app.core.settings import Environment, HuginnSettings
 from lib.container import Container, ProviderContract
 
 logger = getLogger(__name__)
@@ -76,4 +76,4 @@ class App(Container):
         return self
 
     def running_in_mode(self, *modes: Environment) -> bool:
-        return self.resolve(AppSettings).running_in_mode(*modes)
+        return self.resolve(HuginnSettings).running_in_mode(*modes)

@@ -34,7 +34,7 @@ uv run server
 | `HUGINN_SERVER_PORT` | `8000` | Port to listen on. |
 | `HUGINN_SERVER_RELOAD` | `false` | Auto-reload on source changes; local development only. |
 
-The `HUGINN_SERVER_` prefix is deliberate: a bare `HUGINN_PORT` would collide with the `HUGINN_PORT=tcp://<ip>:<port>` value Kubernetes injects for a same-named service, breaking int parsing. These deploy-layer knobs stay separate from `AppSettings` (app behavior), which lives in `app/core/settings.py` and does read `.env`.
+The `HUGINN_SERVER_` prefix is deliberate: a bare `HUGINN_PORT` would collide with the `HUGINN_PORT=tcp://<ip>:<port>` value Kubernetes injects for a same-named service, breaking int parsing. These deploy-layer knobs stay separate from `HuginnSettings` (app behavior), which lives in `app/core/settings.py` and does read `.env`.
 
 `/healthz` answers 200 as long as the process is alive; `/readyz` answers 200 when the service is ready to take traffic:
 

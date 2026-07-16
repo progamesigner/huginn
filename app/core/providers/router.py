@@ -7,7 +7,7 @@ from starlette.middleware import Middleware
 from app.core.exceptions import AppError
 from app.core.middleware import RequestContextMiddleware
 from app.core.renderers import render_app_error, render_unexpected_error
-from app.core.settings import AppSettings
+from app.core.settings import HuginnSettings
 from lib.container import ContainerContract, ProviderContract
 from lib.router import RouterContract, RouterManager
 
@@ -23,7 +23,7 @@ class RouterProvider(ProviderContract):
 
     @override
     def __call__(self, container: ContainerContract) -> None:
-        develop = container.resolve(AppSettings).running_in_mode('dev')
+        develop = container.resolve(HuginnSettings).running_in_mode('dev')
 
         @asynccontextmanager
         async def lifespan(_: object) -> AsyncIterator[None]:

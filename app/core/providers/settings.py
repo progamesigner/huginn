@@ -1,10 +1,10 @@
 from typing import override
 
-from app.core.settings import AppSettings
+from app.core.settings import HuginnSettings
 from lib.container import ContainerContract, ProviderContract
 
 
 class SettingsProvider(ProviderContract):
     @override
     def __call__(self, container: ContainerContract) -> None:
-        container.bind(AppSettings, instance=AppSettings())
+        container.bind(HuginnSettings, instance=HuginnSettings())

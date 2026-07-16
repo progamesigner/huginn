@@ -8,7 +8,7 @@ from lib.llm import ProviderConfig
 type Environment = Literal['dev', 'staging', 'prod']
 
 
-class AppSettings(BaseSettings):
+class HuginnSettings(BaseSettings):
     model_config = SettingsConfigDict(
         env_prefix='HUGINN_',
         env_file='.env',
