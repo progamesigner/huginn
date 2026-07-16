@@ -42,6 +42,24 @@ _FINISH_REASONS: dict[str, FinishReason] = {
 def build_messages(
     messages: tuple[Message, ...],
 ) -> Iterator[ChatCompletionMessageParam]:
+    def text_fragments(message: Message) -> Iterator[str]:
+        for segment in message.segments:
+            match segment:
+                case TextSegment(text=fragment):
+                    yield fragment
+
+    def tool_call_entries(
+        message: Message,
+    ) -> Iterator[ChatCompletionMessageFunctionToolCallParam]:
+        for segment in message.segments:
+            match segment:
+                case ToolCallSegment(id=id_, name=name, arguments=arguments):
+                    yield ChatCompletionMessageFunctionToolCallParam(
+                        id=id_,
+                        type='function',
+                        function=Function(name=name, arguments=arguments),
+                    )
+
     for message in messages:
         if message.role == 'tool':
             match message.segments[0]:
@@ -53,32 +71,13 @@ def build_messages(
                     )
             continue
 
-        def text_fragments(message: Message) -> Iterator[str]:
-            for segment in message.segments:
-                match segment:
-                    case TextSegment(text=fragment):
-                        yield fragment
-
-        def tool_call_entries(
-            message: Message,
-        ) -> Iterator[ChatCompletionMessageFunctionToolCallParam]:
-            for segment in message.segments:
-                match segment:
-                    case ToolCallSegment(id=id_, name=name, arguments=arguments):
-                        yield ChatCompletionMessageFunctionToolCallParam(
-                            id=id_,
-                            type='function',
-                            function=Function(name=name, arguments=arguments),
-                        )
-
-        text = list(text_fragments(message))
+        texts = list(text_fragments(message))
         tool_calls = list(tool_call_entries(message))
 
-        if not text and not tool_calls:
+        if not texts and not tool_calls:
             continue
 
-        content = '\n'.join(text) or None
-
+        content = '\n'.join(texts) or None
         match message.role:
             case 'system':
                 yield ChatCompletionSystemMessageParam(

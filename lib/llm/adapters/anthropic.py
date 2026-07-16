@@ -58,58 +58,57 @@ type _Block = (
 
 
 def build_messages(messages: tuple[Message, ...]) -> Iterator[MessageParam]:
-    for message in messages:
+    def build_blocks(message: Message) -> Iterator[_Block]:
+        last_index = len(message.segments) - 1
 
-        def build_blocks(message: Message) -> Iterator[_Block]:
-            last_index = len(message.segments) - 1
+        for index, segment in enumerate(message.segments):
+            cache_control = (
+                CacheControlEphemeralParam(type='ephemeral')
+                if message.cacheable and index == last_index
+                else None
+            )
 
-            for index, segment in enumerate(message.segments):
-                cache_control = (
-                    CacheControlEphemeralParam(type='ephemeral')
-                    if message.cacheable and index == last_index
-                    else None
-                )
-
-                match segment:
-                    case TextSegment(text=text):
-                        block = TextBlockParam(type='text', text=text)
-                        if cache_control:
-                            block['cache_control'] = cache_control
-                        yield block
-                    case ToolCallSegment(id=id_, name=name, arguments=arguments):
-                        tool_use = ToolUseBlockParam(
-                            type='tool_use',
-                            id=id_,
-                            name=name,
-                            input=loads(arguments),
-                        )
-                        if cache_control:
-                            tool_use['cache_control'] = cache_control
-                        yield tool_use
-                    case ToolResultSegment(
-                        tool_call_id=tool_call_id,
+            match segment:
+                case TextSegment(text=text):
+                    block = TextBlockParam(type='text', text=text)
+                    if cache_control:
+                        block['cache_control'] = cache_control
+                    yield block
+                case ToolCallSegment(id=id_, name=name, arguments=arguments):
+                    tool_use = ToolUseBlockParam(
+                        type='tool_use',
+                        id=id_,
+                        name=name,
+                        input=loads(arguments),
+                    )
+                    if cache_control:
+                        tool_use['cache_control'] = cache_control
+                    yield tool_use
+                case ToolResultSegment(
+                    tool_call_id=tool_call_id,
+                    content=content,
+                    error=error,
+                ):
+                    result = ToolResultBlockParam(
+                        type='tool_result',
+                        tool_use_id=tool_call_id,
                         content=content,
-                        error=error,
-                    ):
-                        result = ToolResultBlockParam(
-                            type='tool_result',
-                            tool_use_id=tool_call_id,
-                            content=content,
-                        )
-                        if error:
-                            result['is_error'] = True
-                        if cache_control:
-                            result['cache_control'] = cache_control
-                        yield result
-                    case ThinkingSegment(data=data):
-                        fields = cast(dict[str, object], data)
-                        # NOTE: thinking blocks have no cache_control field
-                        yield ThinkingBlockParam(
-                            type='thinking',
-                            thinking=cast(str, fields['thinking']),
-                            signature=cast(str, fields['signature']),
-                        )
+                    )
+                    if error:
+                        result['is_error'] = True
+                    if cache_control:
+                        result['cache_control'] = cache_control
+                    yield result
+                case ThinkingSegment(data=data):
+                    fields = cast(dict[str, object], data)
+                    # NOTE: thinking blocks have no cache_control field
+                    yield ThinkingBlockParam(
+                        type='thinking',
+                        thinking=cast(str, fields['thinking']),
+                        signature=cast(str, fields['signature']),
+                    )
 
+    for message in messages:
         blocks = list(build_blocks(message))
         if not blocks:
             continue
