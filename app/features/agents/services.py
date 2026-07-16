@@ -19,9 +19,13 @@ from lib.llm import (
     ToolResultSegment,
 )
 
+from .exceptions import TurnTimeout
+
 logger = logging.getLogger(__name__)
 
 _DEFAULT_MAX_ITERATIONS = 10
+_DEFAULT_TURN_TIMEOUT = 300.0
+_DEFAULT_TOOL_TIMEOUT = 60.0
 
 
 @dataclass(frozen=True)
@@ -31,6 +35,8 @@ class TurnInput:
     model: str
     prior_turns: tuple[Message, ...] = ()
     max_iterations: int = _DEFAULT_MAX_ITERATIONS
+    turn_timeout: float = _DEFAULT_TURN_TIMEOUT
+    tool_timeout: float = _DEFAULT_TOOL_TIMEOUT
 
 
 @dataclass(frozen=True)
@@ -69,11 +75,31 @@ def tool_result_messages(results: tuple[ToolResultSegment, ...]) -> tuple[Messag
     return tuple(Message(role='tool', segments=(result,)) for result in results)
 
 
+async def execute(
+    registry: ToolRegistry,
+    call: ToolCallSegment,
+    tool_timeout: float,
+) -> ToolResultSegment:
+    try:
+        async with asyncio.timeout(tool_timeout):
+            return await registry.execute(call)
+    except TimeoutError:
+        logger.warning('Tool %s timed out after %.1fs', call.name, tool_timeout)
+        return ToolResultSegment(
+            tool_call_id=call.id,
+            content=f'tool {call.name!r} timed out',
+            error=True,
+        )
+
+
 async def execute_calls(
     registry: ToolRegistry,
     calls: tuple[ToolCallSegment, ...],
+    tool_timeout: float,
 ) -> tuple[ToolResultSegment, ...]:
-    return tuple(await asyncio.gather(*(registry.execute(call) for call in calls)))
+    return tuple(
+        await asyncio.gather(*(execute(registry, call, tool_timeout) for call in calls))
+    )
 
 
 async def consume(
@@ -119,20 +145,31 @@ class AgentRunner:
         history = build_messages(turn)
         text = ''
 
-        for _ in range(turn.max_iterations):
-            request = CompletionRequest(
-                model=turn.model,
-                messages=tuple(history),
-                tools=self.registry.schemas(),
-            )
-            text, tool_calls = await consume(self.llm.stream(request), on_text)
+        try:
+            async with asyncio.timeout(turn.turn_timeout):
+                for _ in range(turn.max_iterations):
+                    request = CompletionRequest(
+                        model=turn.model,
+                        messages=tuple(history),
+                        tools=self.registry.schemas(),
+                    )
+                    text, tool_calls = await consume(self.llm.stream(request), on_text)
 
-            if not tool_calls:
-                return TurnOutput(text=text)
+                    if not tool_calls:
+                        return TurnOutput(text=text)
 
-            results = await execute_calls(self.registry, tool_calls)
-            history.append(assistant_message(text, tool_calls))
-            history.extend(tool_result_messages(results))
+                    results = await execute_calls(
+                        self.registry,
+                        tool_calls,
+                        turn.tool_timeout,
+                    )
+                    history.append(assistant_message(text, tool_calls))
+                    history.extend(tool_result_messages(results))
+        except TimeoutError as error:
+            logger.warning('Turn exceeded turn_timeout=%.1fs', turn.turn_timeout)
+            raise TurnTimeout(
+                f'turn exceeded turn_timeout={turn.turn_timeout}s'
+            ) from error
 
         logger.warning(
             'Turn hit max_iterations=%d without finishing',

@@ -7,6 +7,7 @@ import pytest
 from pydantic import Field
 
 from app.core.tools import Tool, ToolOutput, ToolParams, ToolRegistry
+from app.features.agents.exceptions import TurnTimeout
 from app.features.agents.services import AgentRunner, TurnInput
 from lib.llm import (
     CompletionChunk,
@@ -80,6 +81,8 @@ def make_turn(
     model: str = 'test-model',
     prior_turns: tuple[Message, ...] = (),
     max_iterations: int = 10,
+    turn_timeout: float = 300.0,
+    tool_timeout: float = 60.0,
 ) -> TurnInput:
     return TurnInput(
         instructions='be helpful',
@@ -87,6 +90,8 @@ def make_turn(
         model=model,
         prior_turns=prior_turns,
         max_iterations=max_iterations,
+        turn_timeout=turn_timeout,
+        tool_timeout=tool_timeout,
     )
 
 
@@ -256,3 +261,59 @@ async def test_run_marks_incomplete_when_max_iterations_exhausted(
 
     assert output.completed is False
     assert any('max_iterations' in record.message for record in caplog.records)
+
+
+async def test_run_reports_tool_timeout_as_error_and_continues(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    llm = FakeLLM(
+        [
+            [
+                ToolCallChunk(
+                    index=0,
+                    id='call_1',
+                    name='sleep',
+                    arguments='{"seconds": 1.0}',
+                ),
+                FinishChunk(reason='tool_calls'),
+            ],
+            [TextChunk(text='done'), FinishChunk(reason='stop')],
+        ]
+    )
+    runner = AgentRunner(llm, make_registry())
+
+    with caplog.at_level('WARNING'):
+        output = await runner.run(make_turn(tool_timeout=0.05), lambda _: None)
+
+    assert output.text == 'done'
+    assert output.completed is True
+
+    result = tool_result(llm.requests[1].messages[-1])
+    assert result.tool_call_id == 'call_1'
+    assert result.error is True
+    assert 'timed out' in result.content
+    assert any('timed out' in record.message for record in caplog.records)
+
+
+async def test_run_raises_turn_timeout_when_whole_turn_exceeds_budget(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    llm = FakeLLM(
+        [
+            [
+                ToolCallChunk(
+                    index=0,
+                    id='call_1',
+                    name='sleep',
+                    arguments='{"seconds": 1.0}',
+                ),
+                FinishChunk(reason='tool_calls'),
+            ],
+        ]
+    )
+    runner = AgentRunner(llm, make_registry())
+
+    with caplog.at_level('WARNING'), pytest.raises(TurnTimeout):
+        await runner.run(make_turn(turn_timeout=0.05), lambda _: None)
+
+    assert any('turn_timeout' in record.message for record in caplog.records)
