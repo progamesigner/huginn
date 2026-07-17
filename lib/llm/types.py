@@ -7,62 +7,62 @@ type Effort = Literal['none', 'low', 'medium', 'high']
 type FinishReason = Literal['stop', 'tool_calls', 'length', 'error']
 
 
-class BaseValue(BaseModel):
+class LLMValue(BaseModel):
     model_config = ConfigDict(strict=True, frozen=True)
 
 
-class TextSegment(BaseValue):
+class TextSegment(LLMValue):
     text: Annotated[str, Field()]
 
 
-class ToolCallSegment(BaseValue):
+class ToolCallSegment(LLMValue):
     id: Annotated[str, Field()]
     name: Annotated[str, Field()]
     arguments: Annotated[str, Field()]
 
 
-class ToolResultSegment(BaseValue):
+class ToolResultSegment(LLMValue):
     tool_call_id: Annotated[str, Field()]
     content: Annotated[str, Field()]
     error: Annotated[bool, Field()] = False
 
 
-class ThinkingSegment(BaseValue):
+class ThinkingSegment(LLMValue):
     data: Annotated[JsonValue, Field()]
 
 
 type Segment = TextSegment | ToolCallSegment | ToolResultSegment | ThinkingSegment
 
 
-class Message(BaseValue):
+class Message(LLMValue):
     role: Annotated[Role, Field()]
     segments: Annotated[tuple[Segment, ...], Field()]
     cacheable: Annotated[bool, Field()] = False
 
 
-class TextChunk(BaseValue):
+class TextChunk(LLMValue):
     text: Annotated[str, Field()]
 
 
-class ToolCallChunk(BaseValue):
+class ToolCallChunk(LLMValue):
     index: Annotated[int, Field()]
     id: Annotated[str | None, Field()] = None
     name: Annotated[str | None, Field()] = None
     arguments: Annotated[str, Field()] = ''
 
 
-class ThinkingChunk(BaseValue):
+class ThinkingChunk(LLMValue):
     text: Annotated[str, Field()]
 
 
-class FinishChunk(BaseValue):
+class FinishChunk(LLMValue):
     reason: Annotated[FinishReason, Field()]
 
 
 type CompletionChunk = TextChunk | ToolCallChunk | ThinkingChunk | FinishChunk
 
 
-class CompletionRequest(BaseValue):
+class CompletionRequest(LLMValue):
     model: Annotated[str, Field()]
     messages: Annotated[tuple[Message, ...], Field()]
     tools: Annotated[tuple[JsonValue, ...], Field()] = ()

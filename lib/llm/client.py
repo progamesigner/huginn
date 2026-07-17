@@ -3,12 +3,12 @@ from typing import Annotated, Literal, Protocol
 
 from pydantic import Field, SecretStr
 
-from .types import BaseValue, CompletionChunk, CompletionRequest
+from .types import CompletionChunk, CompletionRequest, LLMValue
 
 type Adapter = Literal['openai', 'anthropic']
 
 
-class ProviderConfig(BaseValue):
+class ProviderConfig(LLMValue):
     name: Annotated[str, Field()]
     adapter: Annotated[Adapter, Field()]
     api_key: Annotated[SecretStr, Field()]
