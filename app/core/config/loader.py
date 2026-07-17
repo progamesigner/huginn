@@ -136,8 +136,6 @@ def validate_references(config: HuginnConfig, registry: ToolRegistry) -> None:
 def load_config(path: str | Path, registry: ToolRegistry) -> HuginnConfig:
     raw = read_yaml(Path(path))
     resolved = resolve_references(raw)
-    # NOTE: JSON-mode validation so strict mode accepts YAML's plain lists for
-    # tuple fields; model_validate()'s python-mode would reject list-for-tuple.
     config = HuginnConfig.model_validate_json(json.dumps(resolved))
     validate_references(config, registry)
     return config

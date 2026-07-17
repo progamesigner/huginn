@@ -1,3 +1,4 @@
+from pathlib import Path
 from typing import Annotated, Literal
 
 from pydantic import Field
@@ -15,6 +16,7 @@ class HuginnSettings(BaseSettings):
         extra='ignore',
     )
 
+    config_file: Annotated[Path, Field()] = Path('huginn.yaml')
     environment: Annotated[Environment, Field()] = 'dev'
     providers: Annotated[tuple[ProviderConfig, ...], Field()] = ()
 

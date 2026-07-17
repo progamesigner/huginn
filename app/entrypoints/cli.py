@@ -1,12 +1,13 @@
 from pydantic import ValidationError
 
 from app.core.application import App
+from app.core.providers.config import ConfigCommandProvider
 from lib.command import CommandManager, echo
 from lib.container import ProviderContract
 
 from .extensions import EXTENSIONS
 
-COMMANDS: tuple[ProviderContract, ...] = ()
+COMMANDS: tuple[ProviderContract, ...] = (ConfigCommandProvider(),)
 
 
 def main() -> None:
