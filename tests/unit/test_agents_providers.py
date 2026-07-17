@@ -6,12 +6,9 @@ from pydantic import ValidationError
 from app.core.application import App
 from app.core.config import SectionRegistry
 from app.exts.felo.client import FeloClient
-from app.features.agents.providers import (
-    AgentsConfigProvider,
-    ToolRegistryProvider,
-    WebSearchToolProvider,
-)
-from app.features.agents.tools import ToolRegistry
+from app.features.agents.providers import AgentsConfigProvider
+from app.features.tools import ToolRegistry
+from app.features.tools.providers import ToolRegistryProvider, WebSearchToolProvider
 
 
 @pytest.fixture(autouse=True)

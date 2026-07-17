@@ -1,11 +1,11 @@
 import httpx
 import pytest
 import respx
+from app.features.tools.websearch import format_result
 from pydantic import SecretStr, ValidationError
 
 from app.exts.felo.client import FeloClient, SearchResource, SearchResult
-from app.features.agents.tools import WebSearchParams, WebSearchTool
-from app.features.agents.tools.websearch import format_result
+from app.features.tools import WebSearchParams, WebSearchTool
 from lib.http import HTTPClientManager
 
 _PAYLOAD = {

@@ -8,14 +8,14 @@ from app.core.providers.llm import LLMProvider
 from app.core.providers.logging import LoggingProvider
 from app.core.providers.settings import SettingsProvider
 from app.core.settings import HuginnSettings
-from app.features.agents.providers import ToolRegistryProvider
-from app.features.agents.tools import (
+from app.features.tools import (
     DuplicateToolError,
     Tool,
     ToolOutput,
     ToolParams,
     ToolRegistry,
 )
+from app.features.tools.providers import ToolRegistryProvider
 from lib.container import ContainerContract, ProviderContract
 from lib.llm import LLMManager
 from lib.observability import Logger

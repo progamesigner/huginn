@@ -39,7 +39,7 @@ from app.features.agents.exceptions import (
     UnknownMcpServerReferenceError,
     UnknownToolReferenceError,
 )
-from app.features.agents.tools import Tool, ToolOutput, ToolParams, ToolRegistry
+from app.features.tools import Tool, ToolOutput, ToolParams, ToolRegistry
 
 
 class SearchParams(ToolParams):

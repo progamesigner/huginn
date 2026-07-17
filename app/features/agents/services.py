@@ -8,6 +8,7 @@ from uuid import uuid4
 
 from structlog.contextvars import bound_contextvars
 
+from app.features.tools import ToolRegistry
 from lib.llm import (
     CompletionChunk,
     CompletionRequest,
@@ -24,7 +25,6 @@ from lib.llm import (
 )
 
 from .exceptions import TurnTimeout
-from .tools import ToolRegistry
 
 logger = logging.getLogger(__name__)
 

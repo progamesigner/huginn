@@ -3,6 +3,7 @@ from typing import Annotated, Literal, cast
 from pydantic import Field, HttpUrl, JsonValue, RootModel, SecretStr
 
 from app.core.config import ConfigValue, HuginnConfig, SectionSpec
+from app.features.tools import ToolRegistry, UnknownToolError
 
 from .exceptions import (
     AmbiguousInstructionsError,
@@ -10,7 +11,6 @@ from .exceptions import (
     UnknownMcpServerReferenceError,
     UnknownToolReferenceError,
 )
-from .tools import ToolRegistry, UnknownToolError
 
 type Transport = Literal['http']
 
