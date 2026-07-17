@@ -1,30 +1,23 @@
 import pytest
 from pydantic import HttpUrl, SecretStr, ValidationError
 
-from app.core.config import (
+from app.features.agents.config import (
     AgentConfig,
+    AgentsConfig,
     ChannelConfig,
     ChannelRouterConfig,
     ChannelsConfig,
     DefaultsConfig,
-    HuginnConfig,
     McpRef,
     McpServerConfig,
+    McpServersConfig,
     ToolRef,
 )
 
 
-def test_huginn_config_accepts_full_example() -> None:
-    config = HuginnConfig(
-        defaults=DefaultsConfig(model='claude-sonnet-5'),
-        mcp_servers={
-            'memory': McpServerConfig(
-                transport='http',
-                url=HttpUrl('https://memory.example.internal/mcp'),
-                auth=SecretStr('token'),
-            ),
-        },
-        agents={
+def test_agents_config_accepts_full_example() -> None:
+    agents = AgentsConfig(
+        {
             'scout': AgentConfig(
                 description='General-purpose research agent',
                 model='claude-sonnet-5',
@@ -38,45 +31,29 @@ def test_huginn_config_accepts_full_example() -> None:
                     ),
                 ),
             ),
-        },
-        channels=ChannelsConfig(
-            telegram=ChannelConfig(
-                bindings={'12345': 'scout'},
-                router=ChannelRouterConfig(model='claude-haiku-4-5', fallback='scout'),
-            ),
-        ),
+        }
     )
 
-    assert config.agents['scout'].description == 'General-purpose research agent'
-    assert config.mcp_servers['memory'].transport == 'http'
-    assert config.channels.telegram is not None
-    assert config.channels.telegram.bindings['12345'] == 'scout'
+    assert agents.root['scout'].description == 'General-purpose research agent'
+    assert agents.root['scout'].tools[0].name == 'websearch'
 
 
-def test_huginn_config_requires_agents() -> None:
-    with pytest.raises(ValidationError, match='agents'):
-        HuginnConfig.model_validate({})
+def test_mcp_servers_config_holds_named_declarations() -> None:
+    servers = McpServersConfig(
+        {
+            'memory': McpServerConfig(
+                transport='http',
+                url=HttpUrl('https://memory.example.internal/mcp'),
+                auth=SecretStr('token'),
+            ),
+        }
+    )
+
+    assert servers.root['memory'].transport == 'http'
 
 
-def test_huginn_config_rejects_unknown_top_level_field() -> None:
-    with pytest.raises(ValidationError):
-        HuginnConfig.model_validate({'agents': {}, 'bogus': True})
-
-
-def test_huginn_config_defaults_to_no_servers_and_no_channels() -> None:
-    config = HuginnConfig.model_validate({'agents': {}})
-
-    assert config.mcp_servers == {}
-    assert config.channels.telegram is None
-    assert config.defaults.model is None
-
-
-def test_huginn_config_is_frozen() -> None:
-    config = HuginnConfig.model_validate({'agents': {}})
-    field = 'agents'
-
-    with pytest.raises(ValidationError):
-        setattr(config, field, {})
+def test_defaults_config_defaults_to_no_model() -> None:
+    assert DefaultsConfig().model is None
 
 
 def test_agent_config_requires_description() -> None:
@@ -96,6 +73,14 @@ def test_agent_config_defaults_have_no_tools_or_mcp_or_instructions() -> None:
     assert agent.mcp == ()
     assert agent.instructions is None
     assert agent.instructions_file is None
+
+
+def test_agent_config_is_frozen() -> None:
+    agent = AgentConfig(description='x')
+    field = 'description'
+
+    with pytest.raises(ValidationError):
+        setattr(agent, field, 'y')
 
 
 def test_mcp_server_config_requires_transport_and_url() -> None:
@@ -133,3 +118,10 @@ def test_channel_router_config_requires_fallback() -> None:
 def test_channels_config_rejects_unknown_channel_name() -> None:
     with pytest.raises(ValidationError):
         ChannelsConfig.model_validate({'discord': {}})
+
+
+def test_channel_config_defaults_to_no_bindings_or_router() -> None:
+    channel = ChannelConfig()
+
+    assert channel.bindings == {}
+    assert channel.router is None

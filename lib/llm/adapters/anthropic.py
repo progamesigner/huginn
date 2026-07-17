@@ -1,5 +1,5 @@
+import json
 from collections.abc import AsyncIterator, Iterator
-from json import loads
 from typing import cast
 
 from anthropic import AsyncAnthropic, omit
@@ -80,7 +80,7 @@ def build_messages(messages: tuple[Message, ...]) -> Iterator[MessageParam]:
                         type='tool_use',
                         id=id_,
                         name=name,
-                        input=loads(arguments),
+                        input=json.loads(arguments),
                     )
                     if cache_control:
                         tool_use['cache_control'] = cache_control

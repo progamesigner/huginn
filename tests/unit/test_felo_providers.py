@@ -6,9 +6,8 @@ import respx
 from pydantic import ValidationError
 
 from app.core.application import App
-from app.core.tools import ToolRegistry
 from app.exts.felo.client import FeloClient
-from app.exts.felo.providers import FeloExtProvider, FeloExtToolsProvider
+from app.exts.felo.providers import FeloExtProvider
 from app.exts.felo.settings import FeloExtSettings
 
 _PAYLOAD = {
@@ -59,31 +58,6 @@ async def test_client_searches_configured_endpoint_with_auth(
 
     assert route.called
     assert route.calls.last.request.headers['Authorization'] == 'Bearer felo-key'
-
-
-async def test_tools_provider_registers_websearch() -> None:
-    app = App().build(FeloExtToolsProvider())
-
-    try:
-        assert 'websearch' in app.resolve(ToolRegistry).tools
-    finally:
-        await app.dispose()
-
-
-async def test_build_and_registration_stay_lazy_without_key(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    monkeypatch.chdir(tmp_path)
-    monkeypatch.delenv('EXT_FELO_API_KEY', raising=False)
-
-    app = App().build(FeloExtToolsProvider())
-
-    try:
-        assert 'websearch' in app.resolve(ToolRegistry).tools
-        with pytest.raises(ValidationError):
-            app.resolve(FeloClient)
-    finally:
-        await app.dispose()
 
 
 async def test_start_fails_fast_without_key(

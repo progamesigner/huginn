@@ -4,7 +4,8 @@ import respx
 from pydantic import SecretStr, ValidationError
 
 from app.exts.felo.client import FeloClient, SearchResource, SearchResult
-from app.exts.felo.tools import WebSearchParams, WebSearchTool, format_result
+from app.features.agents.tools import WebSearchParams, WebSearchTool
+from app.features.agents.tools.websearch import format_result
 from lib.http import HTTPClientManager
 
 _PAYLOAD = {

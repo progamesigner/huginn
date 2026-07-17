@@ -7,9 +7,9 @@ import pytest
 from pydantic import Field
 from structlog.contextvars import get_contextvars
 
-from app.core.tools import Tool, ToolOutput, ToolParams, ToolRegistry
 from app.features.agents.exceptions import TurnTimeout
 from app.features.agents.services import AgentRunner, TurnInput
+from app.features.agents.tools import Tool, ToolOutput, ToolParams, ToolRegistry
 from lib.llm import (
     CompletionChunk,
     CompletionRequest,

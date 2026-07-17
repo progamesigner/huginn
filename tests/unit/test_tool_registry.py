@@ -3,7 +3,7 @@ from typing import Annotated, override
 import pytest
 from pydantic import Field
 
-from app.core.tools import (
+from app.features.agents.tools import (
     DuplicateToolError,
     Tool,
     ToolOutput,

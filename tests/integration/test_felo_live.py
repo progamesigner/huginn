@@ -4,11 +4,10 @@ import pytest
 from pydantic import Field, SecretStr, ValidationError
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-from app.core.tools import ToolRegistry
 from app.exts.felo.client import FeloClient
 from app.exts.felo.settings import FeloExtSettings
-from app.exts.felo.tools import WebSearchTool
 from app.features.agents.services import AgentRunner, TurnInput
+from app.features.agents.tools import ToolRegistry, WebSearchTool
 from lib.http import HTTPClientManager
 from lib.llm.adapters.openai import OpenAIAdapter
 from lib.llm.client import ProviderConfig

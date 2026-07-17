@@ -2,7 +2,11 @@ class ConfigError(Exception):
     pass
 
 
-class AmbiguousInstructionsError(ConfigError):
+class DuplicateSectionError(ConfigError):
+    pass
+
+
+class InvalidConfigError(ConfigError):
     pass
 
 
@@ -18,13 +22,9 @@ class MissingEnvironmentVariableError(ConfigError):
     pass
 
 
-class UnknownAgentReferenceError(ConfigError):
+class MissingSectionError(ConfigError):
     pass
 
 
-class UnknownMcpServerReferenceError(ConfigError):
-    pass
-
-
-class UnknownToolReferenceError(ConfigError):
+class UnknownSectionError(ConfigError):
     pass

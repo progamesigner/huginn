@@ -7,9 +7,9 @@ from app.core.application import App, BuildError
 from app.core.providers.llm import LLMProvider
 from app.core.providers.logging import LoggingProvider
 from app.core.providers.settings import SettingsProvider
-from app.core.providers.tools import ToolRegistryProvider
 from app.core.settings import HuginnSettings
-from app.core.tools import (
+from app.features.agents.providers import ToolRegistryProvider
+from app.features.agents.tools import (
     DuplicateToolError,
     Tool,
     ToolOutput,

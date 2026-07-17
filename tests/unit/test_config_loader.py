@@ -4,33 +4,42 @@ from typing import Annotated, override
 import pytest
 from pydantic import Field, HttpUrl
 
-from app.core.config import (
-    AgentConfig,
-    ChannelConfig,
-    ChannelRouterConfig,
-    ChannelsConfig,
-    HuginnConfig,
-    McpRef,
-    McpServerConfig,
-    ToolRef,
-    load_config,
-)
+from app.core.config import HuginnConfig, SectionRegistry
 from app.core.config.exceptions import (
-    AmbiguousInstructionsError,
     InvalidValueReferenceError,
     MissingConfigFileError,
     MissingEnvironmentVariableError,
+    MissingSectionError,
+    UnknownSectionError,
+)
+from app.core.config.loader import (
+    interpolate,
+    load_config,
+    resolve_references,
+    resolve_value_from,
+)
+from app.features.agents.config import (
+    AgentConfig,
+    AgentsConfig,
+    ChannelConfig,
+    ChannelRouterConfig,
+    ChannelsConfig,
+    DefaultsConfig,
+    McpRef,
+    McpServerConfig,
+    McpServersConfig,
+    ToolRef,
+    build_sections,
+    validate_agents,
+    validate_channels,
+)
+from app.features.agents.exceptions import (
+    AmbiguousInstructionsError,
     UnknownAgentReferenceError,
     UnknownMcpServerReferenceError,
     UnknownToolReferenceError,
 )
-from app.core.config.loader import (
-    interpolate,
-    resolve_references,
-    resolve_value_from,
-    validate_references,
-)
-from app.core.tools import Tool, ToolOutput, ToolParams, ToolRegistry
+from app.features.agents.tools import Tool, ToolOutput, ToolParams, ToolRegistry
 
 
 class SearchParams(ToolParams):
@@ -47,9 +56,16 @@ class WebSearchTool(Tool[SearchParams]):
         return 'ok'
 
 
-def build_registry() -> ToolRegistry:
+def build_tool_registry() -> ToolRegistry:
     registry = ToolRegistry()
     registry.register(WebSearchTool)
+    return registry
+
+
+def build_section_registry() -> SectionRegistry:
+    registry = SectionRegistry()
+    for spec in build_sections(build_tool_registry()):
+        registry.register(spec)
     return registry
 
 
@@ -60,6 +76,20 @@ def build_agent(**overrides: object) -> AgentConfig:
     }
     fields.update(overrides)
     return AgentConfig.model_validate(fields)
+
+
+def build_app_config(
+    agents: dict[str, AgentConfig] | None = None,
+    mcp_servers: dict[str, McpServerConfig] | None = None,
+    channels: ChannelsConfig | None = None,
+) -> HuginnConfig:
+    return HuginnConfig(
+        {
+            'agents': AgentsConfig(agents or {}),
+            'mcp_servers': McpServersConfig(mcp_servers or {}),
+            'channels': channels or ChannelsConfig(),
+        }
+    )
 
 
 # interpolate()
@@ -194,7 +224,36 @@ def test_resolve_references_reports_field_path_for_missing_env(
 
 def test_load_config_raises_for_missing_file(tmp_path: Path) -> None:
     with pytest.raises(MissingConfigFileError):
-        load_config(tmp_path / 'missing.yaml', build_registry())
+        load_config(tmp_path / 'missing.yaml', build_section_registry())
+
+
+def test_load_config_requires_agents_section(tmp_path: Path) -> None:
+    config_file = tmp_path / 'huginn.yaml'
+    config_file.write_text('defaults: {}\n')
+
+    with pytest.raises(MissingSectionError, match='agents'):
+        load_config(config_file, build_section_registry())
+
+
+def test_load_config_rejects_unknown_section(tmp_path: Path) -> None:
+    config_file = tmp_path / 'huginn.yaml'
+    config_file.write_text('agents: {}\nbogus: {}\n')
+
+    with pytest.raises(UnknownSectionError, match='bogus'):
+        load_config(config_file, build_section_registry())
+
+
+def test_load_config_defaults_optional_sections(tmp_path: Path) -> None:
+    config_file = tmp_path / 'huginn.yaml'
+    config_file.write_text(
+        'agents:\n  scout:\n    description: x\n    instructions: y\n'
+    )
+
+    config = load_config(config_file, build_section_registry())
+
+    assert config.section('defaults', DefaultsConfig).model is None
+    assert config.section('mcp_servers', McpServersConfig).root == {}
+    assert config.section('channels', ChannelsConfig).telegram is None
 
 
 def test_load_config_resolves_env_and_value_from_then_validates(
@@ -225,21 +284,25 @@ def test_load_config_resolves_env_and_value_from_then_validates(
         '    router: {fallback: scout}\n'
     )
 
-    config = load_config(config_file, build_registry())
+    config = load_config(config_file, build_section_registry())
 
-    assert config.defaults.model == 'claude-sonnet-5'
-    assert config.mcp_servers['memory'].auth is not None
-    assert config.mcp_servers['memory'].auth.get_secret_value() == 'secret-token'
-    assert config.agents['scout'].instructions == 'You speak for claude-sonnet-5.'
-    assert config.channels.telegram is not None
-    assert config.channels.telegram.bindings['12345'] == 'scout'
+    agents = config.section('agents', AgentsConfig).root
+    servers = config.section('mcp_servers', McpServersConfig).root
+    channels = config.section('channels', ChannelsConfig)
+
+    assert config.section('defaults', DefaultsConfig).model == 'claude-sonnet-5'
+    assert servers['memory'].auth is not None
+    assert servers['memory'].auth.get_secret_value() == 'secret-token'
+    assert agents['scout'].instructions == 'You speak for claude-sonnet-5.'
+    assert channels.telegram is not None
+    assert channels.telegram.bindings['12345'] == 'scout'
 
 
-# validate_references()
+# validate_agents() / validate_channels()
 
 
-def test_validate_references_accepts_a_fully_consistent_config() -> None:
-    config = HuginnConfig(
+def test_validators_accept_a_fully_consistent_config() -> None:
+    config = build_app_config(
         agents={
             'scout': build_agent(
                 tools=(ToolRef(name='websearch'),),
@@ -248,7 +311,8 @@ def test_validate_references_accepts_a_fully_consistent_config() -> None:
         },
         mcp_servers={
             'memory': McpServerConfig(
-                transport='http', url=HttpUrl('https://memory.example')
+                transport='http',
+                url=HttpUrl('https://memory.example.internal/mcp'),
             ),
         },
         channels=ChannelsConfig(
@@ -259,77 +323,62 @@ def test_validate_references_accepts_a_fully_consistent_config() -> None:
         ),
     )
 
-    validate_references(config, build_registry())
+    validate_agents(config, build_tool_registry())
+    validate_channels(config)
 
 
-def test_validate_references_rejects_conflicting_instructions(tmp_path: Path) -> None:
-    instructions_file = tmp_path / 'scout.md'
-    config = HuginnConfig(
-        agents={
-            'scout': build_agent(
-                instructions='hi', instructions_file=str(instructions_file)
-            ),
-        },
-    )
-
-    with pytest.raises(AmbiguousInstructionsError, match=r'agents\.scout'):
-        validate_references(config, build_registry())
-
-
-def test_validate_references_rejects_missing_instructions() -> None:
-    config = HuginnConfig(
-        agents={'scout': build_agent(instructions=None)},
-    )
-
-    with pytest.raises(AmbiguousInstructionsError, match=r'agents\.scout'):
-        validate_references(config, build_registry())
-
-
-def test_validate_references_rejects_unknown_tool() -> None:
-    config = HuginnConfig(
-        agents={'scout': build_agent(tools=(ToolRef(name='not-registered'),))},
+def test_validate_agents_rejects_unknown_tool() -> None:
+    config = build_app_config(
+        agents={'scout': build_agent(tools=(ToolRef(name='nonexistent'),))},
     )
 
     with pytest.raises(
         UnknownToolReferenceError, match=r'agents\.scout\.tools\[0\]\.name'
     ):
-        validate_references(config, build_registry())
+        validate_agents(config, build_tool_registry())
 
 
-def test_validate_references_rejects_unknown_mcp_server() -> None:
-    config = HuginnConfig(
-        agents={'scout': build_agent(mcp=(McpRef(server='not-declared'),))},
+def test_validate_agents_rejects_unknown_mcp_server() -> None:
+    config = build_app_config(
+        agents={'scout': build_agent(mcp=(McpRef(server='ghost'),))},
     )
 
     with pytest.raises(
         UnknownMcpServerReferenceError, match=r'agents\.scout\.mcp\[0\]\.server'
     ):
-        validate_references(config, build_registry())
+        validate_agents(config, build_tool_registry())
 
 
-def test_validate_references_rejects_unknown_binding_agent() -> None:
-    config = HuginnConfig(
+def test_validate_agents_requires_exactly_one_instruction_source() -> None:
+    both = build_agent(instructions='a', instructions_file='b')
+    neither = build_agent(instructions=None)
+
+    with pytest.raises(AmbiguousInstructionsError, match=r'agents\.scout'):
+        validate_agents(build_app_config(agents={'scout': both}), build_tool_registry())
+
+    with pytest.raises(AmbiguousInstructionsError, match=r'agents\.scout'):
+        validate_agents(
+            build_app_config(agents={'scout': neither}), build_tool_registry()
+        )
+
+
+def test_validate_channels_rejects_unknown_binding_agent() -> None:
+    config = build_app_config(
         agents={'scout': build_agent()},
-        channels=ChannelsConfig(
-            telegram=ChannelConfig(bindings={'12345': 'ghost'}),
-        ),
+        channels=ChannelsConfig(telegram=ChannelConfig(bindings={'42': 'ghost'})),
     )
 
-    with pytest.raises(
-        UnknownAgentReferenceError, match=r'channels\.telegram\.bindings\.12345'
-    ):
-        validate_references(config, build_registry())
+    with pytest.raises(UnknownAgentReferenceError, match='bindings'):
+        validate_channels(config)
 
 
-def test_validate_references_rejects_unknown_fallback_agent() -> None:
-    config = HuginnConfig(
+def test_validate_channels_rejects_unknown_router_fallback() -> None:
+    config = build_app_config(
         agents={'scout': build_agent()},
         channels=ChannelsConfig(
             telegram=ChannelConfig(router=ChannelRouterConfig(fallback='ghost')),
         ),
     )
 
-    with pytest.raises(
-        UnknownAgentReferenceError, match=r'channels\.telegram\.router\.fallback'
-    ):
-        validate_references(config, build_registry())
+    with pytest.raises(UnknownAgentReferenceError, match='fallback'):
+        validate_channels(config)

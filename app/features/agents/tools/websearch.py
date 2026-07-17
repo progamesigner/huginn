@@ -3,9 +3,9 @@ from typing import Annotated, override
 
 from pydantic import Field
 
-from app.core.tools import Tool, ToolOutput, ToolParams
+from app.exts.felo.client import FeloClient, SearchResult
 
-from .client import FeloClient, SearchResult
+from .types import Tool, ToolOutput, ToolParams
 
 _SNIPPET_WIDTH = 200
 

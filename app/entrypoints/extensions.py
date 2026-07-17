@@ -1,4 +1,7 @@
-from app.exts.felo.providers import FeloExtToolsProvider
+from app.features.agents.providers import AgentsConfigProvider, WebSearchToolProvider
 from lib.container import ProviderContract
 
-EXTENSIONS: tuple[ProviderContract, ...] = (FeloExtToolsProvider(),)
+EXTENSIONS: tuple[ProviderContract, ...] = (
+    AgentsConfigProvider(),
+    WebSearchToolProvider(),
+)

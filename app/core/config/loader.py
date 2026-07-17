@@ -5,19 +5,17 @@ from pathlib import Path
 from typing import cast
 
 import yaml
+from pydantic import JsonValue
 
-from app.core.tools import ToolRegistry, UnknownToolError
-
+from .composition import HuginnConfig, SectionRegistry, Sections
 from .exceptions import (
-    AmbiguousInstructionsError,
+    InvalidConfigError,
     InvalidValueReferenceError,
     MissingConfigFileError,
     MissingEnvironmentVariableError,
-    UnknownAgentReferenceError,
-    UnknownMcpServerReferenceError,
-    UnknownToolReferenceError,
+    MissingSectionError,
+    UnknownSectionError,
 )
-from .schema import HuginnConfig
 
 _ENV_PATTERN = re.compile(r'\$\{([A-Za-z_][A-Za-z0-9_]*)\}')
 
@@ -91,51 +89,41 @@ def read_yaml(path: Path) -> object:
     return yaml.safe_load(text) or {}
 
 
-def validate_references(config: HuginnConfig, registry: ToolRegistry) -> None:
-    for agent_name, agent in config.agents.items():
-        base = f'agents.{agent_name}'
+def parse_sections(
+    resolved: dict[str, JsonValue],
+    registry: SectionRegistry,
+) -> HuginnConfig:
+    if unknown := sorted(key for key in resolved if key not in registry):
+        known = ', '.join(sorted(spec.key for spec in registry)) or 'none'
+        raise UnknownSectionError(
+            f'unknown config sections: {", ".join(unknown)}; known: {known}'
+        )
 
-        if (agent.instructions is None) == (agent.instructions_file is None):
-            raise AmbiguousInstructionsError(
-                f'{base}: exactly one of instructions/instructions_file is required'
-            )
+    sections = cast(Sections, {})
+    for spec in registry:
+        node = resolved.get(spec.key)
+        if node is None:
+            if spec.required:
+                raise MissingSectionError(f'{spec.key}: section is required')
 
-        for index, tool in enumerate(agent.tools):
-            try:
-                registry.get(tool.name)
-            except UnknownToolError as error:
-                raise UnknownToolReferenceError(
-                    f'{base}.tools[{index}].name: {error}'
-                ) from error
+            node = {}
 
-        for index, mcp in enumerate(agent.mcp):
-            if mcp.server not in config.mcp_servers:
-                available = ', '.join(sorted(config.mcp_servers)) or 'none'
-                raise UnknownMcpServerReferenceError(
-                    f'{base}.mcp[{index}].server: unknown mcp server {mcp.server!r}; '
-                    f'available: {available}'
-                )
+        # NOTE: Use JSON-mode so strict mode accepts YAML's plain lists as tuples
+        sections[spec.key] = spec.model.model_validate_json(json.dumps(node))
 
-    if (telegram := config.channels.telegram) is not None:
-        for chat_id, agent_name in telegram.bindings.items():
-            if agent_name not in config.agents:
-                raise UnknownAgentReferenceError(
-                    f'channels.telegram.bindings.{chat_id}: unknown agent {agent_name!r}'
-                )
-
-        if (
-            telegram.router is not None
-            and telegram.router.fallback not in config.agents
-        ):
-            raise UnknownAgentReferenceError(
-                f'channels.telegram.router.fallback: unknown agent '
-                f'{telegram.router.fallback!r}'
-            )
+    return HuginnConfig(sections)
 
 
-def load_config(path: str | Path, registry: ToolRegistry) -> HuginnConfig:
+def load_config(path: str | Path, registry: SectionRegistry) -> HuginnConfig:
     raw = read_yaml(Path(path))
     resolved = resolve_references(raw)
-    config = HuginnConfig.model_validate_json(json.dumps(resolved))
-    validate_references(config, registry)
+    if not isinstance(resolved, dict):
+        raise InvalidConfigError('config root must be a mapping of sections')
+
+    config = parse_sections(cast(dict[str, JsonValue], resolved), registry)
+
+    for spec in registry:
+        if spec.validate is not None:
+            spec.validate(config)
+
     return config
