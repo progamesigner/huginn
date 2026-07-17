@@ -229,14 +229,14 @@ def test_build_fails_when_two_providers_register_the_same_tool_name() -> None:
 
         @override
         def __call__(self, container: ContainerContract) -> None:
-            container.resolve(ToolRegistry).register(Echo())
+            container.resolve(ToolRegistry).register(Echo)
 
     class RivalEchoProvider(ProviderContract):
         dependencies = (ToolRegistryProvider,)
 
         @override
         def __call__(self, container: ContainerContract) -> None:
-            container.resolve(ToolRegistry).register(Echo())
+            container.resolve(ToolRegistry).register(Echo)
 
     with pytest.raises(DuplicateToolError, match='echo'):
         App().build(ToolRegistryProvider(), EchoProvider(), RivalEchoProvider())

@@ -63,7 +63,8 @@ async def test_agent_loop_with_websearch_live() -> None:
 
     http = HTTPClientManager()
     registry = ToolRegistry()
-    registry.register(WebSearchTool(build_client(http, settings)))
+    client = build_client(http, settings)
+    registry.register(WebSearchTool, factory=lambda: WebSearchTool(client))
     llm = OpenAIAdapter(
         ProviderConfig(
             name='openai',

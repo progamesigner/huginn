@@ -32,8 +32,8 @@ class BoomTool(Tool[EchoParams]):
 
 def make_registry() -> ToolRegistry:
     registry = ToolRegistry()
-    registry.register(EchoTool())
-    registry.register(BoomTool())
+    registry.register(EchoTool)
+    registry.register(BoomTool)
     return registry
 
 

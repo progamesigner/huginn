@@ -91,8 +91,8 @@ class ProbeTool(Tool[ProbeParams]):
 
 def make_registry() -> ToolRegistry:
     registry = ToolRegistry()
-    registry.register(EchoTool())
-    registry.register(SleepTool())
+    registry.register(EchoTool)
+    registry.register(SleepTool)
     return registry
 
 
@@ -418,7 +418,7 @@ async def test_run_binds_turn_id_during_tool_execution() -> None:
     )
     probe = ProbeTool()
     registry = ToolRegistry()
-    registry.register(probe)
+    registry.register(ProbeTool, factory=lambda: probe)
     runner = AgentRunner(llm, registry)
 
     await runner.run(make_turn(), lambda _: None)
@@ -438,7 +438,7 @@ async def test_run_generates_unique_turn_id_per_turn() -> None:
     )
     probe = ProbeTool()
     registry = ToolRegistry()
-    registry.register(probe)
+    registry.register(ProbeTool, factory=lambda: probe)
     runner = AgentRunner(llm, registry)
 
     await runner.run(make_turn(), lambda _: None)

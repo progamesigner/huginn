@@ -49,7 +49,7 @@ class WebSearchTool(Tool[SearchParams]):
 
 def build_registry() -> ToolRegistry:
     registry = ToolRegistry()
-    registry.register(WebSearchTool())
+    registry.register(WebSearchTool)
     return registry
 
 

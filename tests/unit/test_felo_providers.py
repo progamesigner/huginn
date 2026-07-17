@@ -1,6 +1,9 @@
+from pathlib import Path
+
 import httpx
 import pytest
 import respx
+from pydantic import ValidationError
 
 from app.core.application import App
 from app.core.tools import ToolRegistry
@@ -65,3 +68,30 @@ async def test_tools_provider_registers_websearch() -> None:
         assert 'websearch' in app.resolve(ToolRegistry).tools
     finally:
         await app.dispose()
+
+
+async def test_build_and_registration_stay_lazy_without_key(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.delenv('EXT_FELO_API_KEY', raising=False)
+
+    app = App().build(FeloExtToolsProvider())
+
+    try:
+        assert 'websearch' in app.resolve(ToolRegistry).tools
+        with pytest.raises(ValidationError):
+            app.resolve(FeloClient)
+    finally:
+        await app.dispose()
+
+
+async def test_start_fails_fast_without_key(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.delenv('EXT_FELO_API_KEY', raising=False)
+    app = App().build(FeloExtProvider())
+
+    with pytest.raises(ValidationError):
+        await app.start()

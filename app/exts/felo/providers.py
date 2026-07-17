@@ -20,13 +20,17 @@ def build_client(container: ContainerContract) -> FeloClient:
     )
 
 
+def build_settings(container: ContainerContract) -> FeloExtSettings:
+    return FeloExtSettings()
+
+
 class FeloExtProvider(ProviderContract):
     dependencies = (HTTPClientProvider,)
 
     @override
     def __call__(self, container: ContainerContract) -> None:
-        container.bind(FeloExtSettings, instance=FeloExtSettings())
-        container.bind(FeloClient, factory=build_client, shared=True)
+        container.bind(FeloClient, factory=build_client, shared=True, eager=True)
+        container.bind(FeloExtSettings, factory=build_settings, shared=True)
 
 
 class FeloExtToolsProvider(ProviderContract):
@@ -35,4 +39,7 @@ class FeloExtToolsProvider(ProviderContract):
     @override
     def __call__(self, container: ContainerContract) -> None:
         registry = container.resolve(ToolRegistry)
-        registry.register(WebSearchTool(container.resolve(FeloClient)))
+        registry.register(
+            WebSearchTool,
+            factory=lambda: WebSearchTool(container.resolve(FeloClient)),
+        )
