@@ -10,6 +10,7 @@ from .exceptions import (
     UnknownToolError,
     UnknownToolKindError,
 )
+from .providers import ToolsConfigProvider
 from .registry import ToolRegistry, ToolSet
 from .types import Tool, ToolOutput, ToolParams
 from .websearch import WebSearchParams, WebSearchTool
@@ -24,6 +25,7 @@ __all__ = [
     'ToolRegistry',
     'ToolSet',
     'ToolsConfig',
+    'ToolsConfigProvider',
     'UnknownToolError',
     'UnknownToolKindError',
     'WebSearchParams',

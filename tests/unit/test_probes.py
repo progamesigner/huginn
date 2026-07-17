@@ -3,7 +3,7 @@ from collections.abc import AsyncIterator
 import httpx
 import pytest
 
-from app.entrypoints.server import create
+from bin.server import create
 
 
 @pytest.fixture

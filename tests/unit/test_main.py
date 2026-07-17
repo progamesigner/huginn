@@ -8,7 +8,7 @@ from app.core.application import App
 from app.core.providers.logging import LoggingProvider
 from app.core.providers.router import RouterProvider
 from app.core.providers.settings import SettingsProvider
-from app.entrypoints.server import ServerOptions, create
+from bin.server import ServerOptions, create
 from lib.router import RouterContract, RouterManager
 
 

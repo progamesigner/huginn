@@ -5,8 +5,9 @@ import pytest
 from typer.testing import CliRunner
 
 from app.core.application import App
-from app.entrypoints.cli import COMMANDS
-from app.entrypoints.extensions import EXTENSIONS
+from app.providers.bootstrap import BootstrapProvider
+from app.providers.features import FeaturesProvider
+from bin.cli import COMMANDS
 from lib.command import CommandManager, Typer
 
 runner = CliRunner()
@@ -34,7 +35,7 @@ channels:
 
 
 def build_cli() -> Typer:
-    container = App().build(*App.providers, *EXTENSIONS, *COMMANDS)
+    container = App().build(BootstrapProvider(), FeaturesProvider(), *COMMANDS)
     return container.resolve(CommandManager).app
 
 

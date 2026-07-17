@@ -8,6 +8,7 @@ from uvicorn import run
 from app.core.application import App
 from app.core.providers.router import RouterProvider
 from app.features.probes.providers import ProbesEndpointProvider
+from app.providers.bootstrap import BootstrapProvider
 from lib.container import ProviderContract
 from lib.router import RouterContract
 
@@ -24,7 +25,7 @@ class ServerOptions(BaseSettings):
 
 def create() -> ASGIApp:
     container = App().build(
-        *App.providers,
+        BootstrapProvider(),
         RouterProvider(excludes=frozenset({'/healthz', '/readyz'})),
         *ENDPOINTS,
     )
@@ -34,7 +35,7 @@ def create() -> ASGIApp:
 def main() -> None:
     options = ServerOptions()
     run(
-        'app.entrypoints.server:create',
+        'bin.server:create',
         factory=True,
         host=options.host,
         port=options.port,

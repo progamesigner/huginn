@@ -2,7 +2,7 @@ from typing import override
 
 from app.core.config import SectionRegistry
 from app.core.providers.config import ConfigProvider
-from app.features.tools.providers import ToolsConfigProvider
+from app.features.tools import ToolsConfigProvider
 from lib.container import ContainerContract, ProviderContract
 
 from .config import build_sections

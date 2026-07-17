@@ -1,9 +1,7 @@
 from graphlib import CycleError, TopologicalSorter
 from logging import getLogger
-from typing import ClassVar, Self
+from typing import Self
 
-from app.core.providers.logging import LoggingProvider
-from app.core.providers.settings import SettingsProvider
 from app.core.settings import Environment, HuginnSettings
 from lib.container import Container, ProviderContract
 
@@ -60,11 +58,6 @@ def sort_providers(
 
 
 class App(Container):
-    providers: ClassVar[tuple[ProviderContract, ...]] = (
-        SettingsProvider(),
-        LoggingProvider(),
-    )
-
     def build(self, *providers: ProviderContract) -> Self:
         items = {type(provider): provider for provider in providers}
 
