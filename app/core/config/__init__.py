@@ -1,3 +1,14 @@
+from .exceptions import (
+    AmbiguousInstructionsError,
+    ConfigError,
+    InvalidValueReferenceError,
+    MissingConfigFileError,
+    MissingEnvironmentVariableError,
+    UnknownAgentReferenceError,
+    UnknownMcpServerReferenceError,
+    UnknownToolReferenceError,
+)
+from .loader import load_config
 from .schema import (
     AgentConfig,
     ChannelConfig,
@@ -14,14 +25,23 @@ from .schema import (
 
 __all__ = [
     'AgentConfig',
+    'AmbiguousInstructionsError',
     'ChannelConfig',
     'ChannelRouterConfig',
     'ChannelsConfig',
+    'ConfigError',
     'ConfigValue',
     'DefaultsConfig',
     'HuginnConfig',
+    'InvalidValueReferenceError',
     'McpRef',
     'McpServerConfig',
+    'MissingConfigFileError',
+    'MissingEnvironmentVariableError',
     'ToolRef',
     'Transport',
+    'UnknownAgentReferenceError',
+    'UnknownMcpServerReferenceError',
+    'UnknownToolReferenceError',
+    'load_config',
 ]
