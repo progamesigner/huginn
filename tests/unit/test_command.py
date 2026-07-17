@@ -19,7 +19,7 @@ agents:
     tools:
     - name: websearch
 mcp_servers:
-  muninn:
+  memory:
     transport: http
     url: https://memory.test
 channels:
@@ -47,7 +47,7 @@ def test_validate_prints_summary(tmp_path: Path) -> None:
     assert result.exit_code == 0
     assert 'scout' in result.output
     assert 'websearch' in result.output
-    assert 'muninn' in result.output
+    assert 'memory' in result.output
 
 
 def test_validate_never_echoes_instructions(tmp_path: Path) -> None:

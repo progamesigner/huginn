@@ -1,0 +1,43 @@
+defaults:
+  model: gpt-5-mini
+
+mcp_servers:
+  memory:
+    transport: http
+    url: ${MEMORY_MCP_URL}
+    auth:
+      value_from:
+        env: MEMORY_MCP_TOKEN
+
+agents:
+  scout:
+    description: Research agent — answers questions with web search and recall.
+    instructions: |
+      You are scout, a research assistant.
+      Use websearch for anything time-sensitive.
+      Use memory to recall prior context before answering.
+    tools:
+    - name: websearch
+      params:
+        max_results: 5
+    mcp:
+    - server: memory
+      allow:
+      - recall_memory_notes
+      inject:
+        agent: default
+        user: example
+
+  concierge:
+    description: Fallback agent for chats with no specific binding.
+    instructions: |
+      You are concierge. Greet the user and hand off to scout for
+      research questions; answer simple questions yourself.
+
+channels:
+  telegram:
+    bindings:
+      '000000000': scout
+    router:
+      model: gpt-5-mini
+      fallback: concierge

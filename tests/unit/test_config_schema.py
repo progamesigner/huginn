@@ -18,9 +18,9 @@ def test_huginn_config_accepts_full_example() -> None:
     config = HuginnConfig(
         defaults=DefaultsConfig(model='claude-sonnet-5'),
         mcp_servers={
-            'muninn': McpServerConfig(
+            'memory': McpServerConfig(
                 transport='http',
-                url=HttpUrl('https://memory.progamesigner.dev'),
+                url=HttpUrl('https://memory.example.internal/mcp'),
                 auth=SecretStr('token'),
             ),
         },
@@ -32,7 +32,7 @@ def test_huginn_config_accepts_full_example() -> None:
                 tools=(ToolRef(name='websearch', params={'max_results': 5}),),
                 mcp=(
                     McpRef(
-                        server='muninn',
+                        server='memory',
                         allow=('recall_memory_notes',),
                         inject={'agent': 'default', 'user': 'swag'},
                     ),
@@ -48,7 +48,7 @@ def test_huginn_config_accepts_full_example() -> None:
     )
 
     assert config.agents['scout'].description == 'General-purpose research agent'
-    assert config.mcp_servers['muninn'].transport == 'http'
+    assert config.mcp_servers['memory'].transport == 'http'
     assert config.channels.telegram is not None
     assert config.channels.telegram.bindings['12345'] == 'scout'
 
@@ -100,7 +100,7 @@ def test_agent_config_defaults_have_no_tools_or_mcp_or_instructions() -> None:
 
 def test_mcp_server_config_requires_transport_and_url() -> None:
     with pytest.raises(ValidationError, match='transport'):
-        McpServerConfig.model_validate({'url': 'https://memory.progamesigner.dev'})
+        McpServerConfig.model_validate({'url': 'https://memory.example.internal/mcp'})
 
     with pytest.raises(ValidationError, match='url'):
         McpServerConfig.model_validate({'transport': 'http'})
@@ -109,7 +109,7 @@ def test_mcp_server_config_requires_transport_and_url() -> None:
 def test_mcp_server_config_rejects_unknown_transport() -> None:
     with pytest.raises(ValidationError):
         McpServerConfig.model_validate(
-            {'transport': 'stdio', 'url': 'https://memory.progamesigner.dev'}
+            {'transport': 'stdio', 'url': 'https://memory.example.internal/mcp'}
         )
 
 
@@ -119,7 +119,7 @@ def test_tool_ref_rejects_unknown_field() -> None:
 
 
 def test_mcp_ref_defaults_to_no_allowlist_or_injected_params() -> None:
-    ref = McpRef(server='muninn')
+    ref = McpRef(server='memory')
 
     assert ref.allow == ()
     assert ref.inject == {}

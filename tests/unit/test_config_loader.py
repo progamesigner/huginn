@@ -89,21 +89,23 @@ def test_interpolate_raises_for_missing_env_var(
 
 
 def test_resolve_value_from_env_succeeds(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv('MUNINN_TOKEN', 'secret-token')
+    monkeypatch.setenv('MEMORY_MCP_TOKEN', 'secret-token')
 
-    resolved = resolve_value_from({'env': 'MUNINN_TOKEN'}, 'mcp_servers.muninn.auth')
+    resolved = resolve_value_from(
+        {'env': 'MEMORY_MCP_TOKEN'}, 'mcp_servers.memory.auth'
+    )
 
     assert resolved == 'secret-token'
 
 
 def test_resolve_value_from_env_missing_raises(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.delenv('MUNINN_TOKEN', raising=False)
+    monkeypatch.delenv('MEMORY_MCP_TOKEN', raising=False)
 
     with pytest.raises(
         MissingEnvironmentVariableError,
-        match=r'mcp_servers\.muninn\.auth.*MUNINN_TOKEN',
+        match=r'mcp_servers\.memory\.auth.*MEMORY_MCP_TOKEN',
     ):
-        resolve_value_from({'env': 'MUNINN_TOKEN'}, 'mcp_servers.muninn.auth')
+        resolve_value_from({'env': 'MEMORY_MCP_TOKEN'}, 'mcp_servers.memory.auth')
 
 
 def test_resolve_value_from_file_succeeds(tmp_path: Path) -> None:
@@ -124,12 +126,12 @@ def test_resolve_value_from_file_missing_raises(tmp_path: Path) -> None:
 
 def test_resolve_value_from_rejects_both_env_and_file() -> None:
     with pytest.raises(InvalidValueReferenceError):
-        resolve_value_from({'env': 'A', 'file': 'b'}, 'mcp_servers.muninn.auth')
+        resolve_value_from({'env': 'A', 'file': 'b'}, 'mcp_servers.memory.auth')
 
 
 def test_resolve_value_from_rejects_unknown_shape() -> None:
     with pytest.raises(InvalidValueReferenceError):
-        resolve_value_from({'bogus': 'A'}, 'mcp_servers.muninn.auth')
+        resolve_value_from({'bogus': 'A'}, 'mcp_servers.memory.auth')
 
 
 # resolve_references()
@@ -138,16 +140,16 @@ def test_resolve_value_from_rejects_unknown_shape() -> None:
 def test_resolve_references_walks_nested_structure(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setenv('MUNINN_TOKEN', 'secret-token')
+    monkeypatch.setenv('MEMORY_MCP_TOKEN', 'secret-token')
     monkeypatch.setenv('AGENT_MODEL', 'claude-sonnet-5')
 
     raw = {
         'defaults': {'model': '${AGENT_MODEL}'},
         'mcp_servers': {
-            'muninn': {
+            'memory': {
                 'transport': 'http',
-                'url': 'https://memory.progamesigner.dev',
-                'auth': {'value_from': {'env': 'MUNINN_TOKEN'}},
+                'url': 'https://memory.example.internal/mcp',
+                'auth': {'value_from': {'env': 'MEMORY_MCP_TOKEN'}},
             },
         },
         'agents': {
@@ -160,9 +162,9 @@ def test_resolve_references_walks_nested_structure(
     assert resolved == {
         'defaults': {'model': 'claude-sonnet-5'},
         'mcp_servers': {
-            'muninn': {
+            'memory': {
                 'transport': 'http',
-                'url': 'https://memory.progamesigner.dev',
+                'url': 'https://memory.example.internal/mcp',
                 'auth': 'secret-token',
             },
         },
@@ -175,12 +177,14 @@ def test_resolve_references_walks_nested_structure(
 def test_resolve_references_reports_field_path_for_missing_env(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.delenv('MUNINN_TOKEN', raising=False)
+    monkeypatch.delenv('MEMORY_MCP_TOKEN', raising=False)
 
-    raw = {'mcp_servers': {'muninn': {'auth': {'value_from': {'env': 'MUNINN_TOKEN'}}}}}
+    raw = {
+        'mcp_servers': {'memory': {'auth': {'value_from': {'env': 'MEMORY_MCP_TOKEN'}}}}
+    }
 
     with pytest.raises(
-        MissingEnvironmentVariableError, match=r'mcp_servers\.muninn\.auth'
+        MissingEnvironmentVariableError, match=r'mcp_servers\.memory\.auth'
     ):
         resolve_references(raw)
 
@@ -196,7 +200,7 @@ def test_load_config_raises_for_missing_file(tmp_path: Path) -> None:
 def test_load_config_resolves_env_and_value_from_then_validates(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setenv('MUNINN_TOKEN', 'secret-token')
+    monkeypatch.setenv('MEMORY_MCP_TOKEN', 'secret-token')
     monkeypatch.setenv('AGENT_MODEL', 'claude-sonnet-5')
 
     config_file = tmp_path / 'huginn.yaml'
@@ -204,17 +208,17 @@ def test_load_config_resolves_env_and_value_from_then_validates(
         'defaults:\n'
         '  model: ${AGENT_MODEL}\n'
         'mcp_servers:\n'
-        '  muninn:\n'
+        '  memory:\n'
         '    transport: http\n'
-        '    url: https://memory.progamesigner.dev\n'
+        '    url: https://memory.example.internal/mcp\n'
         '    auth:\n'
-        '      value_from: {env: MUNINN_TOKEN}\n'
+        '      value_from: {env: MEMORY_MCP_TOKEN}\n'
         'agents:\n'
         '  scout:\n'
         '    description: General-purpose research agent\n'
         '    instructions: You speak for ${AGENT_MODEL}.\n'
         '    tools: [{name: websearch, params: {max_results: 5}}]\n'
-        '    mcp: [{server: muninn, allow: [recall_memory_notes]}]\n'
+        '    mcp: [{server: memory, allow: [recall_memory_notes]}]\n'
         'channels:\n'
         '  telegram:\n'
         "    bindings: {'12345': scout}\n"
@@ -224,8 +228,8 @@ def test_load_config_resolves_env_and_value_from_then_validates(
     config = load_config(config_file, build_registry())
 
     assert config.defaults.model == 'claude-sonnet-5'
-    assert config.mcp_servers['muninn'].auth is not None
-    assert config.mcp_servers['muninn'].auth.get_secret_value() == 'secret-token'
+    assert config.mcp_servers['memory'].auth is not None
+    assert config.mcp_servers['memory'].auth.get_secret_value() == 'secret-token'
     assert config.agents['scout'].instructions == 'You speak for claude-sonnet-5.'
     assert config.channels.telegram is not None
     assert config.channels.telegram.bindings['12345'] == 'scout'
@@ -239,11 +243,11 @@ def test_validate_references_accepts_a_fully_consistent_config() -> None:
         agents={
             'scout': build_agent(
                 tools=(ToolRef(name='websearch'),),
-                mcp=(McpRef(server='muninn'),),
+                mcp=(McpRef(server='memory'),),
             ),
         },
         mcp_servers={
-            'muninn': McpServerConfig(
+            'memory': McpServerConfig(
                 transport='http', url=HttpUrl('https://memory.example')
             ),
         },

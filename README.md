@@ -63,6 +63,19 @@ uv run ruff check . && uv run ruff format --check . && uv run lint-imports && uv
 
 ## Configuration
 
+Agents, MCP server connections, tool wiring, and channel routing are declared in one `huginn.yaml`, validated against the `HuginnConfig` Pydantic schema in `app/core/config/schema.py`. `huginn.example.yaml` at the repository root is a fake-named, fully runnable copy of that schema; it is the only config file this repo ever holds. Real agent names and instructions are treated as secrets — `huginn.yaml` itself is gitignored, and CI validates `huginn.example.yaml` on every push so the schema and the example can never drift apart.
+
+Secrets never sit in the YAML directly. Two indirections keep them out:
+
+- `${ENV_VAR}` string interpolation, for values that vary per environment (a hostname, say).
+- `value_from: {env: NAME}` or `value_from: {file: /path}`, which replace the whole node with an environment variable or a file's contents — used for anything that must not be readable in the dumped config, like `mcp_servers.<name>.auth`.
+
+Both are resolved before Pydantic validation runs, so a missing variable or file fails loading with the offending field path (e.g. `mcp_servers.memory.auth`), not a stack trace.
+
+`huginn config validate [path]` loads a config file through the same path production uses and prints a summary (agent names, tools, MCP servers, channel bindings — never instructions content), or exits 1 with a field-pathed error. It defaults to `HuginnSettings.config_file` (`HUGINN_CONFIG_FILE`, default `huginn.yaml`) when no path is given. `huginn config schema` prints the `HuginnConfig` JSON Schema for editor completion (e.g. `yaml-language-server`).
+
+The real config is injected at deploy time, never committed: a Windmill secret script renders it, a kustomize `secretGenerator` turns that into a Kubernetes `Secret`, and it lands mounted at `/etc/huginn/config.yaml` inside the running pod. There is no live-reload — a config change means rerunning the Windmill script, `kubectl apply` on the regenerated `Secret`, and a rollout restart to pick it up.
+
 ## Deployment
 
 The service ships as a container image at `ghcr.io/progamesigner/huginn`, built from the multi-stage `Dockerfile` at the repository root. The image is multi-arch (`linux/amd64` and `linux/arm64`), so a mixed cluster pulls the right architecture per node from a single manifest.
