@@ -16,6 +16,7 @@ from openai.types.chat import (
 from openai.types.chat.chat_completion_message_function_tool_call_param import Function
 from pydantic import JsonValue
 
+from lib.http import HTTPClientManager
 from lib.llm.client import ProviderConfig
 from lib.llm.types import (
     CompletionChunk,
@@ -129,30 +130,30 @@ def decode_chunk(chunk: ChatCompletionChunk) -> Iterator[CompletionChunk]:
 
 class OpenAIAdapter:
     provider: ProviderConfig
-    client: AsyncOpenAI
+    http: HTTPClientManager
 
-    def __init__(self, provider: ProviderConfig) -> None:
+    def __init__(self, provider: ProviderConfig, http: HTTPClientManager) -> None:
         self.provider = provider
-        self.client = AsyncOpenAI(
-            api_key=provider.api_key.get_secret_value(),
-            base_url=provider.base_url,
-        )
+        self.http = http
 
     async def stream(
         self,
         request: CompletionRequest,
     ) -> AsyncIterator[CompletionChunk]:
-        completion = await self.client.chat.completions.create(
-            model=request.model,
-            messages=build_messages(request.messages),
-            tools=build_tools(request.tools) if request.tools else omit,
-            reasoning_effort=request.effort if request.effort != 'none' else omit,
-            stream=True,
-        )
+        async with self.http.connect() as http_client:
+            client = AsyncOpenAI(
+                api_key=self.provider.api_key.get_secret_value(),
+                base_url=self.provider.base_url,
+                http_client=http_client,
+            )
+            completion = await client.chat.completions.create(
+                model=request.model,
+                messages=build_messages(request.messages),
+                tools=build_tools(request.tools) if request.tools else omit,
+                reasoning_effort=request.effort if request.effort != 'none' else omit,
+                stream=True,
+            )
 
-        async for chunk in completion:
-            for piece in decode_chunk(chunk):
-                yield piece
-
-    async def dispose(self) -> None:
-        await self.client.close()
+            async for chunk in completion:
+                for piece in decode_chunk(chunk):
+                    yield piece

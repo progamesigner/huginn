@@ -208,13 +208,6 @@ def test_build_wires_llm_provider() -> None:
     assert application.bound(LLMManager)
 
 
-async def test_llm_manager_disposes_cleanly_through_container() -> None:
-    application = App().build(SettingsProvider(), LLMProvider())
-    application.resolve(LLMManager)
-
-    await application.dispose()
-
-
 def test_build_wires_tool_registry_provider() -> None:
     application = App().build(ToolRegistryProvider())
 

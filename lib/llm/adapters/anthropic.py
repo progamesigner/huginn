@@ -25,6 +25,7 @@ from anthropic.types import (
 )
 from pydantic import JsonValue
 
+from lib.http import HTTPClientManager
 from lib.llm.client import ProviderConfig
 from lib.llm.types import (
     CompletionChunk,
@@ -150,20 +151,18 @@ def decode_event(event: RawMessageStreamEvent) -> Iterator[CompletionChunk]:
 
 class AnthropicAdapter:
     provider: ProviderConfig
-    client: AsyncAnthropic
+    http: HTTPClientManager
     max_tokens: int
 
     def __init__(
         self,
         provider: ProviderConfig,
+        http: HTTPClientManager,
         max_tokens: int = _DEFAULT_MAX_TOKENS,
     ) -> None:
         self.provider = provider
+        self.http = http
         self.max_tokens = max_tokens
-        self.client = AsyncAnthropic(
-            api_key=provider.api_key.get_secret_value(),
-            base_url=provider.base_url,
-        )
 
     async def stream(
         self,
@@ -175,19 +174,22 @@ class AnthropicAdapter:
             thinking = ThinkingConfigAdaptiveParam(type='adaptive')
             output_config = OutputConfigParam(effort=request.effort)
 
-        message = await self.client.messages.create(
-            model=request.model,
-            max_tokens=self.max_tokens,
-            messages=build_messages(request.messages),
-            tools=build_tools(request.tools) if request.tools else omit,
-            thinking=thinking,
-            output_config=output_config,
-            stream=True,
-        )
+        async with self.http.connect() as http_client:
+            client = AsyncAnthropic(
+                api_key=self.provider.api_key.get_secret_value(),
+                base_url=self.provider.base_url,
+                http_client=http_client,
+            )
+            message = await client.messages.create(
+                model=request.model,
+                max_tokens=self.max_tokens,
+                messages=build_messages(request.messages),
+                tools=build_tools(request.tools) if request.tools else omit,
+                thinking=thinking,
+                output_config=output_config,
+                stream=True,
+            )
 
-        async for event in message:
-            for piece in decode_event(event):
-                yield piece
-
-    async def dispose(self) -> None:
-        await self.client.close()
+            async for event in message:
+                for piece in decode_event(event):
+                    yield piece

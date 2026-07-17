@@ -1,17 +1,19 @@
+from lib.http import HTTPClientManager
+
 from .client import LLMClient, ProviderConfig, ProviderRegistry
 
 
-def build_adapter(provider: ProviderConfig) -> LLMClient:
+def build_adapter(provider: ProviderConfig, http: HTTPClientManager) -> LLMClient:
     try:
         match provider.adapter:
             case 'anthropic':
                 from .adapters.anthropic import AnthropicAdapter
 
-                return AnthropicAdapter(provider)
+                return AnthropicAdapter(provider, http)
             case 'openai':
                 from .adapters.openai import OpenAIAdapter
 
-                return OpenAIAdapter(provider)
+                return OpenAIAdapter(provider, http)
     except ImportError as error:
         message = (
             f'provider {provider.name!r} needs the {provider.adapter!r} extra; '
@@ -22,10 +24,16 @@ def build_adapter(provider: ProviderConfig) -> LLMClient:
 
 class LLMManager:
     clients: dict[str, LLMClient]
+    http: HTTPClientManager
     registry: ProviderRegistry
 
-    def __init__(self, providers: tuple[ProviderConfig, ...]) -> None:
+    def __init__(
+        self,
+        providers: tuple[ProviderConfig, ...],
+        http: HTTPClientManager,
+    ) -> None:
         self.registry = ProviderRegistry(providers)
+        self.http = http
         self.clients = {}
 
     def client_for(self, model: str) -> LLMClient | None:
@@ -34,13 +42,9 @@ class LLMManager:
             return None
 
         if provider.name not in self.clients:
-            self.clients[provider.name] = build_adapter(provider)
+            self.clients[provider.name] = build_adapter(provider, self.http)
 
         return self.clients[provider.name]
 
     def provider_for(self, model: str) -> ProviderConfig | None:
         return self.registry.resolve(model)
-
-    async def dispose(self) -> None:
-        for client in self.clients.values():
-            await client.dispose()
