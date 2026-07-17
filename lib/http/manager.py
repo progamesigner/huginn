@@ -1,7 +1,7 @@
 from collections.abc import AsyncIterator, Mapping
 from contextlib import asynccontextmanager
 
-from httpx import URL, AsyncClient, Limits, Timeout
+from httpx import URL, AsyncClient, AsyncHTTPTransport, Limits, Timeout
 
 _DEFAULT_TIMEOUT = 30.0
 _DEFAULT_MAX_CONNECTIONS = 100
@@ -11,6 +11,7 @@ _DEFAULT_MAX_KEEPALIVE_CONNECTIONS = 20
 class HTTPClientManager:
     limits: Limits
     timeout: Timeout
+    transport: AsyncHTTPTransport
 
     def __init__(
         self,
@@ -23,6 +24,7 @@ class HTTPClientManager:
             max_keepalive_connections=max_keepalive_connections,
         )
         self.timeout = Timeout(timeout)
+        self.transport = AsyncHTTPTransport(limits=self.limits)
 
     @asynccontextmanager
     async def connect(
@@ -30,14 +32,13 @@ class HTTPClientManager:
         base_url: URL | str = '',
         headers: Mapping[str, str] | None = None,
     ) -> AsyncIterator[AsyncClient]:
-        client = AsyncClient(
+        # NOTE: clients are cheap facades over the shared pool
+        yield AsyncClient(
             base_url=base_url,
             headers=dict(headers or {}),
-            limits=self.limits,
             timeout=self.timeout,
+            transport=self.transport,
         )
 
-        try:
-            yield client
-        finally:
-            await client.aclose()
+    async def dispose(self) -> None:
+        await self.transport.aclose()

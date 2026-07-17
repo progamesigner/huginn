@@ -1,3 +1,4 @@
+from lib.container import Disposable
 from lib.http import HTTPClientManager
 
 
@@ -22,10 +23,27 @@ async def test_connect_applies_configured_limits() -> None:
         assert client.timeout.read == manager.timeout.read
 
 
-async def test_connect_closes_client_on_exit() -> None:
+async def test_connect_keeps_shared_pool_open_on_exit() -> None:
     manager = HTTPClientManager()
+    transport = manager.transport
 
     async with manager.connect('https://api.test') as client:
-        assert not client.is_closed
+        pass
 
-    assert client.is_closed
+    assert not client.is_closed
+    assert manager.transport is transport
+
+
+async def test_connect_routes_clients_through_shared_transport() -> None:
+    manager = HTTPClientManager()
+
+    async with manager.connect() as first, manager.connect() as second:
+        assert first._transport is manager.transport
+        assert second._transport is manager.transport
+
+
+async def test_manager_disposes_for_container_teardown() -> None:
+    manager = HTTPClientManager()
+
+    assert isinstance(manager, Disposable)
+    await manager.dispose()
