@@ -9,7 +9,13 @@ from app.core.providers.logging import LoggingProvider
 from app.core.providers.settings import SettingsProvider
 from app.core.providers.tools import ToolRegistryProvider
 from app.core.settings import HuginnSettings
-from app.core.tools import DuplicateToolError, ToolRegistry
+from app.core.tools import (
+    DuplicateToolError,
+    Tool,
+    ToolOutput,
+    ToolParams,
+    ToolRegistry,
+)
 from lib.container import ContainerContract, ProviderContract
 from lib.llm import LLMManager
 from lib.observability import Logger
@@ -215,13 +221,32 @@ def test_build_wires_tool_registry_provider() -> None:
     assert application.bound(ToolRegistry)
 
 
-def test_build_fails_when_discovered_tools_collide() -> None:
-    provider = ToolRegistryProvider(
-        packages=('tests.fixtures.tool_packages.duplicate',)
-    )
+def test_build_fails_when_two_providers_register_the_same_tool_name() -> None:
+    class Echo(Tool[ToolParams]):
+        name = 'echo'
+        description = 'Echo tool'
+        params = ToolParams
+
+        @override
+        async def run(self, params: ToolParams) -> ToolOutput:
+            return 'echo'
+
+    class EchoProvider(ProviderContract):
+        dependencies = (ToolRegistryProvider,)
+
+        @override
+        def __call__(self, container: ContainerContract) -> None:
+            container.resolve(ToolRegistry).register(Echo())
+
+    class RivalEchoProvider(ProviderContract):
+        dependencies = (ToolRegistryProvider,)
+
+        @override
+        def __call__(self, container: ContainerContract) -> None:
+            container.resolve(ToolRegistry).register(Echo())
 
     with pytest.raises(DuplicateToolError, match='echo'):
-        App().build(provider)
+        App().build(ToolRegistryProvider(), EchoProvider(), RivalEchoProvider())
 
 
 def test_running_in_mode_matches_any_given_mode() -> None:
