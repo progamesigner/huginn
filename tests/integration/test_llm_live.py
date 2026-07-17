@@ -4,6 +4,7 @@ import pytest
 from pydantic import Field, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from lib.http import HTTPClientManager
 from lib.llm import (
     CompletionChunk,
     CompletionRequest,
@@ -59,10 +60,7 @@ async def complete(
     client: LLMClient,
     request: CompletionRequest,
 ) -> tuple[CompletionChunk, ...]:
-    try:
-        return tuple([chunk async for chunk in client.stream(request)])
-    finally:
-        await client.dispose()
+    return tuple([chunk async for chunk in client.stream(request)])
 
 
 async def test_openai_compat_completion() -> None:
@@ -84,7 +82,8 @@ async def test_openai_compat_completion() -> None:
                 adapter='openai',
                 api_key=SecretStr(api_key),
                 models=(_OPENAI_MODEL,),
-            )
+            ),
+            HTTPClientManager(),
         ),
         request,
     )
@@ -112,7 +111,8 @@ async def test_openai_compat_completion_with_tools() -> None:
                 adapter='openai',
                 api_key=SecretStr(api_key),
                 models=(_OPENAI_MODEL,),
-            )
+            ),
+            HTTPClientManager(),
         ),
         request,
     )
@@ -139,7 +139,8 @@ async def test_anthropic_native_completion() -> None:
                 adapter='anthropic',
                 api_key=SecretStr(api_key),
                 models=(_ANTHROPIC_MODEL,),
-            )
+            ),
+            HTTPClientManager(),
         ),
         request,
     )
@@ -167,7 +168,8 @@ async def test_anthropic_native_completion_with_tools() -> None:
                 adapter='anthropic',
                 api_key=SecretStr(api_key),
                 models=(_ANTHROPIC_MODEL,),
-            )
+            ),
+            HTTPClientManager(),
         ),
         request,
     )
