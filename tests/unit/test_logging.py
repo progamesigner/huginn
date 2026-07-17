@@ -23,7 +23,7 @@ def test_json_mode_renders_stdlib_records(
 
     logging.getLogger('vendor').info('hello %s', 'world')
 
-    line = json.loads(capsys.readouterr().out)
+    line = json.loads(capsys.readouterr().err)
     assert line['event'] == 'hello world'
     assert line['level'] == 'info'
     assert line['logger'] == 'vendor'
@@ -37,7 +37,7 @@ def test_json_mode_renders_structlog_records(
 
     create_logger('app').info('native', answer=42)
 
-    line = json.loads(capsys.readouterr().out)
+    line = json.loads(capsys.readouterr().err)
     assert line['event'] == 'native'
     assert line['answer'] == 42
     assert line['logger'] == 'app'
@@ -53,7 +53,7 @@ def test_contextvars_reach_native_and_foreign_records(
     logging.getLogger('vendor').info('foreign')
 
     native, foreign = (
-        json.loads(line) for line in capsys.readouterr().out.splitlines()
+        json.loads(line) for line in capsys.readouterr().err.splitlines()
     )
     assert native['request_id'] == 'abc123'
     assert foreign['request_id'] == 'abc123'
@@ -64,7 +64,7 @@ def test_develop_renders_console_lines(capsys: pytest.CaptureFixture[str]) -> No
 
     create_logger('app').info('pretty')
 
-    out = capsys.readouterr().out
+    out = capsys.readouterr().err
     assert 'pretty' in out
     with pytest.raises(json.JSONDecodeError):
         json.loads(out)
@@ -82,7 +82,7 @@ def test_captured_loggers_propagate_to_root(
     assert noisy.propagate
 
     noisy.info('routed')
-    assert json.loads(capsys.readouterr().out)['event'] == 'routed'
+    assert json.loads(capsys.readouterr().err)['event'] == 'routed'
 
 
 def test_silenced_loggers_emit_nothing(capsys: pytest.CaptureFixture[str]) -> None:
@@ -93,7 +93,7 @@ def test_silenced_loggers_emit_nothing(capsys: pytest.CaptureFixture[str]) -> No
     assert not silenced.propagate
 
     silenced.info('dropped')
-    assert capsys.readouterr().out == ''
+    assert capsys.readouterr().err == ''
 
 
 def test_create_logger_returns_bound_logger() -> None:
