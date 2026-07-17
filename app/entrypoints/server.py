@@ -8,7 +8,10 @@ from uvicorn import run
 from app.core.application import App
 from app.core.providers.router import RouterProvider
 from app.features.probes.providers import ProbesEndpointProvider
+from lib.container import ProviderContract
 from lib.router import RouterContract
+
+ENDPOINTS: tuple[ProviderContract, ...] = (ProbesEndpointProvider(),)
 
 
 class ServerOptions(BaseSettings):
@@ -23,7 +26,7 @@ def create() -> ASGIApp:
     container = App().build(
         *App.providers,
         RouterProvider(excludes=frozenset({'/healthz', '/readyz'})),
-        ProbesEndpointProvider(),
+        *ENDPOINTS,
     )
     return container.resolve(RouterContract).app
 
