@@ -1,33 +1,34 @@
 from typing import Annotated
 
 import pytest
-from pydantic import Field, SecretStr, ValidationError
+from pydantic import Field, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from app.exts.felo.client import FeloClient
-from app.exts.felo.settings import FeloExtSettings
 from app.features.agents.services import AgentRunner, TurnInput
-from app.features.tools import ToolRegistry, WebSearchTool
+from app.features.tools import ToolSet, WebSearchTool
 from lib.http import HTTPClientManager
 from lib.llm.adapters.openai import OpenAIAdapter
 from lib.llm.client import ProviderConfig
 
 pytestmark = pytest.mark.integration
 
+_FELO_BASE_URL = 'https://openapi.felo.ai'
 _OPENAI_MODEL = 'gpt-5-mini'
 
 
 class LiveCredentials(BaseSettings):
     model_config = SettingsConfigDict(env_file='.env', extra='ignore')
 
+    felo_api_key: Annotated[SecretStr | None, Field()] = None
     openai_api_key: Annotated[SecretStr | None, Field()] = None
 
 
-def require_felo_settings() -> FeloExtSettings:
-    try:
-        return FeloExtSettings()
-    except ValidationError:
-        pytest.skip('EXT_FELO_API_KEY not set')
+def require_felo_api_key() -> SecretStr:
+    key = LiveCredentials().felo_api_key
+    if key is None:
+        pytest.skip('FELO_API_KEY not set')
+    return key
 
 
 def require_openai_api_key() -> SecretStr:
@@ -37,18 +38,14 @@ def require_openai_api_key() -> SecretStr:
     return key
 
 
-def build_client(http: HTTPClientManager, settings: FeloExtSettings) -> FeloClient:
-    return FeloClient(
-        http=http,
-        api_key=settings.api_key,
-        base_url=str(settings.base_url),
-    )
+def build_client(http: HTTPClientManager, api_key: SecretStr) -> FeloClient:
+    return FeloClient(http=http, api_key=api_key, base_url=_FELO_BASE_URL)
 
 
 async def test_websearch_live() -> None:
-    settings = require_felo_settings()
+    api_key = require_felo_api_key()
 
-    result = await build_client(HTTPClientManager(), settings).search(
+    result = await build_client(HTTPClientManager(), api_key).search(
         "today's weather in Taipei"
     )
 
@@ -57,18 +54,17 @@ async def test_websearch_live() -> None:
 
 
 async def test_agent_loop_with_websearch_live() -> None:
-    settings = require_felo_settings()
-    api_key = require_openai_api_key()
+    felo_api_key = require_felo_api_key()
+    openai_api_key = require_openai_api_key()
 
     http = HTTPClientManager()
-    registry = ToolRegistry()
-    client = build_client(http, settings)
-    registry.register(WebSearchTool, factory=lambda: WebSearchTool(client))
+    tools = ToolSet()
+    tools.add('websearch', WebSearchTool(build_client(http, felo_api_key)))
     llm = OpenAIAdapter(
         ProviderConfig(
             name='openai',
             adapter='openai',
-            api_key=api_key,
+            api_key=openai_api_key,
             models=(_OPENAI_MODEL,),
         ),
         http,
@@ -82,7 +78,7 @@ async def test_agent_loop_with_websearch_live() -> None:
     )
 
     fragments: list[str] = []
-    output = await AgentRunner(llm, registry).run(turn, fragments.append)
+    output = await AgentRunner(llm, tools).run(turn, fragments.append)
 
     executions = [record for step in output.steps for record in step.tools]
 

@@ -12,6 +12,10 @@ from lib.command import CommandManager, Typer
 runner = CliRunner()
 
 _VALID = """
+tools:
+  websearch:
+    kind: websearch
+    api_key: felo-key
 agents:
   scout:
     description: Research agent

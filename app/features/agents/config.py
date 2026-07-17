@@ -3,7 +3,7 @@ from typing import Annotated, Literal, cast
 from pydantic import Field, HttpUrl, JsonValue, RootModel, SecretStr
 
 from app.core.config import ConfigValue, HuginnConfig, SectionSpec
-from app.features.tools import ToolRegistry, UnknownToolError
+from app.features.tools import ToolsConfig
 
 from .exceptions import (
     AmbiguousInstructionsError,
@@ -97,8 +97,9 @@ def describe_channels(config: HuginnConfig) -> list[str]:
     return ['channels:', f'  telegram: bindings={bindings} router-fallback={router}']
 
 
-def validate_agents(config: HuginnConfig, registry: ToolRegistry) -> None:
+def validate_agents(config: HuginnConfig) -> None:
     mcp_servers = config.section('mcp_servers', McpServersConfig).root
+    tools = config.section('tools', ToolsConfig).root
 
     for agent_name, agent in config.section('agents', AgentsConfig).root.items():
         base = f'agents.{agent_name}'
@@ -109,12 +110,12 @@ def validate_agents(config: HuginnConfig, registry: ToolRegistry) -> None:
             )
 
         for index, tool in enumerate(agent.tools):
-            try:
-                registry.get(tool.name)
-            except UnknownToolError as error:
+            if tool.name not in tools:
+                available = ', '.join(sorted(tools)) or 'none'
                 raise UnknownToolReferenceError(
-                    f'{base}.tools[{index}].name: {error}'
-                ) from error
+                    f'{base}.tools[{index}].name: unknown tool {tool.name!r}; '
+                    f'available: {available}'
+                )
 
         for index, mcp in enumerate(agent.mcp):
             if mcp.server not in mcp_servers:
@@ -142,7 +143,7 @@ def validate_channels(config: HuginnConfig) -> None:
             )
 
 
-def build_sections(registry: ToolRegistry) -> tuple[SectionSpec, ...]:
+def build_sections() -> tuple[SectionSpec, ...]:
     # TODO: channels is contributed here until a channel feature exists (M2)
     return (
         SectionSpec(
@@ -150,7 +151,7 @@ def build_sections(registry: ToolRegistry) -> tuple[SectionSpec, ...]:
             AgentsConfig,
             required=True,
             describe=describe_agents,
-            validate=lambda config: validate_agents(config, registry),
+            validate=validate_agents,
         ),
         SectionSpec('defaults', DefaultsConfig),
         SectionSpec('mcp_servers', McpServersConfig, describe=describe_mcp_servers),

@@ -1,6 +1,13 @@
 defaults:
   model: gpt-5-mini
 
+tools:
+  websearch:
+    kind: websearch
+    api_key:
+      value_from:
+        env: FELO_API_KEY
+
 mcp_servers:
   memory:
     transport: http

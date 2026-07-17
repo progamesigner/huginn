@@ -8,7 +8,7 @@ from uuid import uuid4
 
 from structlog.contextvars import bound_contextvars
 
-from app.features.tools import ToolRegistry
+from app.features.tools import ToolSet
 from lib.llm import (
     CompletionChunk,
     CompletionRequest,
@@ -92,14 +92,14 @@ def tool_result_messages(results: tuple[ToolResultSegment, ...]) -> Iterator[Mes
 
 
 async def execute(
-    registry: ToolRegistry,
+    tools: ToolSet,
     call: ToolCallSegment,
     tool_timeout: float,
 ) -> tuple[ToolResultSegment, ToolExecution]:
     started = time.monotonic()
     try:
         async with asyncio.timeout(tool_timeout):
-            result = await registry.execute(call)
+            result = await tools.execute(call)
     except TimeoutError:
         logger.warning('Tool %s timed out after %.1fs', call.name, tool_timeout)
         result = ToolResultSegment(
@@ -123,11 +123,11 @@ async def execute(
 
 
 async def execute_calls(
-    registry: ToolRegistry,
+    tools: ToolSet,
     calls: tuple[ToolCallSegment, ...],
     tool_timeout: float,
 ) -> tuple[tuple[ToolResultSegment, ...], Step]:
-    tasks = (execute(registry, call, tool_timeout) for call in calls)
+    tasks = (execute(tools, call, tool_timeout) for call in calls)
     results, records = cast(
         tuple[tuple[ToolResultSegment, ...], tuple[ToolExecution, ...]],
         zip(*await asyncio.gather(*tasks), strict=True),
@@ -168,11 +168,11 @@ async def consume(
 
 class AgentRunner:
     llm: LLMClient
-    registry: ToolRegistry
+    tools: ToolSet
 
-    def __init__(self, llm: LLMClient, registry: ToolRegistry) -> None:
+    def __init__(self, llm: LLMClient, tools: ToolSet) -> None:
         self.llm = llm
-        self.registry = registry
+        self.tools = tools
 
     async def run(self, turn: TurnInput, on_text: Callable[[str], None]) -> TurnOutput:
         with bound_contextvars(turn_id=uuid4().hex):
@@ -193,7 +193,7 @@ class AgentRunner:
                     request = CompletionRequest(
                         model=turn.model,
                         messages=tuple(history),
-                        tools=self.registry.schemas(),
+                        tools=self.tools.schemas(),
                     )
                     text, tool_calls = await consume(self.llm.stream(request), on_text)
 
@@ -210,7 +210,7 @@ class AgentRunner:
                         len(tool_calls),
                     )
                     results, step = await execute_calls(
-                        self.registry,
+                        self.tools,
                         tool_calls,
                         turn.tool_timeout,
                     )

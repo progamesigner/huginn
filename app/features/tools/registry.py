@@ -1,81 +1,85 @@
 import logging
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from typing import cast
 
-from pydantic import JsonValue, ValidationError
+from pydantic import BaseModel, JsonValue, ValidationError
 
 from lib.llm import ToolCallSegment, ToolResultSegment
 
 from .exceptions import DuplicateToolError, UnknownToolError
-from .types import Tool, ToolParams
+from .types import Tool, ToolOutput, ToolParams
 
 logger = logging.getLogger(__name__)
 
-type ToolFactory = Callable[[], Tool[ToolParams]]
-type Factories = dict[str, ToolFactory]
+type ToolBuilder = Callable[[BaseModel], Tool[ToolParams]]
+type Builders = dict[str, ToolBuilder]
 type Instances = dict[str, Tool[ToolParams]]
 type Tools = dict[str, type[Tool[ToolParams]]]
 
 
 class ToolRegistry:
-    factories: Factories
-    instances: Instances
+    builders: Builders
     tools: Tools
 
     def __init__(self) -> None:
-        self.factories = cast(Factories, {})
-        self.instances = cast(Instances, {})
+        self.builders = cast(Builders, {})
         self.tools = cast(Tools, {})
 
     def register[P: ToolParams](
         self,
         tool: type[Tool[P]],
-        factory: Callable[[], Tool[P]] | None = None,
+        build: Callable[[BaseModel], Tool[P]] | None = None,
     ) -> None:
         if tool.name in self.tools:
             raise DuplicateToolError(f'tool {tool.name!r} is already registered')
 
         self.tools[tool.name] = cast(type[Tool[ToolParams]], tool)
-        self.factories[tool.name] = cast(ToolFactory, factory or tool)
+        self.builders[tool.name] = cast(ToolBuilder, build or (lambda _: tool()))
 
-    def get(self, name: str) -> type[Tool[ToolParams]]:
-        if name not in self.tools:
+    def get(self, kind: str) -> type[Tool[ToolParams]]:
+        if kind not in self.tools:
             available = ', '.join(sorted(self.tools)) or 'none'
-            raise UnknownToolError(f'unknown tool {name!r}; available: {available}')
+            raise UnknownToolError(f'unknown tool {kind!r}; available: {available}')
 
-        return self.tools[name]
+        return self.tools[kind]
 
-    def resolve(self, name: str) -> Tool[ToolParams]:
-        self.get(name)
+    def build(self, kind: str, config: BaseModel) -> Tool[ToolParams]:
+        self.get(kind)
+        return self.builders[kind](config)
 
-        if name not in self.instances:
-            self.instances[name] = self.factories[name]()
 
-        return self.instances[name]
+class ToolSet:
+    tools: Instances
+
+    def __init__(self, tools: Mapping[str, Tool[ToolParams]] | None = None) -> None:
+        self.tools = dict(tools or {})
+
+    def add[P: ToolParams](self, name: str, tool: Tool[P]) -> None:
+        self.tools[name] = cast(Tool[ToolParams], tool)
 
     def schemas(self) -> tuple[JsonValue, ...]:
         return tuple(
             {
                 'type': 'function',
                 'function': {
-                    'name': tool.name,
+                    'name': name,
                     'description': tool.description,
                     'parameters': tool.params.model_json_schema(),
                 },
             }
-            for tool in self.tools.values()
+            for name, tool in self.tools.items()
         )
 
     async def execute(self, call: ToolCallSegment) -> ToolResultSegment:
-        try:
-            tool = self.get(call.name)
-        except UnknownToolError as error:
+        if call.name not in self.tools:
+            available = ', '.join(sorted(self.tools)) or 'none'
             return ToolResultSegment(
                 tool_call_id=call.id,
-                content=str(error),
+                content=f'unknown tool {call.name!r}; available: {available}',
                 error=True,
             )
 
+        tool = self.tools[call.name]
         try:
             params = tool.params.model_validate_json(call.arguments)
         except ValidationError as error:
@@ -86,7 +90,7 @@ class ToolRegistry:
             )
 
         try:
-            output = await self.resolve(call.name).run(params)
+            output: ToolOutput = await tool.run(params)
         except Exception:
             logger.exception('Tool %s raised while executing', call.name)
             return ToolResultSegment(

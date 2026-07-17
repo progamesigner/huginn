@@ -1,11 +1,11 @@
 import httpx
 import pytest
 import respx
-from app.features.tools.websearch import format_result
 from pydantic import SecretStr, ValidationError
 
 from app.exts.felo.client import FeloClient, SearchResource, SearchResult
-from app.features.tools import WebSearchParams, WebSearchTool
+from app.features.tools import WebSearchParams, WebSearchTool, WebSearchToolConfig
+from app.features.tools.websearch import build_websearch, format_result
 from lib.http import HTTPClientManager
 
 _PAYLOAD = {
@@ -120,3 +120,15 @@ async def test_run_searches_and_formats() -> None:
     assert 'Taipei is sunny today.' in output
     assert '1. Taipei Weather' in output
     assert 'https://weather.example/taipei' in output
+
+
+def test_build_websearch_constructs_client_from_config() -> None:
+    tool = build_websearch(
+        HTTPClientManager(),
+        WebSearchToolConfig.model_validate(
+            {'kind': 'websearch', 'api_key': 'felo-key'}
+        ),
+    )
+
+    assert tool.client.headers['Authorization'] == 'Bearer felo-key'
+    assert tool.client.base_url == 'https://openapi.felo.ai/'

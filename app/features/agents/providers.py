@@ -2,18 +2,17 @@ from typing import override
 
 from app.core.config import SectionRegistry
 from app.core.providers.config import ConfigProvider
-from app.features.tools import ToolRegistry
-from app.features.tools.providers import ToolRegistryProvider
+from app.features.tools.providers import ToolsConfigProvider
 from lib.container import ContainerContract, ProviderContract
 
 from .config import build_sections
 
 
 class AgentsConfigProvider(ProviderContract):
-    dependencies = (ConfigProvider, ToolRegistryProvider)
+    dependencies = (ConfigProvider, ToolsConfigProvider)
 
     @override
     def __call__(self, container: ContainerContract) -> None:
         sections = container.resolve(SectionRegistry)
-        for spec in build_sections(container.resolve(ToolRegistry)):
+        for spec in build_sections():
             sections.register(spec)

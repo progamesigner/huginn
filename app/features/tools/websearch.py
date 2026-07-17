@@ -1,10 +1,13 @@
 from textwrap import shorten
 from typing import Annotated, override
 
-from pydantic import Field
+from pydantic import BaseModel, Field
 
 from app.exts.felo.client import FeloClient, SearchResult
+from lib.http import HTTPClientManager
 
+from .config import WebSearchToolConfig
+from .exceptions import ToolError
 from .types import Tool, ToolOutput, ToolParams
 
 _SNIPPET_WIDTH = 200
@@ -52,3 +55,18 @@ class WebSearchTool(Tool[WebSearchParams]):
     async def run(self, params: WebSearchParams) -> ToolOutput:
         result = await self.client.search(params.query)
         return format_result(result, params.max_results)
+
+
+def build_websearch(http: HTTPClientManager, config: BaseModel) -> WebSearchTool:
+    if not isinstance(config, WebSearchToolConfig):
+        raise ToolError(
+            f'websearch requires WebSearchToolConfig, got {type(config).__name__}'
+        )
+
+    return WebSearchTool(
+        FeloClient(
+            http=http,
+            api_key=config.api_key,
+            base_url=str(config.base_url),
+        )
+    )

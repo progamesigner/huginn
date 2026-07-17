@@ -1,7 +1,7 @@
 from typing import Annotated, override
 
 import pytest
-from pydantic import Field
+from pydantic import BaseModel, Field
 
 from app.features.tools import (
     DuplicateToolError,
@@ -9,6 +9,7 @@ from app.features.tools import (
     ToolOutput,
     ToolParams,
     ToolRegistry,
+    ToolSet,
     UnknownToolError,
 )
 
@@ -27,7 +28,11 @@ class GreetTool(Tool[GreetParams]):
         return f'Hello, {params.name}!'
 
 
-def test_register_declares_tool_by_name() -> None:
+class GreetConfig(BaseModel):
+    greeting: str
+
+
+def test_register_declares_tool_by_kind() -> None:
     registry = ToolRegistry()
 
     registry.register(GreetTool)
@@ -35,7 +40,7 @@ def test_register_declares_tool_by_name() -> None:
     assert registry.get('greet') is GreetTool
 
 
-def test_register_rejects_duplicate_name() -> None:
+def test_register_rejects_duplicate_kind() -> None:
     registry = ToolRegistry()
     registry.register(GreetTool)
 
@@ -43,7 +48,7 @@ def test_register_rejects_duplicate_name() -> None:
         registry.register(GreetTool)
 
 
-def test_get_reports_unknown_tool_with_available_list() -> None:
+def test_get_reports_unknown_kind_with_available_list() -> None:
     registry = ToolRegistry()
     registry.register(GreetTool)
 
@@ -51,38 +56,55 @@ def test_get_reports_unknown_tool_with_available_list() -> None:
         registry.get('missing')
 
 
-def test_resolve_defers_construction_until_first_use() -> None:
-    built: list[GreetTool] = []
+def test_build_constructs_through_registered_builder() -> None:
+    built: list[GreetConfig] = []
 
-    def factory() -> GreetTool:
-        tool = GreetTool()
-        built.append(tool)
-        return tool
+    def build(config: BaseModel) -> GreetTool:
+        assert isinstance(config, GreetConfig)
+        built.append(config)
+        return GreetTool()
 
     registry = ToolRegistry()
-    registry.register(GreetTool, factory=factory)
-    assert built == []
+    registry.register(GreetTool, build=build)
 
-    assert registry.resolve('greet') is registry.resolve('greet')
-    assert len(built) == 1
+    tool = registry.build('greet', GreetConfig(greeting='hi'))
 
-
-def test_resolve_defaults_to_argless_construction() -> None:
-    registry = ToolRegistry()
-    registry.register(GreetTool)
-
-    assert isinstance(registry.resolve('greet'), GreetTool)
+    assert isinstance(tool, GreetTool)
+    assert built == [GreetConfig(greeting='hi')]
 
 
-def test_schemas_produce_function_calling_shape() -> None:
+def test_build_defaults_to_argless_construction() -> None:
     registry = ToolRegistry()
     registry.register(GreetTool)
 
-    assert registry.schemas() == (
+    assert isinstance(registry.build('greet', GreetConfig(greeting='hi')), GreetTool)
+
+
+def test_build_rejects_unknown_kind() -> None:
+    registry = ToolRegistry()
+
+    with pytest.raises(UnknownToolError, match='none'):
+        registry.build('greet', GreetConfig(greeting='hi'))
+
+
+def test_toolset_schemas_use_instance_names() -> None:
+    tools = ToolSet()
+    tools.add('greet-a', GreetTool())
+    tools.add('greet-b', GreetTool())
+
+    assert tools.schemas() == (
         {
             'type': 'function',
             'function': {
-                'name': 'greet',
+                'name': 'greet-a',
+                'description': 'Greet someone by name',
+                'parameters': GreetParams.model_json_schema(),
+            },
+        },
+        {
+            'type': 'function',
+            'function': {
+                'name': 'greet-b',
                 'description': 'Greet someone by name',
                 'parameters': GreetParams.model_json_schema(),
             },

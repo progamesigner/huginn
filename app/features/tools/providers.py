@@ -1,11 +1,14 @@
 from typing import override
 
-from app.exts.felo.client import FeloClient
-from app.exts.felo.providers import FeloExtProvider
+from app.core.config import SectionRegistry
+from app.core.providers.config import ConfigProvider
+from app.core.providers.http import HTTPClientProvider
 from lib.container import ContainerContract, ProviderContract
+from lib.http import HTTPClientManager
 
+from .config import build_sections
 from .registry import ToolRegistry
-from .websearch import WebSearchTool
+from .websearch import WebSearchTool, build_websearch
 
 
 class ToolRegistryProvider(ProviderContract):
@@ -14,13 +17,23 @@ class ToolRegistryProvider(ProviderContract):
         container.bind(ToolRegistry, instance=ToolRegistry())
 
 
-class WebSearchToolProvider(ProviderContract):
-    dependencies = (FeloExtProvider, ToolRegistryProvider)
+class ToolsConfigProvider(ProviderContract):
+    dependencies = (ConfigProvider, ToolRegistryProvider)
 
     @override
     def __call__(self, container: ContainerContract) -> None:
-        registry = container.resolve(ToolRegistry)
-        registry.register(
+        sections = container.resolve(SectionRegistry)
+        for spec in build_sections(container.resolve(ToolRegistry)):
+            sections.register(spec)
+
+
+class WebSearchToolProvider(ProviderContract):
+    dependencies = (HTTPClientProvider, ToolRegistryProvider)
+
+    @override
+    def __call__(self, container: ContainerContract) -> None:
+        http = container.resolve(HTTPClientManager)
+        container.resolve(ToolRegistry).register(
             WebSearchTool,
-            factory=lambda: WebSearchTool(container.resolve(FeloClient)),
+            build=lambda config: build_websearch(http, config),
         )

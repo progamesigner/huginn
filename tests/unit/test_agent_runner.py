@@ -9,7 +9,7 @@ from structlog.contextvars import get_contextvars
 
 from app.features.agents.exceptions import TurnTimeout
 from app.features.agents.services import AgentRunner, TurnInput
-from app.features.tools import Tool, ToolOutput, ToolParams, ToolRegistry
+from app.features.tools import Tool, ToolOutput, ToolParams, ToolSet
 from lib.llm import (
     CompletionChunk,
     CompletionRequest,
@@ -89,11 +89,11 @@ class ProbeTool(Tool[ProbeParams]):
         return 'probed'
 
 
-def make_registry() -> ToolRegistry:
-    registry = ToolRegistry()
-    registry.register(EchoTool)
-    registry.register(SleepTool)
-    return registry
+def make_toolset() -> ToolSet:
+    tools = ToolSet()
+    tools.add('echo', EchoTool())
+    tools.add('sleep', SleepTool())
+    return tools
 
 
 def make_turn(
@@ -132,7 +132,7 @@ async def test_run_returns_text_immediately_when_no_tool_calls() -> None:
             ],
         ]
     )
-    runner = AgentRunner(llm, make_registry())
+    runner = AgentRunner(llm, make_toolset())
     fragments: list[str] = []
 
     output = await runner.run(make_turn(), fragments.append)
@@ -155,7 +155,7 @@ async def test_run_executes_single_tool_call_then_finishes() -> None:
             [TextChunk(text='done'), FinishChunk(reason='stop')],
         ]
     )
-    runner = AgentRunner(llm, make_registry())
+    runner = AgentRunner(llm, make_toolset())
 
     output = await runner.run(make_turn(), lambda _: None)
 
@@ -189,7 +189,7 @@ async def test_run_executes_multiple_tool_calls_in_one_turn() -> None:
             [TextChunk(text='done'), FinishChunk(reason='stop')],
         ]
     )
-    runner = AgentRunner(llm, make_registry())
+    runner = AgentRunner(llm, make_toolset())
 
     output = await runner.run(make_turn(), lambda _: None)
 
@@ -222,7 +222,7 @@ async def test_run_executes_tool_calls_concurrently() -> None:
             [TextChunk(text='done'), FinishChunk(reason='stop')],
         ]
     )
-    runner = AgentRunner(llm, make_registry())
+    runner = AgentRunner(llm, make_toolset())
 
     started = time.monotonic()
     await runner.run(make_turn(), lambda _: None)
@@ -255,7 +255,7 @@ async def test_run_iterates_across_multiple_turns_until_no_tool_calls() -> None:
             [TextChunk(text='done'), FinishChunk(reason='stop')],
         ]
     )
-    runner = AgentRunner(llm, make_registry())
+    runner = AgentRunner(llm, make_toolset())
 
     output = await runner.run(make_turn(), lambda _: None)
 
@@ -275,7 +275,7 @@ async def test_run_marks_incomplete_when_max_iterations_exhausted(
         ]
 
     llm = FakeLLM([always_calls_tool(), always_calls_tool()])
-    runner = AgentRunner(llm, make_registry())
+    runner = AgentRunner(llm, make_toolset())
 
     with caplog.at_level('WARNING'):
         output = await runner.run(make_turn(max_iterations=2), lambda _: None)
@@ -301,7 +301,7 @@ async def test_run_reports_tool_timeout_as_error_and_continues(
             [TextChunk(text='done'), FinishChunk(reason='stop')],
         ]
     )
-    runner = AgentRunner(llm, make_registry())
+    runner = AgentRunner(llm, make_toolset())
 
     with caplog.at_level('WARNING'):
         output = await runner.run(make_turn(tool_timeout=0.05), lambda _: None)
@@ -332,7 +332,7 @@ async def test_run_raises_turn_timeout_when_whole_turn_exceeds_budget(
             ],
         ]
     )
-    runner = AgentRunner(llm, make_registry())
+    runner = AgentRunner(llm, make_toolset())
 
     with caplog.at_level('WARNING'), pytest.raises(TurnTimeout):
         await runner.run(make_turn(turn_timeout=0.05), lambda _: None)
@@ -366,7 +366,7 @@ async def test_run_records_steps_for_each_iteration(
             [TextChunk(text='done'), FinishChunk(reason='stop')],
         ]
     )
-    runner = AgentRunner(llm, make_registry())
+    runner = AgentRunner(llm, make_toolset())
 
     with caplog.at_level('INFO'):
         output = await runner.run(make_turn(), lambda _: None)
@@ -396,7 +396,7 @@ async def test_run_records_failed_tool_execution_in_steps() -> None:
             [TextChunk(text='done'), FinishChunk(reason='stop')],
         ]
     )
-    runner = AgentRunner(llm, make_registry())
+    runner = AgentRunner(llm, make_toolset())
 
     output = await runner.run(make_turn(tool_timeout=0.05), lambda _: None)
 
@@ -417,9 +417,9 @@ async def test_run_binds_turn_id_during_tool_execution() -> None:
         [probe_response(), [TextChunk(text='done'), FinishChunk(reason='stop')]]
     )
     probe = ProbeTool()
-    registry = ToolRegistry()
-    registry.register(ProbeTool, factory=lambda: probe)
-    runner = AgentRunner(llm, registry)
+    tools = ToolSet()
+    tools.add('probe', probe)
+    runner = AgentRunner(llm, tools)
 
     await runner.run(make_turn(), lambda _: None)
 
@@ -437,9 +437,9 @@ async def test_run_generates_unique_turn_id_per_turn() -> None:
         ]
     )
     probe = ProbeTool()
-    registry = ToolRegistry()
-    registry.register(ProbeTool, factory=lambda: probe)
-    runner = AgentRunner(llm, registry)
+    tools = ToolSet()
+    tools.add('probe', probe)
+    runner = AgentRunner(llm, tools)
 
     await runner.run(make_turn(), lambda _: None)
     first = probe.seen['turn_id']

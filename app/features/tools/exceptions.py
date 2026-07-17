@@ -1,3 +1,6 @@
+from app.core.config import ConfigError
+
+
 class ToolError(Exception):
     pass
 
@@ -7,4 +10,8 @@ class DuplicateToolError(ToolError):
 
 
 class UnknownToolError(ToolError):
+    pass
+
+
+class UnknownToolKindError(ConfigError):
     pass

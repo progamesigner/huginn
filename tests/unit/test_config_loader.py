@@ -2,7 +2,7 @@ from pathlib import Path
 from typing import Annotated, override
 
 import pytest
-from pydantic import Field, HttpUrl
+from pydantic import Field, HttpUrl, SecretStr
 
 from app.core.config import HuginnConfig, SectionRegistry
 from app.core.config.exceptions import (
@@ -29,17 +29,27 @@ from app.features.agents.config import (
     McpServerConfig,
     McpServersConfig,
     ToolRef,
-    build_sections,
     validate_agents,
     validate_channels,
 )
+from app.features.agents.config import build_sections as build_agent_sections
 from app.features.agents.exceptions import (
     AmbiguousInstructionsError,
     UnknownAgentReferenceError,
     UnknownMcpServerReferenceError,
     UnknownToolReferenceError,
 )
-from app.features.tools import Tool, ToolOutput, ToolParams, ToolRegistry
+from app.features.tools import (
+    Tool,
+    ToolOutput,
+    ToolParams,
+    ToolRegistry,
+    ToolsConfig,
+    UnknownToolKindError,
+    WebSearchToolConfig,
+)
+from app.features.tools.config import build_sections as build_tool_sections
+from app.features.tools.config import validate_tools
 
 
 class SearchParams(ToolParams):
@@ -62,9 +72,11 @@ def build_tool_registry() -> ToolRegistry:
     return registry
 
 
-def build_section_registry() -> SectionRegistry:
+def build_section_registry(tools: ToolRegistry | None = None) -> SectionRegistry:
     registry = SectionRegistry()
-    for spec in build_sections(build_tool_registry()):
+    for spec in build_tool_sections(tools or build_tool_registry()):
+        registry.register(spec)
+    for spec in build_agent_sections():
         registry.register(spec)
     return registry
 
@@ -78,14 +90,20 @@ def build_agent(**overrides: object) -> AgentConfig:
     return AgentConfig.model_validate(fields)
 
 
+def websearch_config() -> WebSearchToolConfig:
+    return WebSearchToolConfig(kind='websearch', api_key=SecretStr('felo-key'))
+
+
 def build_app_config(
     agents: dict[str, AgentConfig] | None = None,
+    tools: dict[str, WebSearchToolConfig] | None = None,
     mcp_servers: dict[str, McpServerConfig] | None = None,
     channels: ChannelsConfig | None = None,
 ) -> HuginnConfig:
     return HuginnConfig(
         {
             'agents': AgentsConfig(agents or {}),
+            'tools': ToolsConfig(tools or {}),
             'mcp_servers': McpServersConfig(mcp_servers or {}),
             'channels': channels or ChannelsConfig(),
         }
@@ -142,7 +160,7 @@ def test_resolve_value_from_file_succeeds(tmp_path: Path) -> None:
     secret_file = tmp_path / 'felo.token'
     secret_file.write_text('felo-secret\n')
 
-    resolved = resolve_value_from({'file': str(secret_file)}, 'mcp_servers.felo.auth')
+    resolved = resolve_value_from({'file': str(secret_file)}, 'tools.websearch.api_key')
 
     assert resolved == 'felo-secret'
 
@@ -150,8 +168,8 @@ def test_resolve_value_from_file_succeeds(tmp_path: Path) -> None:
 def test_resolve_value_from_file_missing_raises(tmp_path: Path) -> None:
     missing_file = tmp_path / 'missing.token'
 
-    with pytest.raises(MissingConfigFileError, match=r'mcp_servers\.felo\.auth'):
-        resolve_value_from({'file': str(missing_file)}, 'mcp_servers.felo.auth')
+    with pytest.raises(MissingConfigFileError, match=r'tools\.websearch\.api_key'):
+        resolve_value_from({'file': str(missing_file)}, 'tools.websearch.api_key')
 
 
 def test_resolve_value_from_rejects_both_env_and_file() -> None:
@@ -170,16 +188,15 @@ def test_resolve_value_from_rejects_unknown_shape() -> None:
 def test_resolve_references_walks_nested_structure(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setenv('MEMORY_MCP_TOKEN', 'secret-token')
+    monkeypatch.setenv('FELO_API_KEY', 'felo-secret')
     monkeypatch.setenv('AGENT_MODEL', 'claude-sonnet-5')
 
     raw = {
         'defaults': {'model': '${AGENT_MODEL}'},
-        'mcp_servers': {
-            'memory': {
-                'transport': 'http',
-                'url': 'https://memory.example.internal/mcp',
-                'auth': {'value_from': {'env': 'MEMORY_MCP_TOKEN'}},
+        'tools': {
+            'websearch': {
+                'kind': 'websearch',
+                'api_key': {'value_from': {'env': 'FELO_API_KEY'}},
             },
         },
         'agents': {
@@ -191,11 +208,10 @@ def test_resolve_references_walks_nested_structure(
 
     assert resolved == {
         'defaults': {'model': 'claude-sonnet-5'},
-        'mcp_servers': {
-            'memory': {
-                'transport': 'http',
-                'url': 'https://memory.example.internal/mcp',
-                'auth': 'secret-token',
+        'tools': {
+            'websearch': {
+                'kind': 'websearch',
+                'api_key': 'felo-secret',
             },
         },
         'agents': {
@@ -207,14 +223,12 @@ def test_resolve_references_walks_nested_structure(
 def test_resolve_references_reports_field_path_for_missing_env(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.delenv('MEMORY_MCP_TOKEN', raising=False)
+    monkeypatch.delenv('FELO_API_KEY', raising=False)
 
-    raw = {
-        'mcp_servers': {'memory': {'auth': {'value_from': {'env': 'MEMORY_MCP_TOKEN'}}}}
-    }
+    raw = {'tools': {'websearch': {'api_key': {'value_from': {'env': 'FELO_API_KEY'}}}}}
 
     with pytest.raises(
-        MissingEnvironmentVariableError, match=r'mcp_servers\.memory\.auth'
+        MissingEnvironmentVariableError, match=r'tools\.websearch\.api_key'
     ):
         resolve_references(raw)
 
@@ -252,6 +266,7 @@ def test_load_config_defaults_optional_sections(tmp_path: Path) -> None:
     config = load_config(config_file, build_section_registry())
 
     assert config.section('defaults', DefaultsConfig).model is None
+    assert config.section('tools', ToolsConfig).root == {}
     assert config.section('mcp_servers', McpServersConfig).root == {}
     assert config.section('channels', ChannelsConfig).telegram is None
 
@@ -259,6 +274,7 @@ def test_load_config_defaults_optional_sections(tmp_path: Path) -> None:
 def test_load_config_resolves_env_and_value_from_then_validates(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    monkeypatch.setenv('FELO_API_KEY', 'felo-secret')
     monkeypatch.setenv('MEMORY_MCP_TOKEN', 'secret-token')
     monkeypatch.setenv('AGENT_MODEL', 'claude-sonnet-5')
 
@@ -266,6 +282,11 @@ def test_load_config_resolves_env_and_value_from_then_validates(
     config_file.write_text(
         'defaults:\n'
         '  model: ${AGENT_MODEL}\n'
+        'tools:\n'
+        '  websearch:\n'
+        '    kind: websearch\n'
+        '    api_key:\n'
+        '      value_from: {env: FELO_API_KEY}\n'
         'mcp_servers:\n'
         '  memory:\n'
         '    transport: http\n'
@@ -287,18 +308,17 @@ def test_load_config_resolves_env_and_value_from_then_validates(
     config = load_config(config_file, build_section_registry())
 
     agents = config.section('agents', AgentsConfig).root
-    servers = config.section('mcp_servers', McpServersConfig).root
+    tools = config.section('tools', ToolsConfig).root
     channels = config.section('channels', ChannelsConfig)
 
     assert config.section('defaults', DefaultsConfig).model == 'claude-sonnet-5'
-    assert servers['memory'].auth is not None
-    assert servers['memory'].auth.get_secret_value() == 'secret-token'
+    assert tools['websearch'].api_key.get_secret_value() == 'felo-secret'
     assert agents['scout'].instructions == 'You speak for claude-sonnet-5.'
     assert channels.telegram is not None
     assert channels.telegram.bindings['12345'] == 'scout'
 
 
-# validate_agents() / validate_channels()
+# validate_tools() / validate_agents() / validate_channels()
 
 
 def test_validators_accept_a_fully_consistent_config() -> None:
@@ -309,6 +329,7 @@ def test_validators_accept_a_fully_consistent_config() -> None:
                 mcp=(McpRef(server='memory'),),
             ),
         },
+        tools={'websearch': websearch_config()},
         mcp_servers={
             'memory': McpServerConfig(
                 transport='http',
@@ -323,19 +344,28 @@ def test_validators_accept_a_fully_consistent_config() -> None:
         ),
     )
 
-    validate_agents(config, build_tool_registry())
+    validate_tools(config, build_tool_registry())
+    validate_agents(config)
     validate_channels(config)
 
 
-def test_validate_agents_rejects_unknown_tool() -> None:
+def test_validate_tools_rejects_unregistered_kind() -> None:
+    config = build_app_config(tools={'websearch': websearch_config()})
+
+    with pytest.raises(UnknownToolKindError, match=r'tools\.websearch\.kind'):
+        validate_tools(config, ToolRegistry())
+
+
+def test_validate_agents_rejects_unknown_tool_reference() -> None:
     config = build_app_config(
         agents={'scout': build_agent(tools=(ToolRef(name='nonexistent'),))},
+        tools={'websearch': websearch_config()},
     )
 
     with pytest.raises(
         UnknownToolReferenceError, match=r'agents\.scout\.tools\[0\]\.name'
     ):
-        validate_agents(config, build_tool_registry())
+        validate_agents(config)
 
 
 def test_validate_agents_rejects_unknown_mcp_server() -> None:
@@ -346,7 +376,7 @@ def test_validate_agents_rejects_unknown_mcp_server() -> None:
     with pytest.raises(
         UnknownMcpServerReferenceError, match=r'agents\.scout\.mcp\[0\]\.server'
     ):
-        validate_agents(config, build_tool_registry())
+        validate_agents(config)
 
 
 def test_validate_agents_requires_exactly_one_instruction_source() -> None:
@@ -354,12 +384,10 @@ def test_validate_agents_requires_exactly_one_instruction_source() -> None:
     neither = build_agent(instructions=None)
 
     with pytest.raises(AmbiguousInstructionsError, match=r'agents\.scout'):
-        validate_agents(build_app_config(agents={'scout': both}), build_tool_registry())
+        validate_agents(build_app_config(agents={'scout': both}))
 
     with pytest.raises(AmbiguousInstructionsError, match=r'agents\.scout'):
-        validate_agents(
-            build_app_config(agents={'scout': neither}), build_tool_registry()
-        )
+        validate_agents(build_app_config(agents={'scout': neither}))
 
 
 def test_validate_channels_rejects_unknown_binding_agent() -> None:
