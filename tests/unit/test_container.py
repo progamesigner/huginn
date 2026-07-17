@@ -306,6 +306,46 @@ def test_to_shares_instance_bindings_but_not_overrides() -> None:
     assert clone.resolve(Greeter) is real
 
 
+async def test_scope_disposes_resolved_instances_without_starting_eager() -> None:
+    journal: list[str] = []
+    container = Container()
+    container.bind(
+        RecordingManager,
+        factory=lambda _: RecordingManager(journal, 'eager'),
+        shared=True,
+        eager=True,
+    )
+    container.bind(
+        OtherManager,
+        factory=lambda _: OtherManager(journal, 'used'),
+        shared=True,
+    )
+
+    async with container.scope() as scoped:
+        assert scoped is container
+        scoped.resolve(OtherManager)
+        assert journal == []
+
+    assert journal == ['used:dispose']
+
+
+async def test_scope_disposes_even_when_body_raises() -> None:
+    journal: list[str] = []
+    container = Container()
+    container.bind(
+        RecordingManager,
+        factory=lambda _: RecordingManager(journal, 'used'),
+        shared=True,
+    )
+
+    with pytest.raises(RuntimeError, match='boom'):
+        async with container.scope():
+            container.resolve(RecordingManager)
+            raise RuntimeError('boom')
+
+    assert journal == ['used:dispose']
+
+
 async def test_async_with_starts_and_closes() -> None:
     journal: list[str] = []
     container = Container()

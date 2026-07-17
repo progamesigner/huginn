@@ -1,6 +1,6 @@
 from abc import ABC, abstractmethod
-from collections.abc import Callable
-from contextlib import AbstractContextManager
+from collections.abc import AsyncIterator, Callable
+from contextlib import AbstractContextManager, asynccontextmanager
 from types import TracebackType
 from typing import ClassVar, Protocol, Self, runtime_checkable
 
@@ -48,6 +48,14 @@ class ContainerContract(ABC):
 
     @abstractmethod
     async def dispose(self) -> None: ...
+
+    # NOTE: scope for short-lived entrypoints
+    @asynccontextmanager
+    async def scope(self) -> AsyncIterator[Self]:
+        try:
+            yield self
+        finally:
+            await self.dispose()
 
     async def __aenter__(self) -> Self:
         await self.start()
