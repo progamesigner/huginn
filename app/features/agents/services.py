@@ -139,8 +139,8 @@ async def consume(
     stream: AsyncIterator[CompletionChunk],
     on_text: Callable[[str], None],
 ) -> tuple[str, tuple[ToolCallSegment, ...]]:
-    fragments: list[str] = []
-    calls: dict[int, ToolCallBuilder] = {}
+    fragments = []
+    calls = cast(dict[int, ToolCallBuilder], {})
 
     async for chunk in stream:
         match chunk:
