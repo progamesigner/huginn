@@ -4,7 +4,7 @@ from typing import override
 from app.core.config import HuginnConfig, SectionRegistry, load_config
 from app.core.config.commands import build_commands
 from app.core.settings import HuginnSettings
-from lib.command import CommandManager
+from lib.command import CommandContract
 from lib.container import ContainerContract, ProviderContract
 
 from .command import CommandProvider
@@ -34,4 +34,4 @@ class ConfigCommandProvider(ProviderContract):
 
     @override
     def __call__(self, container: ContainerContract) -> None:
-        container.resolve(CommandManager).mount('config', build_commands(container))
+        container.resolve(CommandContract).mount('config', build_commands(container))

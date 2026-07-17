@@ -4,7 +4,7 @@ from app.core.config import SectionRegistry
 from app.core.providers.config import ConfigProvider
 from app.core.providers.http import HTTPClientProvider
 from lib.container import ContainerContract, ProviderContract
-from lib.http import HTTPClientManager
+from lib.http import HTTPClientContract
 
 from .config import build_sections
 from .registry import ToolRegistry
@@ -32,7 +32,7 @@ class WebSearchToolProvider(ProviderContract):
 
     @override
     def __call__(self, container: ContainerContract) -> None:
-        http = container.resolve(HTTPClientManager)
+        http = container.resolve(HTTPClientContract)
         container.resolve(ToolRegistry).register(
             WebSearchTool,
             build=lambda config: build_websearch(http, config),

@@ -8,7 +8,7 @@ from app.core.application import App
 from app.providers.bootstrap import BootstrapProvider
 from app.providers.features import FeaturesProvider
 from bin.cli import COMMANDS
-from lib.command import CommandManager, Typer
+from lib.command import CommandContract, Typer
 
 runner = CliRunner()
 
@@ -36,7 +36,7 @@ channels:
 
 def build_cli() -> Typer:
     container = App().build(BootstrapProvider(), FeaturesProvider(), *COMMANDS)
-    return container.resolve(CommandManager).app
+    return container.resolve(CommandContract).app
 
 
 def write_config(path: Path, text: str = _VALID) -> Path:

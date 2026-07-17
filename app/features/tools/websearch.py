@@ -4,7 +4,7 @@ from typing import Annotated, override
 from pydantic import BaseModel, Field
 
 from app.exts.felo.client import FeloClient, SearchResult
-from lib.http import HTTPClientManager
+from lib.http import HTTPClientContract
 
 from .config import WebSearchToolConfig
 from .exceptions import ToolError
@@ -57,7 +57,7 @@ class WebSearchTool(Tool[WebSearchParams]):
         return format_result(result, params.max_results)
 
 
-def build_websearch(http: HTTPClientManager, config: BaseModel) -> WebSearchTool:
+def build_websearch(http: HTTPClientContract, config: BaseModel) -> WebSearchTool:
     if not isinstance(config, WebSearchToolConfig):
         raise ToolError(
             f'websearch requires WebSearchToolConfig, got {type(config).__name__}'

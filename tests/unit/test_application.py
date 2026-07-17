@@ -17,7 +17,7 @@ from app.features.tools import (
 )
 from app.features.tools.providers import ToolRegistryProvider
 from lib.container import ContainerContract, ProviderContract
-from lib.llm import LLMManager
+from lib.llm import LLMContract
 from lib.observability import Logger
 
 
@@ -205,7 +205,7 @@ def test_build_routes_uvicorn_loggers_through_root() -> None:
 def test_build_wires_llm_provider() -> None:
     application = App().build(SettingsProvider(), LLMProvider())
 
-    assert application.bound(LLMManager)
+    assert application.bound(LLMContract)
 
 
 def test_build_wires_tool_registry_provider() -> None:

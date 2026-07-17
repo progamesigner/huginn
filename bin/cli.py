@@ -4,7 +4,7 @@ from app.core.application import App
 from app.core.providers.config import ConfigCommandProvider
 from app.providers.bootstrap import BootstrapProvider
 from app.providers.features import FeaturesProvider
-from lib.command import CommandManager, echo
+from lib.command import CommandContract, echo
 from lib.container import ProviderContract
 
 COMMANDS: tuple[ProviderContract, ...] = (ConfigCommandProvider(),)
@@ -17,7 +17,7 @@ def main() -> None:
         echo(str(error), err=True)
         raise SystemExit(1) from error
 
-    container.resolve(CommandManager).app()
+    container.resolve(CommandContract).app()
 
 
 if __name__ == '__main__':

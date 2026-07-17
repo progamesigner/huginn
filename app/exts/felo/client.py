@@ -2,7 +2,7 @@ from typing import Annotated
 
 from pydantic import BaseModel, ConfigDict, Field, SecretStr
 
-from lib.http import HTTPClientManager
+from lib.http import HTTPClientContract
 
 
 class FeloValue(BaseModel):
@@ -25,13 +25,13 @@ class SearchResponse(FeloValue):
 
 
 class FeloClient:
-    http: HTTPClientManager
+    http: HTTPClientContract
     base_url: str
     headers: dict[str, str]
 
     def __init__(
         self,
-        http: HTTPClientManager,
+        http: HTTPClientContract,
         api_key: SecretStr,
         base_url: str,
     ) -> None:
