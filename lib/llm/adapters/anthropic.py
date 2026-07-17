@@ -25,7 +25,7 @@ from anthropic.types import (
 )
 from pydantic import JsonValue
 
-from lib.http import HTTPClientManager
+from lib.http import HTTPClientContract
 from lib.llm.client import ProviderConfig
 from lib.llm.types import (
     CompletionChunk,
@@ -151,13 +151,13 @@ def decode_event(event: RawMessageStreamEvent) -> Iterator[CompletionChunk]:
 
 class AnthropicAdapter:
     provider: ProviderConfig
-    http: HTTPClientManager
+    http: HTTPClientContract
     max_tokens: int
 
     def __init__(
         self,
         provider: ProviderConfig,
-        http: HTTPClientManager,
+        http: HTTPClientContract,
         max_tokens: int = _DEFAULT_MAX_TOKENS,
     ) -> None:
         self.provider = provider

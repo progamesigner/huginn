@@ -1,14 +1,17 @@
 from collections.abc import AsyncIterator, Mapping
 from contextlib import asynccontextmanager
+from typing import override
 
 from httpx import URL, AsyncClient, AsyncHTTPTransport, Limits, Timeout
+
+from .contracts import HTTPClientContract
 
 _DEFAULT_TIMEOUT = 30.0
 _DEFAULT_MAX_CONNECTIONS = 100
 _DEFAULT_MAX_KEEPALIVE_CONNECTIONS = 20
 
 
-class HTTPClientManager:
+class HTTPClientManager(HTTPClientContract):
     limits: Limits
     timeout: Timeout
     transport: AsyncHTTPTransport
@@ -27,6 +30,7 @@ class HTTPClientManager:
         self.transport = AsyncHTTPTransport(limits=self.limits)
 
     @asynccontextmanager
+    @override
     async def connect(
         self,
         base_url: URL | str = '',

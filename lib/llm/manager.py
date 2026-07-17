@@ -1,9 +1,12 @@
-from lib.http import HTTPClientManager
+from typing import override
+
+from lib.http import HTTPClientContract
 
 from .client import LLMClient, ProviderConfig, ProviderRegistry
+from .contracts import LLMContract
 
 
-def build_adapter(provider: ProviderConfig, http: HTTPClientManager) -> LLMClient:
+def build_adapter(provider: ProviderConfig, http: HTTPClientContract) -> LLMClient:
     try:
         match provider.adapter:
             case 'anthropic':
@@ -22,20 +25,21 @@ def build_adapter(provider: ProviderConfig, http: HTTPClientManager) -> LLMClien
         raise ModuleNotFoundError(message) from error
 
 
-class LLMManager:
+class LLMManager(LLMContract):
     clients: dict[str, LLMClient]
-    http: HTTPClientManager
+    http: HTTPClientContract
     registry: ProviderRegistry
 
     def __init__(
         self,
         providers: tuple[ProviderConfig, ...],
-        http: HTTPClientManager,
+        http: HTTPClientContract,
     ) -> None:
         self.registry = ProviderRegistry(providers)
         self.http = http
         self.clients = {}
 
+    @override
     def client_for(self, model: str) -> LLMClient | None:
         provider = self.provider_for(model)
         if provider is None:
@@ -46,5 +50,6 @@ class LLMManager:
 
         return self.clients[provider.name]
 
+    @override
     def provider_for(self, model: str) -> ProviderConfig | None:
         return self.registry.resolve(model)

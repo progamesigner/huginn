@@ -16,7 +16,7 @@ from openai.types.chat import (
 from openai.types.chat.chat_completion_message_function_tool_call_param import Function
 from pydantic import JsonValue
 
-from lib.http import HTTPClientManager
+from lib.http import HTTPClientContract
 from lib.llm.client import ProviderConfig
 from lib.llm.types import (
     CompletionChunk,
@@ -130,9 +130,9 @@ def decode_chunk(chunk: ChatCompletionChunk) -> Iterator[CompletionChunk]:
 
 class OpenAIAdapter:
     provider: ProviderConfig
-    http: HTTPClientManager
+    http: HTTPClientContract
 
-    def __init__(self, provider: ProviderConfig, http: HTTPClientManager) -> None:
+    def __init__(self, provider: ProviderConfig, http: HTTPClientContract) -> None:
         self.provider = provider
         self.http = http
 

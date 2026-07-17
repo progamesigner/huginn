@@ -1,4 +1,5 @@
 from .client import Adapter, LLMClient, ProviderConfig, ProviderRegistry
+from .contracts import LLMContract
 from .manager import LLMManager
 from .types import (
     CompletionChunk,
@@ -26,6 +27,7 @@ __all__ = [
     'FinishChunk',
     'FinishReason',
     'LLMClient',
+    'LLMContract',
     'LLMManager',
     'Message',
     'ProviderConfig',
