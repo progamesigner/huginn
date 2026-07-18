@@ -3,7 +3,7 @@ from dataclasses import dataclass
 from functools import cached_property
 from typing import cast
 
-from pydantic import BaseModel
+from pydantic import BaseModel, JsonValue
 
 from .exceptions import DuplicateSectionError, UnknownSectionError
 
@@ -28,7 +28,7 @@ class SectionRegistry:
 
         self.specs[spec.key] = spec
 
-    def schema(self) -> dict[str, object]:
+    def schema(self) -> dict[str, JsonValue]:
         return {
             'type': 'object',
             'additionalProperties': False,

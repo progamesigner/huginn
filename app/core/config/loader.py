@@ -33,7 +33,7 @@ def _interpolate(text: str, path: str) -> str:
     return _ENV_PATTERN.sub(replace, text)
 
 
-def _resolve_value_from(reference: object, path: str) -> object:
+def _resolve_value_from(reference: JsonValue, path: str) -> JsonValue:
     match reference:
         case {'env': str(name), **rest} if not rest:
             if name not in os.environ:
@@ -55,9 +55,9 @@ def _resolve_value_from(reference: object, path: str) -> object:
             )
 
 
-def _resolve_references(node: object, path: str = '') -> object:
+def _resolve_references(node: JsonValue, path: str = '') -> JsonValue:
     if isinstance(node, dict):
-        mapping = cast(dict[str, object], node)
+        mapping = cast(dict[str, JsonValue], node)
         if mapping.keys() == {'value_from'}:
             return _resolve_value_from(mapping['value_from'], path)
 
@@ -78,7 +78,7 @@ def _resolve_references(node: object, path: str = '') -> object:
     return node
 
 
-def _read_yaml(path: Path) -> object:
+def _read_yaml(path: Path) -> JsonValue:
     try:
         text = path.read_text()
     except OSError as error:

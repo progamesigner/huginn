@@ -101,7 +101,7 @@ def build_messages(messages: tuple[Message, ...]) -> Iterator[MessageParam]:
                         result['cache_control'] = cache_control
                     yield result
                 case ThinkingSegment(data=data):
-                    fields = cast(dict[str, object], data)
+                    fields = cast(dict[str, JsonValue], data)
                     # NOTE: thinking blocks have no cache_control field
                     yield ThinkingBlockParam(
                         type='thinking',
@@ -120,8 +120,8 @@ def build_messages(messages: tuple[Message, ...]) -> Iterator[MessageParam]:
 
 def build_tools(tools: tuple[JsonValue, ...]) -> Iterator[ToolUnionParam]:
     for tool in tools:
-        entry = cast(dict[str, object], tool)
-        function = cast(dict[str, object], entry['function'])
+        entry = cast(dict[str, JsonValue], tool)
+        function = cast(dict[str, JsonValue], entry['function'])
         yield ToolParam(
             name=cast(str, function['name']),
             description=cast(str, function.get('description', '')),

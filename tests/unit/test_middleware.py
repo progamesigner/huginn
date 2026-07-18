@@ -1,7 +1,7 @@
 from collections.abc import Iterator, MutableMapping
-from typing import Any
 
 import pytest
+from pydantic import JsonValue
 from starlette.types import ASGIApp, Receive, Scope, Send
 from structlog.contextvars import clear_contextvars, get_contextvars
 
@@ -15,15 +15,15 @@ def isolate_contextvars() -> Iterator[None]:
     clear_contextvars()
 
 
-async def receive() -> MutableMapping[str, Any]:
+async def receive() -> MutableMapping[str, JsonValue]:
     return {'type': 'http.request'}
 
 
-async def send(message: MutableMapping[str, Any]) -> None:
+async def send(message: MutableMapping[str, JsonValue]) -> None:
     return None
 
 
-def capturing_app(seen: dict[str, Any]) -> ASGIApp:
+def capturing_app(seen: dict[str, JsonValue]) -> ASGIApp:
     async def inner(scope: Scope, receive: Receive, send: Send) -> None:
         seen.update(get_contextvars())
 
@@ -31,7 +31,7 @@ def capturing_app(seen: dict[str, Any]) -> ASGIApp:
 
 
 async def test_binds_request_id_for_http_requests() -> None:
-    seen: dict[str, Any] = {}
+    seen = {}
     middleware = RequestContextMiddleware(capturing_app(seen))
 
     await middleware({'type': 'http', 'path': '/anything'}, receive, send)
@@ -40,8 +40,8 @@ async def test_binds_request_id_for_http_requests() -> None:
 
 
 async def test_binds_fresh_request_id_per_request() -> None:
-    first: dict[str, Any] = {}
-    second: dict[str, Any] = {}
+    first = {}
+    second = {}
 
     await RequestContextMiddleware(capturing_app(first))(
         {'type': 'http', 'path': '/anything'}, receive, send
@@ -55,7 +55,7 @@ async def test_binds_fresh_request_id_per_request() -> None:
 
 @pytest.mark.parametrize('path', ['/healthz', '/readyz'])
 async def test_skips_excluded_paths(path: str) -> None:
-    seen: dict[str, Any] = {}
+    seen = {}
     middleware = RequestContextMiddleware(
         capturing_app(seen), excludes=frozenset({'/healthz', '/readyz'})
     )
@@ -66,7 +66,7 @@ async def test_skips_excluded_paths(path: str) -> None:
 
 
 async def test_binds_request_id_when_no_excludes_configured() -> None:
-    seen: dict[str, Any] = {}
+    seen = {}
     middleware = RequestContextMiddleware(capturing_app(seen))
 
     await middleware({'type': 'http', 'path': '/healthz'}, receive, send)
@@ -75,7 +75,7 @@ async def test_binds_request_id_when_no_excludes_configured() -> None:
 
 
 async def test_passes_lifespan_scope_through() -> None:
-    seen: dict[str, Any] = {}
+    seen = {}
     middleware = RequestContextMiddleware(capturing_app(seen))
 
     await middleware({'type': 'lifespan'}, receive, send)
