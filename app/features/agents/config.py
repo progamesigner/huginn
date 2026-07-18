@@ -69,27 +69,27 @@ class McpServersConfig(RootModel[dict[str, McpServerConfig]]):
     pass
 
 
-def describe_agent(name: str, agent: AgentConfig) -> str:
+def _describe_agent(name: str, agent: AgentConfig) -> str:
     model = agent.model or 'default'
     tools = ', '.join(tool.name for tool in agent.tools) or 'none'
     servers = ', '.join(ref.server for ref in agent.mcp) or 'none'
     return f'  {name}: model={model} tools={tools} mcp={servers}'
 
 
-def describe_agents(config: HuginnConfig) -> list[str]:
+def _describe_agents(config: HuginnConfig) -> list[str]:
     # NOTE: instructions are secrets by policy; the summary must never echo them
     agents = config.section('agents', AgentsConfig).root
     lines = [f'agents ({len(agents)}):']
-    lines.extend(describe_agent(name, agent) for name, agent in agents.items())
+    lines.extend(_describe_agent(name, agent) for name, agent in agents.items())
     return lines
 
 
-def describe_mcp_servers(config: HuginnConfig) -> list[str]:
+def _describe_mcp_servers(config: HuginnConfig) -> list[str]:
     servers = config.section('mcp_servers', McpServersConfig).root
     return [f'mcp_servers: {", ".join(sorted(servers)) or "none"}']
 
 
-def describe_channels(config: HuginnConfig) -> list[str]:
+def _describe_channels(config: HuginnConfig) -> list[str]:
     channels = config.section('channels', ChannelsConfig)
     if channels.telegram is None:
         return []
@@ -99,7 +99,7 @@ def describe_channels(config: HuginnConfig) -> list[str]:
     return ['channels:', f'  telegram: bindings={bindings} router-fallback={router}']
 
 
-def validate_agents(config: HuginnConfig) -> None:
+def _validate_agents(config: HuginnConfig) -> None:
     mcp_servers = config.section('mcp_servers', McpServersConfig).root
     tools = config.section('tools', ToolsConfig).root
 
@@ -128,7 +128,7 @@ def validate_agents(config: HuginnConfig) -> None:
                 )
 
 
-def validate_channels(config: HuginnConfig) -> None:
+def _validate_channels(config: HuginnConfig) -> None:
     agents = config.section('agents', AgentsConfig).root
 
     if (telegram := config.section('channels', ChannelsConfig).telegram) is not None:
@@ -151,14 +151,14 @@ def build_sections() -> Iterator[SectionSpec]:
         'agents',
         AgentsConfig,
         required=True,
-        describe=describe_agents,
-        validate=validate_agents,
+        describe=_describe_agents,
+        validate=_validate_agents,
     )
     yield SectionSpec('defaults', DefaultsConfig)
-    yield SectionSpec('mcp_servers', McpServersConfig, describe=describe_mcp_servers)
+    yield SectionSpec('mcp_servers', McpServersConfig, describe=_describe_mcp_servers)
     yield SectionSpec(
         'channels',
         ChannelsConfig,
-        describe=describe_channels,
-        validate=validate_channels,
+        describe=_describe_channels,
+        validate=_validate_channels,
     )

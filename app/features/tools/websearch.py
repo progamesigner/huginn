@@ -31,7 +31,7 @@ class WebSearchParams(ToolParams):
     ] = 5
 
 
-def format_result(result: SearchResult, max_results: int) -> str:
+def _format_result(result: SearchResult, max_results: int) -> str:
     lines = [result.answer.strip()] if result.answer.strip() else []
 
     if resources := result.resources[:max_results]:
@@ -61,7 +61,7 @@ class WebSearchTool(Tool[WebSearchParams]):
     @override
     async def run(self, params: WebSearchParams) -> ToolOutput:
         result = await self.client.search(params.query)
-        return format_result(result, params.max_results)
+        return _format_result(result, params.max_results)
 
 
 def build_websearch(http: HTTPClientContract, config: BaseModel) -> WebSearchTool:

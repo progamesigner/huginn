@@ -48,13 +48,13 @@ def _build_tools_config(registry: ToolRegistry) -> type[BaseModel]:
     )
 
 
-def describe_tools(config: HuginnConfig) -> list[str]:
+def _describe_tools(config: HuginnConfig) -> list[str]:
     tools = config.section('tools', ToolsConfig).root
     entries = ', '.join(f'{name} ({tool.kind})' for name, tool in sorted(tools.items()))
     return [f'tools: {entries or "none"}']
 
 
-def validate_tools(config: HuginnConfig, registry: ToolRegistry) -> None:
+def _validate_tools(config: HuginnConfig, registry: ToolRegistry) -> None:
     for name, tool in config.section('tools', ToolsConfig).root.items():
         try:
             registry.get(tool.kind)
@@ -66,6 +66,6 @@ def build_sections(registry: ToolRegistry) -> Iterator[SectionSpec]:
     yield SectionSpec(
         'tools',
         lambda: _build_tools_config(registry),
-        describe=describe_tools,
-        validate=lambda config: validate_tools(config, registry),
+        describe=_describe_tools,
+        validate=lambda config: _validate_tools(config, registry),
     )

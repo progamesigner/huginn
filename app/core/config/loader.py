@@ -20,7 +20,7 @@ from .exceptions import (
 _ENV_PATTERN = re.compile(r'\$\{([A-Za-z_][A-Za-z0-9_]*)\}')
 
 
-def interpolate(text: str, path: str) -> str:
+def _interpolate(text: str, path: str) -> str:
     def replace(match: re.Match[str]) -> str:
         name = match.group(1)
         if name not in os.environ:
@@ -33,7 +33,7 @@ def interpolate(text: str, path: str) -> str:
     return _ENV_PATTERN.sub(replace, text)
 
 
-def resolve_value_from(reference: object, path: str) -> object:
+def _resolve_value_from(reference: object, path: str) -> object:
     match reference:
         case {'env': str(name), **rest} if not rest:
             if name not in os.environ:
@@ -55,30 +55,30 @@ def resolve_value_from(reference: object, path: str) -> object:
             )
 
 
-def resolve_references(node: object, path: str = '') -> object:
+def _resolve_references(node: object, path: str = '') -> object:
     if isinstance(node, dict):
         mapping = cast(dict[str, object], node)
         if mapping.keys() == {'value_from'}:
-            return resolve_value_from(mapping['value_from'], path)
+            return _resolve_value_from(mapping['value_from'], path)
 
         return {
-            key: resolve_references(value, f'{path}.{key}' if path else f'{key}')
+            key: _resolve_references(value, f'{path}.{key}' if path else f'{key}')
             for key, value in mapping.items()
         }
 
     if isinstance(node, list):
         return [
-            resolve_references(item, f'{path}[{index}]')
+            _resolve_references(item, f'{path}[{index}]')
             for index, item in enumerate(node)
         ]
 
     if isinstance(node, str):
-        return interpolate(node, path)
+        return _interpolate(node, path)
 
     return node
 
 
-def read_yaml(path: Path) -> object:
+def _read_yaml(path: Path) -> object:
     try:
         text = path.read_text()
     except OSError as error:
@@ -89,7 +89,7 @@ def read_yaml(path: Path) -> object:
     return yaml.safe_load(text) or {}
 
 
-def parse_sections(
+def _parse_sections(
     resolved: dict[str, JsonValue],
     registry: SectionRegistry,
 ) -> HuginnConfig:
@@ -115,12 +115,12 @@ def parse_sections(
 
 
 def load_config(path: str | Path, registry: SectionRegistry) -> HuginnConfig:
-    raw = read_yaml(Path(path))
-    resolved = resolve_references(raw)
+    raw = _read_yaml(Path(path))
+    resolved = _resolve_references(raw)
     if not isinstance(resolved, dict):
         raise InvalidConfigError('config root must be a mapping of sections')
 
-    config = parse_sections(cast(dict[str, JsonValue], resolved), registry)
+    config = _parse_sections(cast(dict[str, JsonValue], resolved), registry)
 
     for spec in registry:
         if spec.validate is not None:

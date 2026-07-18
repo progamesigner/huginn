@@ -74,24 +74,24 @@ class ToolCallBuilder:
         self.arguments = ''
 
 
-def build_messages(turn: TurnInput) -> Iterator[Message]:
+def _build_messages(turn: TurnInput) -> Iterator[Message]:
     yield Message(role='system', segments=(TextSegment(text=turn.instructions),))
     yield from turn.prior_turns
     yield Message(role='user', segments=(TextSegment(text=turn.user_input),))
 
 
-def assistant_message(text: str, tool_calls: tuple[ToolCallSegment, ...]) -> Message:
+def _assistant_message(text: str, tool_calls: tuple[ToolCallSegment, ...]) -> Message:
     segments: tuple[Segment, ...] = (
         (TextSegment(text=text), *tool_calls) if text else tool_calls
     )
     return Message(role='assistant', segments=segments)
 
 
-def tool_result_messages(results: tuple[ToolResultSegment, ...]) -> Iterator[Message]:
+def _tool_result_messages(results: tuple[ToolResultSegment, ...]) -> Iterator[Message]:
     return (Message(role='tool', segments=(result,)) for result in results)
 
 
-async def execute(
+async def _execute(
     tools: ToolSet,
     call: ToolCallSegment,
     tool_timeout: float,
@@ -122,12 +122,12 @@ async def execute(
     return result, record
 
 
-async def execute_calls(
+async def _execute_calls(
     tools: ToolSet,
     calls: tuple[ToolCallSegment, ...],
     tool_timeout: float,
 ) -> tuple[tuple[ToolResultSegment, ...], Step]:
-    tasks = (execute(tools, call, tool_timeout) for call in calls)
+    tasks = (_execute(tools, call, tool_timeout) for call in calls)
     results, records = cast(
         tuple[tuple[ToolResultSegment, ...], tuple[ToolExecution, ...]],
         zip(*await asyncio.gather(*tasks), strict=True),
@@ -135,7 +135,7 @@ async def execute_calls(
     return results, Step(tools=records)
 
 
-async def consume(
+async def _consume(
     stream: AsyncIterator[CompletionChunk],
     on_text: Callable[[str], None],
 ) -> tuple[str, tuple[ToolCallSegment, ...]]:
@@ -183,7 +183,7 @@ class AgentRunner:
         turn: TurnInput,
         on_text: Callable[[str], None],
     ) -> TurnOutput:
-        history = list(build_messages(turn))
+        history = list(_build_messages(turn))
         steps = []
         text = ''
 
@@ -195,7 +195,7 @@ class AgentRunner:
                         messages=tuple(history),
                         tools=self.tools.schemas(),
                     )
-                    text, tool_calls = await consume(self.llm.stream(request), on_text)
+                    text, tool_calls = await _consume(self.llm.stream(request), on_text)
 
                     if not tool_calls:
                         logger.info(
@@ -209,14 +209,14 @@ class AgentRunner:
                         iteration,
                         len(tool_calls),
                     )
-                    results, step = await execute_calls(
+                    results, step = await _execute_calls(
                         self.tools,
                         tool_calls,
                         turn.tool_timeout,
                     )
                     steps.append(step)
-                    history.append(assistant_message(text, tool_calls))
-                    history.extend(tool_result_messages(results))
+                    history.append(_assistant_message(text, tool_calls))
+                    history.extend(_tool_result_messages(results))
         except TimeoutError as error:
             logger.warning('Turn exceeded turn_timeout=%.1fs', turn.turn_timeout)
             raise TurnTimeout(

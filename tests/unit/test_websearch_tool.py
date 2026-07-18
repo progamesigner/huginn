@@ -8,8 +8,8 @@ from app.features.tools.websearch import (
     WebSearchParams,
     WebSearchTool,
     WebSearchToolConfig,
+    _format_result,
     build_websearch,
-    format_result,
 )
 from lib.http import HTTPClientManager
 
@@ -58,7 +58,7 @@ def test_format_result_lists_numbered_sources_after_answer() -> None:
         ),
     )
 
-    assert format_result(result, max_results=5) == (
+    assert _format_result(result, max_results=5) == (
         'An answer.'
         '\n'
         '\nSources:'
@@ -79,7 +79,7 @@ def test_format_result_caps_sources_at_max_results() -> None:
         ),
     )
 
-    output = format_result(result, max_results=3)
+    output = _format_result(result, max_results=3)
 
     assert output.startswith('Sources:')
     assert '3. T2' in output
@@ -97,14 +97,14 @@ def test_format_result_shortens_long_snippets() -> None:
         ),
     )
 
-    output = format_result(result, max_results=5)
+    output = _format_result(result, max_results=5)
 
     assert '[...]' in output
     assert all(len(line) <= 210 for line in output.splitlines())
 
 
 def test_format_result_reports_when_empty() -> None:
-    assert format_result(SearchResult(), max_results=5) == 'No results found.'
+    assert _format_result(SearchResult(), max_results=5) == 'No results found.'
 
 
 @respx.mock

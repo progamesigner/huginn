@@ -12,7 +12,7 @@ class BuildError(Exception):
     pass
 
 
-def reject_duplicate_providers(
+def _reject_duplicate_providers(
     providers: tuple[ProviderContract, ...],
     items: dict[type[ProviderContract], ProviderContract],
 ) -> None:
@@ -21,7 +21,7 @@ def reject_duplicate_providers(
             raise BuildError(f'duplicate provider {type(provider).__name__}')
 
 
-def include_transitive_dependencies(
+def _include_transitive_dependencies(
     providers: tuple[ProviderContract, ...],
     items: dict[type[ProviderContract], ProviderContract],
 ) -> None:
@@ -46,7 +46,7 @@ def include_transitive_dependencies(
             pending.append(instance)
 
 
-def sort_providers(
+def _sort_providers(
     items: dict[type[ProviderContract], ProviderContract],
 ) -> list[type[ProviderContract]]:
     graph = {key: set(provider.dependencies) for key, provider in items.items()}
@@ -61,10 +61,10 @@ class App(Container):
     def build(self, *providers: ProviderContract) -> Self:
         items = {type(provider): provider for provider in providers}
 
-        reject_duplicate_providers(providers, items)
-        include_transitive_dependencies(providers, items)
+        _reject_duplicate_providers(providers, items)
+        _include_transitive_dependencies(providers, items)
 
-        for key in sort_providers(items):
+        for key in _sort_providers(items):
             logger.info('Registering provider %s', key.__name__)
             provider = items[key]
             provider(self)

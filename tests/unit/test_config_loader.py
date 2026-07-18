@@ -14,10 +14,10 @@ from app.core.config.exceptions import (
     UnknownSectionError,
 )
 from app.core.config.loader import (
-    interpolate,
+    _interpolate,
+    _resolve_references,
+    _resolve_value_from,
     load_config,
-    resolve_references,
-    resolve_value_from,
 )
 from app.features.agents.config import (
     AgentConfig,
@@ -30,8 +30,8 @@ from app.features.agents.config import (
     McpServerConfig,
     McpServersConfig,
     ToolRef,
-    validate_agents,
-    validate_channels,
+    _validate_agents,
+    _validate_channels,
 )
 from app.features.agents.config import build_sections as build_agent_sections
 from app.features.agents.exceptions import (
@@ -40,7 +40,7 @@ from app.features.agents.exceptions import (
     UnknownMcpServerReferenceError,
     UnknownToolReferenceError,
 )
-from app.features.tools.config import ToolConfig, ToolsConfig, validate_tools
+from app.features.tools.config import ToolConfig, ToolsConfig, _validate_tools
 from app.features.tools.config import build_sections as build_tool_sections
 from app.features.tools.exceptions import UnknownToolKindError
 from app.features.tools.registry import ToolRegistry
@@ -125,14 +125,14 @@ def build_app_config(
     )
 
 
-# interpolate()
+# _interpolate()
 
 
 def test_interpolate_substitutes_known_env_var(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv('AGENT_MODEL', 'claude-sonnet-5')
 
     assert (
-        interpolate('model: ${AGENT_MODEL}', 'defaults.model')
+        _interpolate('model: ${AGENT_MODEL}', 'defaults.model')
         == 'model: claude-sonnet-5'
     )
 
@@ -145,16 +145,16 @@ def test_interpolate_raises_for_missing_env_var(
     with pytest.raises(
         MissingEnvironmentVariableError, match=r'defaults\.model.*MISSING_VAR'
     ):
-        interpolate('${MISSING_VAR}', 'defaults.model')
+        _interpolate('${MISSING_VAR}', 'defaults.model')
 
 
-# resolve_value_from()
+# _resolve_value_from()
 
 
 def test_resolve_value_from_env_succeeds(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv('MEMORY_MCP_TOKEN', 'secret-token')
 
-    resolved = resolve_value_from(
+    resolved = _resolve_value_from(
         {'env': 'MEMORY_MCP_TOKEN'}, 'mcp_servers.memory.auth'
     )
 
@@ -168,14 +168,16 @@ def test_resolve_value_from_env_missing_raises(monkeypatch: pytest.MonkeyPatch) 
         MissingEnvironmentVariableError,
         match=r'mcp_servers\.memory\.auth.*MEMORY_MCP_TOKEN',
     ):
-        resolve_value_from({'env': 'MEMORY_MCP_TOKEN'}, 'mcp_servers.memory.auth')
+        _resolve_value_from({'env': 'MEMORY_MCP_TOKEN'}, 'mcp_servers.memory.auth')
 
 
 def test_resolve_value_from_file_succeeds(tmp_path: Path) -> None:
     secret_file = tmp_path / 'felo.token'
     secret_file.write_text('felo-secret\n')
 
-    resolved = resolve_value_from({'file': str(secret_file)}, 'tools.websearch.api_key')
+    resolved = _resolve_value_from(
+        {'file': str(secret_file)}, 'tools.websearch.api_key'
+    )
 
     assert resolved == 'felo-secret'
 
@@ -184,20 +186,20 @@ def test_resolve_value_from_file_missing_raises(tmp_path: Path) -> None:
     missing_file = tmp_path / 'missing.token'
 
     with pytest.raises(MissingConfigFileError, match=r'tools\.websearch\.api_key'):
-        resolve_value_from({'file': str(missing_file)}, 'tools.websearch.api_key')
+        _resolve_value_from({'file': str(missing_file)}, 'tools.websearch.api_key')
 
 
 def test_resolve_value_from_rejects_both_env_and_file() -> None:
     with pytest.raises(InvalidValueReferenceError):
-        resolve_value_from({'env': 'A', 'file': 'b'}, 'mcp_servers.memory.auth')
+        _resolve_value_from({'env': 'A', 'file': 'b'}, 'mcp_servers.memory.auth')
 
 
 def test_resolve_value_from_rejects_unknown_shape() -> None:
     with pytest.raises(InvalidValueReferenceError):
-        resolve_value_from({'bogus': 'A'}, 'mcp_servers.memory.auth')
+        _resolve_value_from({'bogus': 'A'}, 'mcp_servers.memory.auth')
 
 
-# resolve_references()
+# _resolve_references()
 
 
 def test_resolve_references_walks_nested_structure(
@@ -219,7 +221,7 @@ def test_resolve_references_walks_nested_structure(
         },
     }
 
-    resolved = resolve_references(raw)
+    resolved = _resolve_references(raw)
 
     assert resolved == {
         'defaults': {'model': 'claude-sonnet-5'},
@@ -245,7 +247,7 @@ def test_resolve_references_reports_field_path_for_missing_env(
     with pytest.raises(
         MissingEnvironmentVariableError, match=r'tools\.websearch\.api_key'
     ):
-        resolve_references(raw)
+        _resolve_references(raw)
 
 
 # load_config()
@@ -432,7 +434,7 @@ def test_section_spec_resolves_thunk_lazily_and_once() -> None:
     assert calls == [1]
 
 
-# validate_tools() / validate_agents() / validate_channels()
+# _validate_tools() / _validate_agents() / _validate_channels()
 
 
 def test_validators_accept_a_fully_consistent_config() -> None:
@@ -458,16 +460,16 @@ def test_validators_accept_a_fully_consistent_config() -> None:
         ),
     )
 
-    validate_tools(config, build_tool_registry())
-    validate_agents(config)
-    validate_channels(config)
+    _validate_tools(config, build_tool_registry())
+    _validate_agents(config)
+    _validate_channels(config)
 
 
 def test_validate_tools_rejects_unregistered_kind() -> None:
     config = build_app_config(tools={'websearch': websearch_config()})
 
     with pytest.raises(UnknownToolKindError, match=r'tools\.websearch\.kind'):
-        validate_tools(config, ToolRegistry())
+        _validate_tools(config, ToolRegistry())
 
 
 def test_validate_agents_rejects_unknown_tool_reference() -> None:
@@ -479,7 +481,7 @@ def test_validate_agents_rejects_unknown_tool_reference() -> None:
     with pytest.raises(
         UnknownToolReferenceError, match=r'agents\.scout\.tools\[0\]\.name'
     ):
-        validate_agents(config)
+        _validate_agents(config)
 
 
 def test_validate_agents_rejects_unknown_mcp_server() -> None:
@@ -490,7 +492,7 @@ def test_validate_agents_rejects_unknown_mcp_server() -> None:
     with pytest.raises(
         UnknownMcpServerReferenceError, match=r'agents\.scout\.mcp\[0\]\.server'
     ):
-        validate_agents(config)
+        _validate_agents(config)
 
 
 def test_validate_agents_requires_exactly_one_instruction_source() -> None:
@@ -498,10 +500,10 @@ def test_validate_agents_requires_exactly_one_instruction_source() -> None:
     neither = build_agent(instructions=None)
 
     with pytest.raises(AmbiguousInstructionsError, match=r'agents\.scout'):
-        validate_agents(build_app_config(agents={'scout': both}))
+        _validate_agents(build_app_config(agents={'scout': both}))
 
     with pytest.raises(AmbiguousInstructionsError, match=r'agents\.scout'):
-        validate_agents(build_app_config(agents={'scout': neither}))
+        _validate_agents(build_app_config(agents={'scout': neither}))
 
 
 def test_validate_channels_rejects_unknown_binding_agent() -> None:
@@ -511,7 +513,7 @@ def test_validate_channels_rejects_unknown_binding_agent() -> None:
     )
 
     with pytest.raises(UnknownAgentReferenceError, match='bindings'):
-        validate_channels(config)
+        _validate_channels(config)
 
 
 def test_validate_channels_rejects_unknown_router_fallback() -> None:
@@ -523,4 +525,4 @@ def test_validate_channels_rejects_unknown_router_fallback() -> None:
     )
 
     with pytest.raises(UnknownAgentReferenceError, match='fallback'):
-        validate_channels(config)
+        _validate_channels(config)
