@@ -18,7 +18,7 @@ class SectionRegistry:
     specs: Specs
 
     def __init__(self) -> None:
-        self.specs = cast(Specs, {})
+        self.specs = {}
 
     def register(self, spec: SectionSpec) -> None:
         if spec.key in self.specs:

@@ -7,7 +7,7 @@ from pydantic import BaseModel, JsonValue, ValidationError
 from lib.llm import ToolCallSegment, ToolResultSegment
 
 from .exceptions import DuplicateToolError, UnknownToolError
-from .types import Tool, ToolOutput, ToolParams
+from .types import Tool, ToolParams
 
 logger = logging.getLogger(__name__)
 
@@ -28,9 +28,9 @@ class ToolRegistry:
         return {kind: self.configs.get(kind) for kind in self.tools}
 
     def __init__(self) -> None:
-        self.builders = cast(Builders, {})
-        self.configs = cast(Configs, {})
-        self.tools = cast(Tools, {})
+        self.builders = {}
+        self.configs = {}
+        self.tools = {}
 
     def register[P: ToolParams](
         self,
@@ -100,7 +100,7 @@ class ToolSet:
             )
 
         try:
-            output: ToolOutput = await tool.run(params)
+            output = await tool.run(params)
         except Exception:
             logger.exception('Tool %s raised while executing', call.name)
             return ToolResultSegment(

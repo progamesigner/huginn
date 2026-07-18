@@ -181,8 +181,8 @@ def test_use_supports_nested_overrides() -> None:
 
 
 async def test_start_prewarms_only_eager_bindings() -> None:
-    journal: list[str] = []
-    created: list[str] = []
+    journal = []
+    created = []
     container = Container()
     container.bind(
         RecordingManager,
@@ -204,7 +204,7 @@ async def test_start_prewarms_only_eager_bindings() -> None:
 
 
 async def test_dispose_closes_in_reverse_creation_order() -> None:
-    journal: list[str] = []
+    journal = []
     container = Container()
     container.bind(
         RecordingManager,
@@ -225,7 +225,7 @@ async def test_dispose_closes_in_reverse_creation_order() -> None:
 
 
 async def test_start_failure_closes_already_started() -> None:
-    journal: list[str] = []
+    journal = []
     container = Container()
     container.bind(
         RecordingManager,
@@ -307,7 +307,7 @@ def test_to_shares_instance_bindings_but_not_overrides() -> None:
 
 
 async def test_scope_disposes_resolved_instances_without_starting_eager() -> None:
-    journal: list[str] = []
+    journal = []
     container = Container()
     container.bind(
         RecordingManager,
@@ -330,7 +330,7 @@ async def test_scope_disposes_resolved_instances_without_starting_eager() -> Non
 
 
 async def test_scope_disposes_even_when_body_raises() -> None:
-    journal: list[str] = []
+    journal = []
     container = Container()
     container.bind(
         RecordingManager,
@@ -347,7 +347,7 @@ async def test_scope_disposes_even_when_body_raises() -> None:
 
 
 async def test_async_with_starts_and_closes() -> None:
-    journal: list[str] = []
+    journal = []
     container = Container()
     container.bind(
         RecordingManager,

@@ -4,7 +4,7 @@ from collections.abc import AsyncIterator, Sequence
 from typing import Annotated, override
 
 import pytest
-from pydantic import Field
+from pydantic import Field, JsonValue
 from structlog.contextvars import get_contextvars
 
 from app.features.agents.exceptions import TurnTimeout
@@ -79,7 +79,7 @@ class ProbeTool(Tool[ProbeParams]):
     description = 'Capture the contextvars bound during execution'
     params = ProbeParams
 
-    seen: dict[str, object]
+    seen: dict[str, JsonValue]
 
     def __init__(self) -> None:
         self.seen = {}
@@ -134,7 +134,7 @@ async def test_run_returns_text_immediately_when_no_tool_calls() -> None:
         ]
     )
     runner = AgentRunner(llm, make_toolset())
-    fragments: list[str] = []
+    fragments = []
 
     output = await runner.run(make_turn(), fragments.append)
 

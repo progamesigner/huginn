@@ -15,7 +15,6 @@ from lib.llm import (
     FinishChunk,
     LLMClient,
     Message,
-    Segment,
     TextChunk,
     TextSegment,
     ThinkingChunk,
@@ -81,9 +80,7 @@ def _build_messages(turn: TurnInput) -> Iterator[Message]:
 
 
 def _assistant_message(text: str, tool_calls: tuple[ToolCallSegment, ...]) -> Message:
-    segments: tuple[Segment, ...] = (
-        (TextSegment(text=text), *tool_calls) if text else tool_calls
-    )
+    segments = (TextSegment(text=text), *tool_calls) if text else tool_calls
     return Message(role='assistant', segments=segments)
 
 
@@ -140,7 +137,7 @@ async def _consume(
     on_text: Callable[[str], None],
 ) -> tuple[str, tuple[ToolCallSegment, ...]]:
     fragments = []
-    calls = cast(dict[int, ToolCallBuilder], {})
+    calls = {}
 
     async for chunk in stream:
         match chunk:

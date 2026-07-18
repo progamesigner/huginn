@@ -1,5 +1,5 @@
 from collections.abc import Iterator
-from typing import Annotated, Literal, cast
+from typing import Annotated, Literal
 
 from pydantic import Field, HttpUrl, JsonValue, RootModel, SecretStr
 
@@ -29,13 +29,13 @@ class McpServerConfig(ConfigValue):
 
 class ToolRef(ConfigValue):
     name: Annotated[str, Field()]
-    params: Annotated[dict[str, JsonValue], Field()] = cast(dict[str, JsonValue], {})
+    params: Annotated[dict[str, JsonValue], Field()] = Field(default_factory=dict)
 
 
 class McpRef(ConfigValue):
     server: Annotated[str, Field()]
     allow: Annotated[tuple[str, ...], Field()] = ()
-    inject: Annotated[dict[str, str], Field()] = cast(dict[str, str], {})
+    inject: Annotated[dict[str, str], Field()] = Field(default_factory=dict)
 
 
 class AgentConfig(ConfigValue):
@@ -53,7 +53,7 @@ class ChannelRouterConfig(ConfigValue):
 
 
 class ChannelConfig(ConfigValue):
-    bindings: Annotated[dict[str, str], Field()] = cast(dict[str, str], {})
+    bindings: Annotated[dict[str, str], Field()] = Field(default_factory=dict)
     router: Annotated[ChannelRouterConfig | None, Field()] = None
 
 

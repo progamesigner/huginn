@@ -2,7 +2,6 @@ import json
 import os
 import re
 from pathlib import Path
-from typing import cast
 
 import yaml
 from pydantic import JsonValue
@@ -15,7 +14,7 @@ from .exceptions import (
     MissingSectionError,
     UnknownSectionError,
 )
-from .registry import HuginnConfig, SectionRegistry, Sections
+from .registry import HuginnConfig, SectionRegistry
 
 _ENV_PATTERN = re.compile(r'\$\{([A-Za-z_][A-Za-z0-9_]*)\}')
 
@@ -57,13 +56,12 @@ def _resolve_value_from(reference: JsonValue, path: str) -> JsonValue:
 
 def _resolve_references(node: JsonValue, path: str = '') -> JsonValue:
     if isinstance(node, dict):
-        mapping = cast(dict[str, JsonValue], node)
-        if mapping.keys() == {'value_from'}:
-            return _resolve_value_from(mapping['value_from'], path)
+        if node.keys() == {'value_from'}:
+            return _resolve_value_from(node['value_from'], path)
 
         return {
             key: _resolve_references(value, f'{path}.{key}' if path else f'{key}')
-            for key, value in mapping.items()
+            for key, value in node.items()
         }
 
     if isinstance(node, list):
@@ -99,7 +97,7 @@ def _parse_sections(
             f'unknown config sections: {", ".join(unknown)}; known: {known}'
         )
 
-    sections = cast(Sections, {})
+    sections = {}
     for spec in registry:
         node = resolved.get(spec.key)
         if node is None:
@@ -120,7 +118,7 @@ def load_config(path: str | Path, registry: SectionRegistry) -> HuginnConfig:
     if not isinstance(resolved, dict):
         raise InvalidConfigError('config root must be a mapping of sections')
 
-    config = _parse_sections(cast(dict[str, JsonValue], resolved), registry)
+    config = _parse_sections(resolved, registry)
 
     for spec in registry:
         if spec.validate is not None:

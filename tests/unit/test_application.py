@@ -18,7 +18,7 @@ from lib.observability import Logger
 
 
 def test_build_registers_dependencies_first() -> None:
-    journal: list[str] = []
+    journal = []
 
     class Base(ProviderContract):
         @override
@@ -38,7 +38,7 @@ def test_build_registers_dependencies_first() -> None:
 
 
 def test_build_auto_includes_declared_dependency() -> None:
-    journal: list[str] = []
+    journal = []
 
     class Base(ProviderContract):
         @override
@@ -58,7 +58,7 @@ def test_build_auto_includes_declared_dependency() -> None:
 
 
 def test_build_auto_includes_transitive_dependencies() -> None:
-    journal: list[str] = []
+    journal = []
 
     class Root(ProviderContract):
         @override
@@ -85,7 +85,7 @@ def test_build_auto_includes_transitive_dependencies() -> None:
 
 
 def test_build_prefers_explicit_instance_over_auto_include() -> None:
-    seen: list[object] = []
+    seen = []
 
     class Base(ProviderContract):
         @override

@@ -97,12 +97,11 @@ def build_section_registry(tools: ToolRegistry | None = None) -> SectionRegistry
 
 
 def build_agent(**overrides: object) -> AgentConfig:
-    fields: dict[str, object] = {
+    fields = {
         'description': 'General-purpose research agent',
         'instructions': 'You are scout.',
     }
-    fields.update(overrides)
-    return AgentConfig.model_validate(fields)
+    return AgentConfig.model_validate(fields | overrides)
 
 
 def websearch_config() -> WebSearchToolConfig:
@@ -420,7 +419,7 @@ def test_section_spec_resolves_concrete_model_to_itself() -> None:
 
 
 def test_section_spec_resolves_thunk_lazily_and_once() -> None:
-    calls: list[int] = []
+    calls = []
 
     def thunk() -> type[DefaultsConfig]:
         calls.append(1)

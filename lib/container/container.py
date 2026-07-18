@@ -20,7 +20,7 @@ class Registration:
 
 
 def wire[T](constructor: type[T]) -> Callable[[ContainerContract], T]:
-    bindings = cast(dict[str, type[object]], {})
+    bindings = {}
 
     for parameter in signature(constructor).parameters.values():
         if parameter.kind in (Parameter.VAR_KEYWORD, Parameter.VAR_POSITIONAL):
@@ -57,10 +57,10 @@ class Container(ContainerContract):
     resolving: Resolving
 
     def __init__(self) -> None:
-        self.instances = cast(Instances, {})
-        self.overrides = cast(Instances, {})
-        self.registry = cast(Registry, {})
-        self.resolving = cast(Resolving, [])
+        self.instances = {}
+        self.overrides = {}
+        self.registry = {}
+        self.resolving = []
 
     @override
     def alias[T](self, binding: type[T], alias: type[T]) -> None:
@@ -181,7 +181,7 @@ class Container(ContainerContract):
 
     @override
     async def dispose(self) -> None:
-        errors = cast(list[Exception], [])
+        errors = []
 
         # NOTE: snapshot; a disposing manager may resolve and grow instances mid-loop
         for instance in reversed(list(self.instances.values())):

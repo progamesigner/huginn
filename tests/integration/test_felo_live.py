@@ -78,7 +78,7 @@ async def test_agent_loop_with_websearch_live() -> None:
         model=_OPENAI_MODEL,
     )
 
-    fragments: list[str] = []
+    fragments = []
     output = await AgentRunner(llm, tools).run(turn, fragments.append)
 
     executions = [record for step in output.steps for record in step.tools]

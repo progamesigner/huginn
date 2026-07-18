@@ -170,7 +170,7 @@ async def test_exception_handlers_are_wired_to_the_app() -> None:
 
 
 async def test_lifespan_is_entered_and_exited() -> None:
-    events: list[str] = []
+    events = []
 
     @asynccontextmanager
     async def lifespan(_: object) -> AsyncIterator[None]:
