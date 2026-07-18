@@ -5,7 +5,7 @@ from typing import Annotated, Literal, override
 import pytest
 from pydantic import Field, HttpUrl, SecretStr, ValidationError
 
-from app.core.config import HuginnConfig, SectionRegistry, SectionSpec
+from app.core.config.composition import HuginnConfig, SectionRegistry, SectionSpec
 from app.core.config.exceptions import (
     InvalidValueReferenceError,
     MissingConfigFileError,
@@ -40,18 +40,12 @@ from app.features.agents.exceptions import (
     UnknownMcpServerReferenceError,
     UnknownToolReferenceError,
 )
-from app.features.tools import (
-    Tool,
-    ToolConfig,
-    ToolOutput,
-    ToolParams,
-    ToolRegistry,
-    ToolsConfig,
-    UnknownToolKindError,
-    WebSearchToolConfig,
-)
+from app.features.tools.config import ToolConfig, ToolsConfig, validate_tools
 from app.features.tools.config import build_sections as build_tool_sections
-from app.features.tools.config import validate_tools
+from app.features.tools.exceptions import UnknownToolKindError
+from app.features.tools.registry import ToolRegistry
+from app.features.tools.types import Tool, ToolOutput, ToolParams
+from app.features.tools.websearch import WebSearchToolConfig
 
 
 class SearchParams(ToolParams):

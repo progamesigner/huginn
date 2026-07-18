@@ -3,15 +3,9 @@ from typing import Annotated, override
 import pytest
 from pydantic import BaseModel, Field
 
-from app.features.tools import (
-    DuplicateToolError,
-    Tool,
-    ToolOutput,
-    ToolParams,
-    ToolRegistry,
-    ToolSet,
-    UnknownToolError,
-)
+from app.features.tools.exceptions import DuplicateToolError, UnknownToolError
+from app.features.tools.registry import ToolRegistry, ToolSet
+from app.features.tools.types import Tool, ToolOutput, ToolParams
 
 
 class GreetParams(ToolParams):

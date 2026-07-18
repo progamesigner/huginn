@@ -8,7 +8,7 @@ from uuid import uuid4
 
 from structlog.contextvars import bound_contextvars
 
-from app.features.tools import ToolSet
+from app.features.tools.registry import ToolSet
 from lib.llm import (
     CompletionChunk,
     CompletionRequest,

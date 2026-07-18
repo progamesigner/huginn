@@ -4,8 +4,13 @@ import respx
 from pydantic import SecretStr, ValidationError
 
 from app.exts.felo.client import FeloClient, SearchResource, SearchResult
-from app.features.tools import WebSearchParams, WebSearchTool, WebSearchToolConfig
-from app.features.tools.websearch import build_websearch, format_result
+from app.features.tools.websearch import (
+    WebSearchParams,
+    WebSearchTool,
+    WebSearchToolConfig,
+    build_websearch,
+    format_result,
+)
 from lib.http import HTTPClientManager
 
 _PAYLOAD = {

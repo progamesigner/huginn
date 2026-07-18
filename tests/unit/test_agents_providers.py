@@ -1,5 +1,5 @@
 from app.core.application import App
-from app.core.config import SectionRegistry
+from app.core.config.composition import SectionRegistry
 from app.features.agents.providers import AgentsConfigProvider
 from app.features.tools.providers import (
     ToolRegistryProvider,

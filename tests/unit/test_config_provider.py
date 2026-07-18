@@ -3,7 +3,8 @@ from pathlib import Path
 import pytest
 
 from app.core.application import App
-from app.core.config import HuginnConfig, MissingConfigFileError
+from app.core.config.composition import HuginnConfig
+from app.core.config.exceptions import MissingConfigFileError
 from app.core.providers.config import ConfigProvider
 from app.features.agents.config import AgentsConfig
 from app.features.agents.providers import AgentsConfigProvider

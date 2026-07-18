@@ -1,4 +1,4 @@
-from app.core.config import ConfigError
+from app.core.config.exceptions import ConfigError
 
 
 class ToolError(Exception):

@@ -3,8 +3,9 @@ from typing import Annotated, Literal, cast
 
 from pydantic import Field, HttpUrl, JsonValue, RootModel, SecretStr
 
-from app.core.config import ConfigValue, HuginnConfig, SectionSpec
-from app.features.tools import ToolsConfig
+from app.core.config.composition import HuginnConfig, SectionSpec
+from app.core.config.schema import ConfigValue
+from app.features.tools.config import ToolsConfig
 
 from .exceptions import (
     AmbiguousInstructionsError,

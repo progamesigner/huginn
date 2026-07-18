@@ -9,7 +9,8 @@ from structlog.contextvars import get_contextvars
 
 from app.features.agents.exceptions import TurnTimeout
 from app.features.agents.services import AgentRunner, TurnInput
-from app.features.tools import Tool, ToolOutput, ToolParams, ToolSet
+from app.features.tools.registry import ToolSet
+from app.features.tools.types import Tool, ToolOutput, ToolParams
 from lib.llm import (
     CompletionChunk,
     CompletionRequest,
