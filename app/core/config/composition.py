@@ -1,5 +1,6 @@
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass
+from functools import cached_property
 from typing import cast
 
 from pydantic import BaseModel
@@ -8,6 +9,7 @@ from .exceptions import DuplicateSectionError, UnknownSectionError
 
 type SectionDescriber = Callable[[HuginnConfig], list[str]]
 type SectionValidator = Callable[[HuginnConfig], None]
+type SectionModel = type[BaseModel] | Callable[[], type[BaseModel]]
 type Sections = dict[str, BaseModel]
 type Specs = dict[str, SectionSpec]
 
@@ -34,10 +36,17 @@ class HuginnConfig:
 @dataclass(frozen=True)
 class SectionSpec:
     key: str
-    model: type[BaseModel]
+    model: SectionModel
     required: bool = False
     describe: SectionDescriber | None = None
     validate: SectionValidator | None = None
+
+    @cached_property
+    def resolved_model(self) -> type[BaseModel]:
+        # NOTE: thunk models resolve lazily, after every provider has contributed
+        model = self.model
+        resolved = model if isinstance(model, type) else model()
+        return cast(type[BaseModel], resolved)
 
 
 class SectionRegistry:
@@ -58,7 +67,9 @@ class SectionRegistry:
         return {
             'type': 'object',
             'additionalProperties': False,
-            'properties': {spec.key: spec.model.model_json_schema() for spec in self},
+            'properties': {
+                spec.key: spec.resolved_model.model_json_schema() for spec in self
+            },
             'required': [spec.key for spec in self if spec.required],
         }
 

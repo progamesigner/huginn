@@ -109,7 +109,7 @@ def parse_sections(
             node = {}
 
         # NOTE: Use JSON-mode so strict mode accepts YAML's plain lists as tuples
-        sections[spec.key] = spec.model.model_validate_json(json.dumps(node))
+        sections[spec.key] = spec.resolved_model.model_validate_json(json.dumps(node))
 
     return HuginnConfig(sections)
 

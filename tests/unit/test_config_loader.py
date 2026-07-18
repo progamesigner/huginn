@@ -1,10 +1,11 @@
+import json
 from pathlib import Path
-from typing import Annotated, override
+from typing import Annotated, Literal, override
 
 import pytest
-from pydantic import Field, HttpUrl, SecretStr
+from pydantic import Field, HttpUrl, SecretStr, ValidationError
 
-from app.core.config import HuginnConfig, SectionRegistry
+from app.core.config import HuginnConfig, SectionRegistry, SectionSpec
 from app.core.config.exceptions import (
     InvalidValueReferenceError,
     MissingConfigFileError,
@@ -41,6 +42,7 @@ from app.features.agents.exceptions import (
 )
 from app.features.tools import (
     Tool,
+    ToolConfig,
     ToolOutput,
     ToolParams,
     ToolRegistry,
@@ -66,9 +68,28 @@ class WebSearchTool(Tool[SearchParams]):
         return 'ok'
 
 
+class FakeParams(ToolParams):
+    pass
+
+
+class FakeTool(Tool[FakeParams]):
+    name = 'faketool'
+    description = 'Fake tool kind that lives outside features/tools/config.py'
+    params = FakeParams
+
+    @override
+    async def run(self, params: FakeParams) -> ToolOutput:
+        return 'ok'
+
+
+class FakeToolConfig(ToolConfig):
+    kind: Annotated[Literal['faketool'], Field()]
+    setting: Annotated[str, Field()] = 'default'
+
+
 def build_tool_registry() -> ToolRegistry:
     registry = ToolRegistry()
-    registry.register(WebSearchTool)
+    registry.register(WebSearchTool, WebSearchToolConfig)
     return registry
 
 
@@ -311,11 +332,110 @@ def test_load_config_resolves_env_and_value_from_then_validates(
     tools = config.section('tools', ToolsConfig).root
     channels = config.section('channels', ChannelsConfig)
 
+    websearch = tools['websearch']
+    assert isinstance(websearch, WebSearchToolConfig)
+
     assert config.section('defaults', DefaultsConfig).model == 'claude-sonnet-5'
-    assert tools['websearch'].api_key.get_secret_value() == 'felo-secret'
+    assert websearch.api_key.get_secret_value() == 'felo-secret'
     assert agents['scout'].instructions == 'You speak for claude-sonnet-5.'
     assert channels.telegram is not None
     assert channels.telegram.bindings['12345'] == 'scout'
+
+
+def test_new_tool_kind_parses_and_schemas_without_touching_config_module(
+    tmp_path: Path,
+) -> None:
+    registry = ToolRegistry()
+    registry.register(WebSearchTool, WebSearchToolConfig)
+    registry.register(FakeTool, FakeToolConfig)
+    section_registry = build_section_registry(registry)
+
+    config_file = tmp_path / 'huginn.yaml'
+    config_file.write_text(
+        'tools:\n'
+        '  custom:\n'
+        '    kind: faketool\n'
+        '    setting: hi\n'
+        'agents:\n'
+        '  scout:\n'
+        '    description: x\n'
+        '    instructions: y\n'
+        '    tools: [{name: custom}]\n'
+    )
+
+    config = load_config(config_file, section_registry)
+
+    custom = config.section('tools', ToolsConfig).root['custom']
+    assert custom.kind == 'faketool'
+    assert isinstance(custom, FakeToolConfig)
+    assert 'faketool' in json.dumps(section_registry.schema())
+
+
+def test_configless_tool_kind_parses_as_base_tool_config(tmp_path: Path) -> None:
+    registry = ToolRegistry()
+    registry.register(WebSearchTool, WebSearchToolConfig)
+    registry.register(FakeTool)
+    section_registry = build_section_registry(registry)
+
+    config_file = tmp_path / 'huginn.yaml'
+    config_file.write_text(
+        'tools:\n'
+        '  custom:\n'
+        '    kind: faketool\n'
+        'agents:\n'
+        '  scout:\n'
+        '    description: x\n'
+        '    instructions: y\n'
+        '    tools: [{name: custom}]\n'
+    )
+
+    config = load_config(config_file, section_registry)
+
+    custom = config.section('tools', ToolsConfig).root['custom']
+    assert type(custom) is ToolConfig
+    assert custom.kind == 'faketool'
+
+
+def test_unknown_tool_kind_fails_at_parse_listing_registered_tags(
+    tmp_path: Path,
+) -> None:
+    config_file = tmp_path / 'huginn.yaml'
+    config_file.write_text(
+        'tools:\n'
+        '  mystery:\n'
+        '    kind: bogus\n'
+        'agents:\n'
+        '  scout:\n'
+        '    description: x\n'
+        '    instructions: y\n'
+    )
+
+    with pytest.raises(ValidationError, match=r"'bogus'.*'websearch'"):
+        load_config(config_file, build_section_registry())
+
+
+# SectionSpec.resolved_model
+
+
+def test_section_spec_resolves_concrete_model_to_itself() -> None:
+    spec = SectionSpec('defaults', DefaultsConfig)
+
+    assert spec.resolved_model is DefaultsConfig
+
+
+def test_section_spec_resolves_thunk_lazily_and_once() -> None:
+    calls: list[int] = []
+
+    def thunk() -> type[DefaultsConfig]:
+        calls.append(1)
+        return DefaultsConfig
+
+    spec = SectionSpec('defaults', thunk)
+    assert calls == []
+
+    assert spec.resolved_model is DefaultsConfig
+    assert spec.resolved_model is DefaultsConfig
+    assert calls == [1]
 
 
 # validate_tools() / validate_agents() / validate_channels()

@@ -1,7 +1,6 @@
 from .config import (
     ToolConfig,
     ToolsConfig,
-    WebSearchToolConfig,
 )
 from .exceptions import (
     DuplicateToolError,
@@ -12,7 +11,7 @@ from .exceptions import (
 from .providers import ToolsConfigProvider
 from .registry import ToolRegistry, ToolSet
 from .types import Tool, ToolOutput, ToolParams
-from .websearch import WebSearchParams, WebSearchTool
+from .websearch import WebSearchParams, WebSearchTool, WebSearchToolConfig
 
 __all__ = [
     'DuplicateToolError',

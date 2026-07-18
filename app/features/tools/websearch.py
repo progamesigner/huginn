@@ -1,14 +1,21 @@
 from textwrap import shorten
-from typing import Annotated, override
+from typing import Annotated, Literal, override
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, HttpUrl, SecretStr
 
 from app.exts.felo.client import FeloClient, SearchResult
 from lib.http import HTTPClientContract
 
-from .config import WebSearchToolConfig
+from .config import ToolConfig
 from .exceptions import ToolError
 from .types import Tool, ToolOutput, ToolParams
+
+
+class WebSearchToolConfig(ToolConfig):
+    kind: Annotated[Literal['websearch'], Field()]
+    api_key: Annotated[SecretStr, Field()]
+    base_url: Annotated[HttpUrl, Field()] = HttpUrl('https://openapi.felo.ai')
+
 
 _SNIPPET_WIDTH = 200
 

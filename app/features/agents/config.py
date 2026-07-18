@@ -1,3 +1,4 @@
+from collections.abc import Iterator
 from typing import Annotated, Literal, cast
 
 from pydantic import Field, HttpUrl, JsonValue, RootModel, SecretStr
@@ -143,22 +144,20 @@ def validate_channels(config: HuginnConfig) -> None:
             )
 
 
-def build_sections() -> tuple[SectionSpec, ...]:
+def build_sections() -> Iterator[SectionSpec]:
     # TODO: channels is contributed here until a channel feature exists (M2)
-    return (
-        SectionSpec(
-            'agents',
-            AgentsConfig,
-            required=True,
-            describe=describe_agents,
-            validate=validate_agents,
-        ),
-        SectionSpec('defaults', DefaultsConfig),
-        SectionSpec('mcp_servers', McpServersConfig, describe=describe_mcp_servers),
-        SectionSpec(
-            'channels',
-            ChannelsConfig,
-            describe=describe_channels,
-            validate=validate_channels,
-        ),
+    yield SectionSpec(
+        'agents',
+        AgentsConfig,
+        required=True,
+        describe=describe_agents,
+        validate=validate_agents,
+    )
+    yield SectionSpec('defaults', DefaultsConfig)
+    yield SectionSpec('mcp_servers', McpServersConfig, describe=describe_mcp_servers)
+    yield SectionSpec(
+        'channels',
+        ChannelsConfig,
+        describe=describe_channels,
+        validate=validate_channels,
     )

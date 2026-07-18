@@ -13,21 +13,29 @@ logger = logging.getLogger(__name__)
 
 type ToolBuilder = Callable[[BaseModel], Tool[ToolParams]]
 type Builders = dict[str, ToolBuilder]
+type Configs = dict[str, type[BaseModel]]
 type Instances = dict[str, Tool[ToolParams]]
 type Tools = dict[str, type[Tool[ToolParams]]]
 
 
 class ToolRegistry:
     builders: Builders
+    configs: Configs
     tools: Tools
+
+    @property
+    def config_models(self) -> dict[str, type[BaseModel] | None]:
+        return {kind: self.configs.get(kind) for kind in self.tools}
 
     def __init__(self) -> None:
         self.builders = cast(Builders, {})
+        self.configs = cast(Configs, {})
         self.tools = cast(Tools, {})
 
     def register[P: ToolParams](
         self,
         tool: type[Tool[P]],
+        config: type[BaseModel] | None = None,
         build: Callable[[BaseModel], Tool[P]] | None = None,
     ) -> None:
         if tool.name in self.tools:
@@ -35,6 +43,12 @@ class ToolRegistry:
 
         self.tools[tool.name] = cast(type[Tool[ToolParams]], tool)
         self.builders[tool.name] = cast(ToolBuilder, build or (lambda _: tool()))
+        if config is not None:
+            self.configs[tool.name] = config
+
+    def build(self, kind: str, config: BaseModel) -> Tool[ToolParams]:
+        self.get(kind)
+        return self.builders[kind](config)
 
     def get(self, kind: str) -> type[Tool[ToolParams]]:
         if kind not in self.tools:
@@ -42,10 +56,6 @@ class ToolRegistry:
             raise UnknownToolError(f'unknown tool {kind!r}; available: {available}')
 
         return self.tools[kind]
-
-    def build(self, kind: str, config: BaseModel) -> Tool[ToolParams]:
-        self.get(kind)
-        return self.builders[kind](config)
 
 
 class ToolSet:

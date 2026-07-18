@@ -87,6 +87,20 @@ def test_build_rejects_unknown_kind() -> None:
         registry.build('greet', GreetConfig(greeting='hi'))
 
 
+def test_register_records_config_model() -> None:
+    registry = ToolRegistry()
+    registry.register(GreetTool, GreetConfig)
+
+    assert registry.config_models == {'greet': GreetConfig}
+
+
+def test_config_models_maps_configless_tools_to_none() -> None:
+    registry = ToolRegistry()
+    registry.register(GreetTool)
+
+    assert registry.config_models == {'greet': None}
+
+
 def test_toolset_schemas_use_instance_names() -> None:
     tools = ToolSet()
     tools.add('greet-a', GreetTool())
