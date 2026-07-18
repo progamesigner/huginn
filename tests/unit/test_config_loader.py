@@ -5,7 +5,6 @@ from typing import Annotated, Literal, override
 import pytest
 from pydantic import Field, HttpUrl, SecretStr, ValidationError
 
-from app.core.config.composition import HuginnConfig, SectionRegistry, SectionSpec
 from app.core.config.exceptions import (
     InvalidValueReferenceError,
     MissingConfigFileError,
@@ -19,6 +18,7 @@ from app.core.config.loader import (
     _resolve_value_from,
     load_config,
 )
+from app.core.config.registry import HuginnConfig, SectionRegistry, SectionSpec
 from app.features.agents.config import (
     AgentConfig,
     AgentsConfig,
@@ -410,13 +410,13 @@ def test_unknown_tool_kind_fails_at_parse_listing_registered_tags(
         load_config(config_file, build_section_registry())
 
 
-# SectionSpec.resolved_model
+# SectionSpec.resolved
 
 
 def test_section_spec_resolves_concrete_model_to_itself() -> None:
     spec = SectionSpec('defaults', DefaultsConfig)
 
-    assert spec.resolved_model is DefaultsConfig
+    assert spec.resolved is DefaultsConfig
 
 
 def test_section_spec_resolves_thunk_lazily_and_once() -> None:
@@ -429,8 +429,8 @@ def test_section_spec_resolves_thunk_lazily_and_once() -> None:
     spec = SectionSpec('defaults', thunk)
     assert calls == []
 
-    assert spec.resolved_model is DefaultsConfig
-    assert spec.resolved_model is DefaultsConfig
+    assert spec.resolved is DefaultsConfig
+    assert spec.resolved is DefaultsConfig
     assert calls == [1]
 
 

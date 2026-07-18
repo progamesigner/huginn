@@ -5,7 +5,7 @@ from typing import Annotated, Any
 
 from pydantic import BaseModel, Discriminator, Field, RootModel, Tag, create_model
 
-from app.core.config.composition import HuginnConfig, SectionSpec
+from app.core.config.registry import HuginnConfig, SectionSpec
 from app.core.config.schema import ConfigValue
 
 from .exceptions import UnknownToolError, UnknownToolKindError

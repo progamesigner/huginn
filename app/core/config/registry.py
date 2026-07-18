@@ -14,41 +14,6 @@ type Sections = dict[str, BaseModel]
 type Specs = dict[str, SectionSpec]
 
 
-@dataclass(frozen=True)
-class HuginnConfig:
-    sections: Sections
-
-    def section[S: BaseModel](self, key: str, model: type[S]) -> S:
-        if key not in self.sections:
-            known = ', '.join(sorted(self.sections)) or 'none'
-            raise UnknownSectionError(f'unknown config section {key!r}; known: {known}')
-
-        value = self.sections[key]
-        if not isinstance(value, model):
-            raise UnknownSectionError(
-                f'config section {key!r} is {type(value).__name__},'
-                f' not {model.__name__}'
-            )
-
-        return value
-
-
-@dataclass(frozen=True)
-class SectionSpec:
-    key: str
-    model: SectionModel
-    required: bool = False
-    describe: SectionDescriber | None = None
-    validate: SectionValidator | None = None
-
-    @cached_property
-    def resolved_model(self) -> type[BaseModel]:
-        # NOTE: thunk models resolve lazily, after every provider has contributed
-        model = self.model
-        resolved = model if isinstance(model, type) else model()
-        return cast(type[BaseModel], resolved)
-
-
 class SectionRegistry:
     specs: Specs
 
@@ -68,7 +33,7 @@ class SectionRegistry:
             'type': 'object',
             'additionalProperties': False,
             'properties': {
-                spec.key: spec.resolved_model.model_json_schema() for spec in self
+                spec.key: spec.resolved.model_json_schema() for spec in self
             },
             'required': [spec.key for spec in self if spec.required],
         }
@@ -78,3 +43,38 @@ class SectionRegistry:
 
     def __iter__(self) -> Iterator[SectionSpec]:
         return iter(self.specs.values())
+
+
+@dataclass(frozen=True)
+class SectionSpec:
+    key: str
+    model: SectionModel
+    required: bool = False
+    describe: SectionDescriber | None = None
+    validate: SectionValidator | None = None
+
+    @cached_property
+    def resolved(self) -> type[BaseModel]:
+        # NOTE: thunk models resolve lazily, after every provider has contributed
+        model = self.model
+        resolved = model if isinstance(model, type) else model()
+        return cast(type[BaseModel], resolved)
+
+
+@dataclass(frozen=True)
+class HuginnConfig:
+    sections: Sections
+
+    def section[S: BaseModel](self, key: str, model: type[S]) -> S:
+        if key not in self.sections:
+            known = ', '.join(sorted(self.sections)) or 'none'
+            raise UnknownSectionError(f'unknown config section {key!r}; known: {known}')
+
+        value = self.sections[key]
+        if not isinstance(value, model):
+            raise UnknownSectionError(
+                f'config section {key!r} is {type(value).__name__},'
+                f' not {model.__name__}'
+            )
+
+        return value

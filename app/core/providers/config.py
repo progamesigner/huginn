@@ -2,8 +2,8 @@ from pathlib import Path
 from typing import override
 
 from app.core.config.commands import build_commands
-from app.core.config.composition import HuginnConfig, SectionRegistry
 from app.core.config.loader import load_config
+from app.core.config.registry import HuginnConfig, SectionRegistry
 from app.core.settings import HuginnSettings
 from lib.command import CommandContract
 from lib.container import ContainerContract, ProviderContract

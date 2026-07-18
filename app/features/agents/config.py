@@ -3,7 +3,7 @@ from typing import Annotated, Literal, cast
 
 from pydantic import Field, HttpUrl, JsonValue, RootModel, SecretStr
 
-from app.core.config.composition import HuginnConfig, SectionSpec
+from app.core.config.registry import HuginnConfig, SectionSpec
 from app.core.config.schema import ConfigValue
 from app.features.tools.config import ToolsConfig
 

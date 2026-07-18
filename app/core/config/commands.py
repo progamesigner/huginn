@@ -8,9 +8,9 @@ from app.core.settings import HuginnSettings
 from lib.command import Argument, Exit, Typer, echo
 from lib.container import ContainerContract
 
-from .composition import SectionRegistry
 from .exceptions import ConfigError
 from .loader import load_config
+from .registry import SectionRegistry
 
 
 def build_commands(container: ContainerContract) -> Typer:

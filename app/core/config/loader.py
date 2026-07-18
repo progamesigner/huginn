@@ -7,7 +7,6 @@ from typing import cast
 import yaml
 from pydantic import JsonValue
 
-from .composition import HuginnConfig, SectionRegistry, Sections
 from .exceptions import (
     InvalidConfigError,
     InvalidValueReferenceError,
@@ -16,6 +15,7 @@ from .exceptions import (
     MissingSectionError,
     UnknownSectionError,
 )
+from .registry import HuginnConfig, SectionRegistry, Sections
 
 _ENV_PATTERN = re.compile(r'\$\{([A-Za-z_][A-Za-z0-9_]*)\}')
 
@@ -109,7 +109,7 @@ def _parse_sections(
             node = {}
 
         # NOTE: Use JSON-mode so strict mode accepts YAML's plain lists as tuples
-        sections[spec.key] = spec.resolved_model.model_validate_json(json.dumps(node))
+        sections[spec.key] = spec.resolved.model_validate_json(json.dumps(node))
 
     return HuginnConfig(sections)
 

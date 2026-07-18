@@ -1,6 +1,6 @@
 from typing import override
 
-from app.core.config.composition import SectionRegistry
+from app.core.config.registry import SectionRegistry
 from app.core.providers.config import ConfigProvider
 from app.features.tools.providers import ToolsConfigProvider
 from lib.container import ContainerContract, ProviderContract
