@@ -20,6 +20,10 @@ from app.core.config.loader import (
 )
 from app.core.config.registry import HuginnConfig, SectionRegistry, SectionSpec
 from app.features.agents.config import (
+    AGENTS,
+    CHANNELS,
+    DEFAULTS,
+    MCP_SERVERS,
     AgentConfig,
     AgentsConfig,
     ChannelConfig,
@@ -40,7 +44,7 @@ from app.features.agents.exceptions import (
     UnknownMcpServerReferenceError,
     UnknownToolReferenceError,
 )
-from app.features.tools.config import ToolConfig, ToolsConfig, _validate_tools
+from app.features.tools.config import TOOLS, ToolConfig, ToolsConfig, _validate_tools
 from app.features.tools.config import build_sections as build_tool_sections
 from app.features.tools.exceptions import UnknownToolKindError
 from app.features.tools.registry import ToolRegistry
@@ -281,10 +285,10 @@ def test_load_config_defaults_optional_sections(tmp_path: Path) -> None:
 
     config = load_config(config_file, build_section_registry())
 
-    assert config.section('defaults', DefaultsConfig).model is None
-    assert config.section('tools', ToolsConfig).root == {}
-    assert config.section('mcp_servers', McpServersConfig).root == {}
-    assert config.section('channels', ChannelsConfig).telegram is None
+    assert config.section(DEFAULTS).model is None
+    assert config.section(TOOLS).root == {}
+    assert config.section(MCP_SERVERS).root == {}
+    assert config.section(CHANNELS).telegram is None
 
 
 def test_load_config_resolves_env_and_value_from_then_validates(
@@ -323,14 +327,14 @@ def test_load_config_resolves_env_and_value_from_then_validates(
 
     config = load_config(config_file, build_section_registry())
 
-    agents = config.section('agents', AgentsConfig).root
-    tools = config.section('tools', ToolsConfig).root
-    channels = config.section('channels', ChannelsConfig)
+    agents = config.section(AGENTS).root
+    tools = config.section(TOOLS).root
+    channels = config.section(CHANNELS)
 
     websearch = tools['websearch']
     assert isinstance(websearch, WebSearchToolConfig)
 
-    assert config.section('defaults', DefaultsConfig).model == 'claude-sonnet-5'
+    assert config.section(DEFAULTS).model == 'claude-sonnet-5'
     assert websearch.api_key.get_secret_value() == 'felo-secret'
     assert agents['scout'].instructions == 'You speak for claude-sonnet-5.'
     assert channels.telegram is not None
@@ -360,7 +364,7 @@ def test_new_tool_kind_parses_and_schemas_without_touching_config_module(
 
     config = load_config(config_file, section_registry)
 
-    custom = config.section('tools', ToolsConfig).root['custom']
+    custom = config.section(TOOLS).root['custom']
     assert custom.kind == 'faketool'
     assert isinstance(custom, FakeToolConfig)
     assert 'faketool' in json.dumps(section_registry.schema())
@@ -386,7 +390,7 @@ def test_configless_tool_kind_parses_as_base_tool_config(tmp_path: Path) -> None
 
     config = load_config(config_file, section_registry)
 
-    custom = config.section('tools', ToolsConfig).root['custom']
+    custom = config.section(TOOLS).root['custom']
     assert type(custom) is ToolConfig
     assert custom.kind == 'faketool'
 
@@ -425,7 +429,7 @@ def test_section_spec_resolves_thunk_lazily_and_once() -> None:
         calls.append(1)
         return DefaultsConfig
 
-    spec = SectionSpec('defaults', thunk)
+    spec = SectionSpec('defaults', DefaultsConfig, thunk=thunk)
     assert calls == []
 
     assert spec.resolved is DefaultsConfig

@@ -1,4 +1,5 @@
 from collections.abc import Iterator
+from dataclasses import replace
 from functools import reduce
 from operator import or_
 from typing import Annotated, Any
@@ -54,23 +55,30 @@ def _build_tools_config(registry: ToolRegistry) -> type[BaseModel]:
 
 
 def _describe_tools(config: HuginnConfig) -> list[str]:
-    tools = config.section('tools', ToolsConfig).root
+    tools = config.section(TOOLS).root
     entries = ', '.join(f'{name} ({tool.kind})' for name, tool in sorted(tools.items()))
     return [f'tools: {entries or "none"}']
 
 
 def _validate_tools(config: HuginnConfig, registry: ToolRegistry) -> None:
-    for name, tool in config.section('tools', ToolsConfig).root.items():
+    for name, tool in config.section(TOOLS).root.items():
         try:
             registry.get(tool.kind)
         except UnknownToolError as error:
             raise UnknownToolKindError(f'tools.{name}.kind: {error}') from error
 
 
-def build_sections(registry: ToolRegistry) -> Iterator[SectionSpec]:
-    yield SectionSpec(
-        'tools',
-        lambda: _build_tools_config(registry),
-        describe=_describe_tools,
+def build_sections(registry: ToolRegistry) -> Iterator[SectionSpec[BaseModel]]:
+    # NOTE: the thunk and validator need the runtime registry using replace()
+    yield replace(
+        TOOLS,
+        thunk=lambda: _build_tools_config(registry),
         validate=lambda config: _validate_tools(config, registry),
     )
+
+
+TOOLS = SectionSpec(
+    'tools',
+    ToolsConfig,
+    describe=_describe_tools,
+)

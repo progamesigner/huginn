@@ -6,7 +6,7 @@ from app.core.application import App
 from app.core.config.exceptions import MissingConfigFileError
 from app.core.config.registry import HuginnConfig
 from app.core.providers.config import ConfigProvider
-from app.features.agents.config import AgentsConfig
+from app.features.agents.config import AGENTS
 from app.features.agents.providers import AgentsConfigProvider
 
 _MINIMAL = """
@@ -32,7 +32,7 @@ def test_provider_loads_config_from_explicit_path(tmp_path: Path) -> None:
 
     config = app.resolve(HuginnConfig)
 
-    assert 'scout' in config.section('agents', AgentsConfig).root
+    assert 'scout' in config.section(AGENTS).root
 
 
 def test_provider_defaults_to_settings_config_file(
@@ -45,7 +45,7 @@ def test_provider_defaults_to_settings_config_file(
 
     config = app.resolve(HuginnConfig)
 
-    assert 'scout' in config.section('agents', AgentsConfig).root
+    assert 'scout' in config.section(AGENTS).root
 
 
 def test_config_is_shared(tmp_path: Path) -> None:

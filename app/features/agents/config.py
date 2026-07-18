@@ -1,11 +1,11 @@
 from collections.abc import Iterator
 from typing import Annotated, Literal
 
-from pydantic import Field, HttpUrl, JsonValue, RootModel, SecretStr
+from pydantic import BaseModel, Field, HttpUrl, JsonValue, RootModel, SecretStr
 
 from app.core.config.registry import HuginnConfig, SectionSpec
 from app.core.config.schema import ConfigValue
-from app.features.tools.config import ToolsConfig
+from app.features.tools.config import TOOLS
 
 from .exceptions import (
     AmbiguousInstructionsError,
@@ -78,19 +78,19 @@ def _describe_agent(name: str, agent: AgentConfig) -> str:
 
 def _describe_agents(config: HuginnConfig) -> list[str]:
     # NOTE: instructions are secrets by policy; the summary must never echo them
-    agents = config.section('agents', AgentsConfig).root
+    agents = config.section(AGENTS).root
     lines = [f'agents ({len(agents)}):']
     lines.extend(_describe_agent(name, agent) for name, agent in agents.items())
     return lines
 
 
 def _describe_mcp_servers(config: HuginnConfig) -> list[str]:
-    servers = config.section('mcp_servers', McpServersConfig).root
+    servers = config.section(MCP_SERVERS).root
     return [f'mcp_servers: {", ".join(sorted(servers)) or "none"}']
 
 
 def _describe_channels(config: HuginnConfig) -> list[str]:
-    channels = config.section('channels', ChannelsConfig)
+    channels = config.section(CHANNELS)
     if channels.telegram is None:
         return []
 
@@ -100,10 +100,10 @@ def _describe_channels(config: HuginnConfig) -> list[str]:
 
 
 def _validate_agents(config: HuginnConfig) -> None:
-    mcp_servers = config.section('mcp_servers', McpServersConfig).root
-    tools = config.section('tools', ToolsConfig).root
+    mcp_servers = config.section(MCP_SERVERS).root
+    tools = config.section(TOOLS).root
 
-    for agent_name, agent in config.section('agents', AgentsConfig).root.items():
+    for agent_name, agent in config.section(AGENTS).root.items():
         base = f'agents.{agent_name}'
 
         if (agent.instructions is None) == (agent.instructions_file is None):
@@ -129,9 +129,9 @@ def _validate_agents(config: HuginnConfig) -> None:
 
 
 def _validate_channels(config: HuginnConfig) -> None:
-    agents = config.section('agents', AgentsConfig).root
+    agents = config.section(AGENTS).root
 
-    if (telegram := config.section('channels', ChannelsConfig).telegram) is not None:
+    if (telegram := config.section(CHANNELS).telegram) is not None:
         for chat_id, agent_name in telegram.bindings.items():
             if agent_name not in agents:
                 raise UnknownAgentReferenceError(
@@ -145,20 +145,28 @@ def _validate_channels(config: HuginnConfig) -> None:
             )
 
 
-def build_sections() -> Iterator[SectionSpec]:
-    # TODO: channels is contributed here until a channel feature exists (M2)
-    yield SectionSpec(
-        'agents',
-        AgentsConfig,
-        required=True,
-        describe=_describe_agents,
-        validate=_validate_agents,
-    )
-    yield SectionSpec('defaults', DefaultsConfig)
-    yield SectionSpec('mcp_servers', McpServersConfig, describe=_describe_mcp_servers)
-    yield SectionSpec(
-        'channels',
-        ChannelsConfig,
-        describe=_describe_channels,
-        validate=_validate_channels,
-    )
+def build_sections() -> Iterator[SectionSpec[BaseModel]]:
+    yield AGENTS
+    yield DEFAULTS
+    yield MCP_SERVERS
+    yield CHANNELS
+
+
+AGENTS = SectionSpec(
+    'agents',
+    AgentsConfig,
+    required=True,
+    describe=_describe_agents,
+    validate=_validate_agents,
+)
+# TODO: channels is contributed here until a channel feature exists
+CHANNELS = SectionSpec(
+    'channels',
+    ChannelsConfig,
+    describe=_describe_channels,
+    validate=_validate_channels,
+)
+DEFAULTS = SectionSpec('defaults', DefaultsConfig)
+MCP_SERVERS = SectionSpec(
+    'mcp_servers', McpServersConfig, describe=_describe_mcp_servers
+)
