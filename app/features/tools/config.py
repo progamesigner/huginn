@@ -20,23 +20,28 @@ class ToolsConfig(RootModel[dict[str, ToolConfig]]):
     pass
 
 
+def _tagged(kind: str, model: Any) -> Any:
+    return Annotated[model, Tag(kind)]
+
+
 def _tool_config_element(configs: dict[str, type[BaseModel] | None]) -> Any:
     # NOTE: the parse model is built from the registry
     if not configs:
         return ToolConfig
 
-    members: Any = {kind: model or ToolConfig for kind, model in configs.items()}
     union = reduce(
         or_,
-        (Annotated[model, Tag(kind)] for kind, model in members.items()),
+        (_tagged(kind, model or ToolConfig) for kind, model in configs.items()),
     )
     return Annotated[union, Discriminator(_tool_kind)]
 
 
-def _tool_kind(value: Any) -> str | None:
-    return (
-        value.get('kind') if isinstance(value, dict) else getattr(value, 'kind', None)
-    )
+def _tool_kind(value: object) -> str | None:
+    match value:
+        case {'kind': str(kind)} | object(kind=str(kind)):
+            return kind
+        case _:
+            return None
 
 
 def _build_tools_config(registry: ToolRegistry) -> type[BaseModel]:
