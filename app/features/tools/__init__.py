@@ -2,7 +2,6 @@ from .config import (
     ToolConfig,
     ToolsConfig,
     WebSearchToolConfig,
-    build_toolset,
 )
 from .exceptions import (
     DuplicateToolError,
@@ -31,5 +30,4 @@ __all__ = [
     'WebSearchParams',
     'WebSearchTool',
     'WebSearchToolConfig',
-    'build_toolset',
 ]

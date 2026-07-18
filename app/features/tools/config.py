@@ -5,7 +5,7 @@ from pydantic import Field, HttpUrl, RootModel, SecretStr
 from app.core.config import ConfigValue, HuginnConfig, SectionSpec
 
 from .exceptions import UnknownToolError, UnknownToolKindError
-from .registry import ToolRegistry, ToolSet
+from .registry import ToolRegistry
 
 
 class WebSearchToolConfig(ConfigValue):
@@ -34,15 +34,6 @@ def validate_tools(config: HuginnConfig, registry: ToolRegistry) -> None:
             registry.get(tool.kind)
         except UnknownToolError as error:
             raise UnknownToolKindError(f'tools.{name}.kind: {error}') from error
-
-
-def build_toolset(config: HuginnConfig, registry: ToolRegistry) -> ToolSet:
-    return ToolSet(
-        {
-            name: registry.build(tool.kind, tool)
-            for name, tool in config.section('tools', ToolsConfig).root.items()
-        }
-    )
 
 
 def build_sections(registry: ToolRegistry) -> tuple[SectionSpec, ...]:
