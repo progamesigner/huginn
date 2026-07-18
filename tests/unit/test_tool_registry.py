@@ -53,13 +53,13 @@ def test_get_reports_unknown_kind_with_available_list() -> None:
 def test_build_constructs_through_registered_builder() -> None:
     built: list[GreetConfig] = []
 
-    def build(config: BaseModel) -> GreetTool:
+    def builder(config: BaseModel) -> GreetTool:
         assert isinstance(config, GreetConfig)
         built.append(config)
         return GreetTool()
 
     registry = ToolRegistry()
-    registry.register(GreetTool, build=build)
+    registry.register(GreetTool, builder=builder)
 
     tool = registry.build('greet', GreetConfig(greeting='hi'))
 

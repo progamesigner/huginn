@@ -36,13 +36,13 @@ class ToolRegistry:
         self,
         tool: type[Tool[P]],
         config: type[BaseModel] | None = None,
-        build: Callable[[BaseModel], Tool[P]] | None = None,
+        builder: Callable[[BaseModel], Tool[P]] | None = None,
     ) -> None:
         if tool.name in self.tools:
             raise DuplicateToolError(f'tool {tool.name!r} is already registered')
 
         self.tools[tool.name] = cast(type[Tool[ToolParams]], tool)
-        self.builders[tool.name] = cast(ToolBuilder, build or (lambda _: tool()))
+        self.builders[tool.name] = cast(ToolBuilder, builder or (lambda _: tool()))
         if config is not None:
             self.configs[tool.name] = config
 

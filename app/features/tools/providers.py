@@ -36,5 +36,5 @@ class WebSearchToolProvider(ProviderContract):
         container.resolve(ToolRegistry).register(
             WebSearchTool,
             WebSearchToolConfig,
-            build=lambda config: build_websearch(http, config),
+            builder=lambda config: build_websearch(http, config),
         )
