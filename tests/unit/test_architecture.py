@@ -10,12 +10,20 @@ CROSS_FEATURE_SURFACE: dict[tuple[str, str], frozenset[str]] = {
     ('agents', 'tools'): frozenset({'config', 'providers', 'registry'}),
 }
 FEATURES_PACKAGE = 'app.features'
+EXT_SLICE_NAMES = frozenset({'client', 'payloads', 'exceptions'})
+BANNED_MODULE_NAMES = frozenset({'models', 'utils'})
 
 
 def _features_dir() -> Path:
     import app
 
     return Path(app.__file__).parent / 'features'
+
+
+def _exts_dir() -> Path:
+    import app
+
+    return Path(app.__file__).parent / 'exts'
 
 
 def _package_of(path: Path, root: Path) -> str:
@@ -52,6 +60,20 @@ def _cross_feature_violation(feature: str, target: str) -> str | None:
         return f'{target}: {imported}.{slice_} is not an approved cross-feature surface'
 
     return None
+
+
+def _banned_name(relative: Path) -> str | None:
+    if banned := {*relative.parts[:-1], relative.stem} & BANNED_MODULE_NAMES:
+        return f'{relative}: banned file name {sorted(banned)}'
+
+    return None
+
+
+def _unknown_ext_name(relative: Path) -> str | None:
+    if relative.name == '__init__.py' or relative.stem in EXT_SLICE_NAMES:
+        return None
+
+    return f'{relative}: unknown ext file name (allowed: {sorted(EXT_SLICE_NAMES)})'
 
 
 def test_skeleton_imports() -> None:
@@ -116,3 +138,37 @@ def test_cross_feature_surface_check_flags_violations() -> None:
         _cross_feature_violation('agents', 'app.features.tools.websearch') is not None
     )
     assert _cross_feature_violation('probes', 'app.features.tools.registry') is not None
+
+
+def test_feature_and_ext_files_avoid_banned_names() -> None:
+    violations = [
+        message
+        for root in (_features_dir(), _exts_dir())
+        for path in sorted(root.rglob('*.py'))
+        if (message := _banned_name(path.relative_to(root)))
+    ]
+
+    assert not violations, 'banned file names:\n' + '\n'.join(violations)
+
+
+def test_ext_files_use_ext_vocabulary() -> None:
+    root = _exts_dir()
+    violations = [
+        message
+        for path in sorted(root.rglob('*.py'))
+        if (message := _unknown_ext_name(path.relative_to(root)))
+    ]
+
+    assert not violations, 'unknown ext file names:\n' + '\n'.join(violations)
+
+
+def test_banned_name_check_flags_models_and_utils() -> None:
+    assert _banned_name(Path('tools/repositories.py')) is None
+    assert _banned_name(Path('tools/models.py')) is not None
+    assert _banned_name(Path('tools/utils/helpers.py')) is not None
+
+
+def test_ext_vocabulary_check_flags_unknown_names() -> None:
+    assert _unknown_ext_name(Path('felo/client.py')) is None
+    assert _unknown_ext_name(Path('felo/__init__.py')) is None
+    assert _unknown_ext_name(Path('felo/service.py')) is not None

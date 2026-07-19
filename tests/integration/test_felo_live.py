@@ -7,6 +7,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 from app.exts.felo.client import FeloClient
 from app.features.agents.services import AgentRunner, TurnInput
 from app.features.tools.registry import ToolSet
+from app.features.tools.repositories import WebSearchRepository
 from app.features.tools.websearch import WebSearchTool
 from lib.http import HTTPClientManager
 from lib.llm.adapters.openai import OpenAIAdapter
@@ -60,7 +61,8 @@ async def test_agent_loop_with_websearch_live() -> None:
 
     http = HTTPClientManager()
     tools = ToolSet()
-    tools.add('websearch', WebSearchTool(build_client(http, felo_api_key)))
+    repository = WebSearchRepository(http)
+    tools.add('websearch', WebSearchTool(repository, felo_api_key, _FELO_BASE_URL))
     llm = OpenAIAdapter(
         ProviderConfig(
             name='openai',

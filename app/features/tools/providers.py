@@ -8,6 +8,7 @@ from lib.http import HTTPClientContract
 
 from .config import build_sections
 from .registry import ToolRegistry
+from .repositories import WebSearchRepository
 from .websearch import WebSearchTool, WebSearchToolConfig, build_websearch
 
 
@@ -33,8 +34,10 @@ class WebSearchToolProvider(ProviderContract):
     @override
     def __call__(self, container: ContainerContract) -> None:
         http = container.resolve(HTTPClientContract)
+        repository = WebSearchRepository(http)
+        container.bind(WebSearchRepository, instance=repository)
         container.resolve(ToolRegistry).register(
             WebSearchTool,
             WebSearchToolConfig,
-            builder=lambda config: build_websearch(http, config),
+            builder=lambda config: build_websearch(repository, config),
         )

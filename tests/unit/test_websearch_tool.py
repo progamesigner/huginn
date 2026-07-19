@@ -3,7 +3,11 @@ import pytest
 import respx
 from pydantic import SecretStr, ValidationError
 
-from app.exts.felo.client import FeloClient, SearchResource, SearchResult
+from app.features.tools.repositories import (
+    WebSearchRepository,
+    WebSearchResult,
+    WebSearchSource,
+)
 from app.features.tools.websearch import (
     WebSearchParams,
     WebSearchTool,
@@ -50,11 +54,11 @@ def test_schema_describes_fields_for_llm() -> None:
 
 
 def test_format_result_lists_numbered_sources_after_answer() -> None:
-    result = SearchResult(
+    result = WebSearchResult(
         answer='An answer.',
-        resources=(
-            SearchResource(link='https://a.example', title='A', snippet='First.'),
-            SearchResource(link='https://b.example', title='B', snippet=''),
+        sources=(
+            WebSearchSource(link='https://a.example', title='A', snippet='First.'),
+            WebSearchSource(link='https://b.example', title='B', snippet=''),
         ),
     )
 
@@ -71,10 +75,10 @@ def test_format_result_lists_numbered_sources_after_answer() -> None:
 
 
 def test_format_result_caps_sources_at_max_results() -> None:
-    result = SearchResult(
+    result = WebSearchResult(
         answer='',
-        resources=tuple(
-            SearchResource(link=f'https://example.com/{index}', title=f'T{index}')
+        sources=tuple(
+            WebSearchSource(link=f'https://example.com/{index}', title=f'T{index}')
             for index in range(10)
         ),
     )
@@ -87,9 +91,9 @@ def test_format_result_caps_sources_at_max_results() -> None:
 
 
 def test_format_result_shortens_long_snippets() -> None:
-    result = SearchResult(
-        resources=(
-            SearchResource(
+    result = WebSearchResult(
+        sources=(
+            WebSearchSource(
                 link='https://example.com',
                 title='Long',
                 snippet='word ' * 100,
@@ -104,7 +108,7 @@ def test_format_result_shortens_long_snippets() -> None:
 
 
 def test_format_result_reports_when_empty() -> None:
-    assert _format_result(SearchResult(), max_results=5) == 'No results found.'
+    assert _format_result(WebSearchResult(), max_results=5) == 'No results found.'
 
 
 @respx.mock
@@ -113,11 +117,9 @@ async def test_run_searches_and_formats() -> None:
         return_value=httpx.Response(200, json=_PAYLOAD),
     )
     tool = WebSearchTool(
-        FeloClient(
-            http=HTTPClientManager(),
-            api_key=SecretStr('felo-key'),
-            base_url='https://openapi.felo.ai',
-        )
+        WebSearchRepository(HTTPClientManager()),
+        api_key=SecretStr('felo-key'),
+        base_url='https://openapi.felo.ai',
     )
 
     output = await tool.run(WebSearchParams(query='taipei weather'))
@@ -127,13 +129,16 @@ async def test_run_searches_and_formats() -> None:
     assert 'https://weather.example/taipei' in output
 
 
-def test_build_websearch_constructs_client_from_config() -> None:
+def test_build_websearch_binds_config_credentials() -> None:
+    repository = WebSearchRepository(HTTPClientManager())
+
     tool = build_websearch(
-        HTTPClientManager(),
+        repository,
         WebSearchToolConfig.model_validate(
             {'kind': 'websearch', 'api_key': 'felo-key'}
         ),
     )
 
-    assert tool.client.headers['Authorization'] == 'Bearer felo-key'
-    assert tool.client.base_url == 'https://openapi.felo.ai/'
+    assert tool.repository is repository
+    assert tool.api_key.get_secret_value() == 'felo-key'
+    assert tool.base_url == 'https://openapi.felo.ai/'

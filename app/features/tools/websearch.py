@@ -3,11 +3,9 @@ from typing import Annotated, Literal, override
 
 from pydantic import BaseModel, Field, HttpUrl, SecretStr
 
-from app.exts.felo.client import FeloClient, SearchResult
-from lib.http import HTTPClientContract
-
 from .config import ToolConfig
 from .exceptions import ToolError
+from .repositories import WebSearchRepository, WebSearchResult
 from .types import Tool, ToolOutput, ToolParams
 
 
@@ -31,15 +29,15 @@ class WebSearchParams(ToolParams):
     ] = 5
 
 
-def _format_result(result: SearchResult, max_results: int) -> str:
+def _format_result(result: WebSearchResult, max_results: int) -> str:
     lines = [result.answer.strip()] if result.answer.strip() else []
 
-    if resources := result.resources[:max_results]:
+    if sources := result.sources[:max_results]:
         lines.extend(('', 'Sources:') if lines else ('Sources:',))
-        for index, resource in enumerate(resources, start=1):
-            lines.append(f'{index}. {resource.title}')
-            lines.append(f'   {resource.link}')
-            if snippet := resource.snippet.strip():
+        for index, source in enumerate(sources, start=1):
+            lines.append(f'{index}. {source.title}')
+            lines.append(f'   {source.link}')
+            if snippet := source.snippet.strip():
                 lines.append(f'   {shorten(snippet, width=_SNIPPET_WIDTH)}')
 
     return '\n'.join(lines) if lines else 'No results found.'
@@ -53,27 +51,33 @@ class WebSearchTool(Tool[WebSearchParams]):
     )
     params = WebSearchParams
 
-    client: FeloClient
+    repository: WebSearchRepository
+    api_key: SecretStr
+    base_url: str
 
-    def __init__(self, client: FeloClient) -> None:
-        self.client = client
+    def __init__(
+        self,
+        repository: WebSearchRepository,
+        api_key: SecretStr,
+        base_url: str,
+    ) -> None:
+        self.repository = repository
+        self.api_key = api_key
+        self.base_url = base_url
 
     @override
     async def run(self, params: WebSearchParams) -> ToolOutput:
-        result = await self.client.search(params.query)
+        result = await self.repository.search(params.query, self.api_key, self.base_url)
         return _format_result(result, params.max_results)
 
 
-def build_websearch(http: HTTPClientContract, config: BaseModel) -> WebSearchTool:
+def build_websearch(
+    repository: WebSearchRepository,
+    config: BaseModel,
+) -> WebSearchTool:
     if not isinstance(config, WebSearchToolConfig):
         raise ToolError(
             f'websearch requires WebSearchToolConfig, got {type(config).__name__}'
         )
 
-    return WebSearchTool(
-        FeloClient(
-            http=http,
-            api_key=config.api_key,
-            base_url=str(config.base_url),
-        )
-    )
+    return WebSearchTool(repository, config.api_key, str(config.base_url))

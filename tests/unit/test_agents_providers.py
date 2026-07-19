@@ -7,12 +7,19 @@ from app.features.tools.providers import (
     WebSearchToolProvider,
 )
 from app.features.tools.registry import ToolRegistry
+from app.features.tools.repositories import WebSearchRepository
 
 
 def test_tool_registry_provider_binds_registry() -> None:
     app = App().build(ToolRegistryProvider())
 
     assert app.bound(ToolRegistry)
+
+
+def test_websearch_provider_binds_repository() -> None:
+    app = App().build(WebSearchToolProvider())
+
+    assert app.bound(WebSearchRepository)
 
 
 def test_websearch_provider_declares_kind() -> None:
