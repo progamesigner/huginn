@@ -10,6 +10,8 @@ from app.features.agents.config import AGENTS
 from app.features.agents.providers import AgentsConfigProvider
 
 _MINIMAL = """
+defaults:
+  model: gpt-5-mini
 agents:
   scout:
     description: Research agent

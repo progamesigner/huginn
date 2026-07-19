@@ -31,3 +31,7 @@ class UnknownToolReferenceError(ConfigError):
 
 class InvalidToolOverlayError(ConfigError):
     pass
+
+
+class MissingModelError(ConfigError):
+    pass

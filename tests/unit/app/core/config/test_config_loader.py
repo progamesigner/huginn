@@ -33,10 +33,12 @@ from app.features.agents.config import (
     ToolRef,
     _validate_agents,
     _validate_channels,
+    resolve_model,
 )
 from app.features.agents.config import build_sections as build_agent_sections
 from app.features.agents.exceptions import (
     AmbiguousInstructionsError,
+    MissingModelError,
     UnknownAgentReferenceError,
     UnknownMcpServerReferenceError,
     UnknownToolReferenceError,
@@ -118,6 +120,7 @@ def build_app_config(
     tools: dict[str, WebSearchToolConfig] | None = None,
     mcp_servers: dict[str, McpServerConfig] | None = None,
     channels: ChannelsConfig | None = None,
+    defaults: DefaultsConfig | None = None,
 ) -> HuginnConfig:
     return HuginnConfig(
         {
@@ -125,6 +128,7 @@ def build_app_config(
             'tools': ToolsConfig(tools or {}),
             'mcp_servers': McpServersConfig(mcp_servers or {}),
             'channels': channels or ChannelsConfig(),
+            'defaults': defaults or DefaultsConfig(model='test-model'),
         }
     )
 
@@ -281,7 +285,11 @@ def test_load_config_rejects_unknown_section(tmp_path: Path) -> None:
 def test_load_config_defaults_optional_sections(tmp_path: Path) -> None:
     config_file = tmp_path / 'huginn.yaml'
     config_file.write_text(
-        'agents:\n  scout:\n    description: x\n    instructions: y\n'
+        'agents:\n'
+        '  scout:\n'
+        '    description: x\n'
+        '    instructions: y\n'
+        '    model: test-model\n'
     )
 
     config = load_config(config_file, build_section_registry())
@@ -360,6 +368,7 @@ def test_new_tool_kind_parses_and_schemas_without_touching_config_module(
         '  scout:\n'
         '    description: x\n'
         '    instructions: y\n'
+        '    model: test-model\n'
         '    tools: [{name: custom}]\n'
     )
 
@@ -386,6 +395,7 @@ def test_configless_tool_kind_parses_as_base_tool_config(tmp_path: Path) -> None
         '  scout:\n'
         '    description: x\n'
         '    instructions: y\n'
+        '    model: test-model\n'
         '    tools: [{name: custom}]\n'
     )
 
@@ -512,6 +522,51 @@ def test_validate_agents_requires_exactly_one_instruction_source() -> None:
         _validate_agents(
             build_app_config(agents={'scout': neither}), build_tool_registry()
         )
+
+
+def test_resolve_model_prefers_explicit_over_default() -> None:
+    assert resolve_model('claude-sonnet-5', 'gpt-5-mini') == 'claude-sonnet-5'
+
+
+def test_resolve_model_falls_back_to_default() -> None:
+    assert resolve_model(None, 'gpt-5-mini') == 'gpt-5-mini'
+
+
+def test_resolve_model_raises_when_neither_is_set() -> None:
+    with pytest.raises(MissingModelError):
+        resolve_model(None, None)
+
+
+def test_validate_agents_requires_an_effective_model() -> None:
+    config = build_app_config(
+        agents={'scout': build_agent(model=None)},
+        defaults=DefaultsConfig(),
+    )
+
+    with pytest.raises(MissingModelError, match=r'agents\.scout\.model'):
+        _validate_agents(config, build_tool_registry())
+
+
+def test_validate_agents_accepts_agent_model_without_defaults() -> None:
+    config = build_app_config(
+        agents={'scout': build_agent(model='claude-sonnet-5')},
+        defaults=DefaultsConfig(),
+    )
+
+    _validate_agents(config, build_tool_registry())
+
+
+def test_validate_channels_requires_an_effective_router_model() -> None:
+    config = build_app_config(
+        agents={'scout': build_agent()},
+        channels=ChannelsConfig(
+            telegram=ChannelConfig(router=ChannelRouterConfig(fallback='scout')),
+        ),
+        defaults=DefaultsConfig(),
+    )
+
+    with pytest.raises(MissingModelError, match=r'channels\.telegram\.router\.model'):
+        _validate_channels(config)
 
 
 def test_validate_channels_rejects_unknown_binding_agent() -> None:

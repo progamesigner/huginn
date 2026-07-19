@@ -13,6 +13,8 @@ from lib.command import CommandContract, Typer
 runner = CliRunner()
 
 _VALID = """
+defaults:
+  model: gpt-5-mini
 tools:
   websearch:
     kind: websearch

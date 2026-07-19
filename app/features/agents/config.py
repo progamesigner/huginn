@@ -14,6 +14,7 @@ from app.features.tools.registry import ToolRegistry
 from .exceptions import (
     AmbiguousInstructionsError,
     InvalidToolOverlayError,
+    MissingModelError,
     UnknownAgentReferenceError,
     UnknownMcpServerReferenceError,
     UnknownToolReferenceError,
@@ -91,6 +92,7 @@ def _describe_channels(config: HuginnConfig) -> list[str]:
 def _validate_agents(config: HuginnConfig, registry: ToolRegistry) -> None:
     mcp_servers = config.section(MCP_SERVERS).root
     tools = config.section(TOOLS).root
+    default_model = config.section(DEFAULTS).model
 
     for agent_name, agent in config.section(AGENTS).root.items():
         base = f'agents.{agent_name}'
@@ -99,6 +101,11 @@ def _validate_agents(config: HuginnConfig, registry: ToolRegistry) -> None:
             raise AmbiguousInstructionsError(
                 f'{base}: exactly one of instructions/instructions_file is required'
             )
+
+        try:
+            resolve_model(agent.model, default_model)
+        except MissingModelError as error:
+            raise MissingModelError(f'{base}.model: {error}') from error
 
         for index, tool in enumerate(agent.tools):
             if tool.name not in tools:
@@ -136,11 +143,19 @@ def _validate_channels(config: HuginnConfig) -> None:
                     f'channels.telegram.bindings.{chat_id}: unknown agent {agent_name!r}'
                 )
 
-        if telegram.router is not None and telegram.router.fallback not in agents:
-            raise UnknownAgentReferenceError(
-                f'channels.telegram.router.fallback: unknown agent '
-                f'{telegram.router.fallback!r}'
-            )
+        if telegram.router is not None:
+            if telegram.router.fallback not in agents:
+                raise UnknownAgentReferenceError(
+                    f'channels.telegram.router.fallback: unknown agent '
+                    f'{telegram.router.fallback!r}'
+                )
+
+            try:
+                resolve_model(telegram.router.model, config.section(DEFAULTS).model)
+            except MissingModelError as error:
+                raise MissingModelError(
+                    f'channels.telegram.router.model: {error}'
+                ) from error
 
 
 def build_sections(registry: ToolRegistry) -> Iterator[SectionSpec[BaseModel]]:
@@ -148,6 +163,13 @@ def build_sections(registry: ToolRegistry) -> Iterator[SectionSpec[BaseModel]]:
     yield replace(AGENTS, validate=lambda config: _validate_agents(config, registry))
     yield DEFAULTS
     yield CHANNELS
+
+
+def resolve_model(explicit: str | None, default: str | None) -> str:
+    if (model := explicit or default) is not None:
+        return model
+
+    raise MissingModelError('no model configured; set the model or defaults.model')
 
 
 AGENTS = SectionSpec(
