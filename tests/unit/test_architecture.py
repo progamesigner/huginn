@@ -70,6 +70,21 @@ def _cross_feature_violation(feature: str, target: str) -> str | None:
     return None
 
 
+def _init_reexport_only(source: str) -> bool:
+    # NOTE: slice subpackages may re-export their public face; nothing else in __init__
+    for node in ast.parse(source).body:
+        if isinstance(node, ast.ImportFrom) and node.level >= 1:
+            continue
+        if isinstance(node, ast.Assign) and any(
+            isinstance(target, ast.Name) and target.id == '__all__'
+            for target in node.targets
+        ):
+            continue
+        return False
+
+    return True
+
+
 def _banned_name(relative: Path) -> str | None:
     if banned := {*relative.parts[:-1], relative.stem} & BANNED_MODULE_NAMES:
         return f'{relative}: banned file name {sorted(banned)}'
@@ -107,15 +122,29 @@ def test_core_exceptions_hosts_only_app_error_family() -> None:
     assert all(issubclass(member, exceptions.AppError) for member in defined)
 
 
-def test_feature_packages_have_empty_init() -> None:
+def test_feature_package_inits_are_empty_or_relative_reexports() -> None:
     root = _features_dir()
     offenders = [
         str(path.relative_to(root))
         for path in sorted(root.rglob('__init__.py'))
-        if ast.parse(path.read_text()).body
+        if not _init_reexport_only(path.read_text())
     ]
 
-    assert not offenders, f'feature __init__.py must be empty: {offenders}'
+    assert not offenders, (
+        f'feature __init__.py must be empty or relative re-exports only: {offenders}'
+    )
+
+
+def test_init_reexport_check_flags_logic_and_absolute_imports() -> None:
+    assert _init_reexport_only('')
+    assert _init_reexport_only(
+        'from .repository import ConversationRepository\n\n'
+        "__all__ = ['ConversationRepository']\n"
+    )
+
+    assert not _init_reexport_only('import os\n')
+    assert not _init_reexport_only('from app.core import exceptions\n')
+    assert not _init_reexport_only('value = compute()\n')
 
 
 def test_cross_feature_imports_stay_within_approved_surface() -> None:
