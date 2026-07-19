@@ -5,7 +5,7 @@ from pydantic import Field, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from lib.http import HTTPClientManager
-from lib.mcp import McpManager, McpServer, streamable_http_connector
+from lib.mcp import MCPManager, MCPServer, streamable_http_connector
 
 pytestmark = pytest.mark.integration
 
@@ -17,13 +17,13 @@ class LiveCredentials(BaseSettings):
     memory_mcp_token: Annotated[SecretStr | None, Field()] = None
 
 
-def require_memory_server() -> McpServer:
+def require_memory_server() -> MCPServer:
     credentials = LiveCredentials()
     if credentials.memory_mcp_url is None or credentials.memory_mcp_token is None:
         pytest.skip('MEMORY_MCP_URL / MEMORY_MCP_TOKEN not set')
 
     token = credentials.memory_mcp_token.get_secret_value()
-    return McpServer(
+    return MCPServer(
         name='memory',
         url=credentials.memory_mcp_url,
         headers={'Authorization': f'Bearer {token}'},
@@ -32,7 +32,7 @@ def require_memory_server() -> McpServer:
 
 async def test_lists_and_calls_a_read_only_tool() -> None:
     http = HTTPClientManager()
-    manager = McpManager([require_memory_server()], streamable_http_connector(http))
+    manager = MCPManager([require_memory_server()], streamable_http_connector(http))
 
     await manager.start()
     try:

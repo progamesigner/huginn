@@ -5,7 +5,7 @@ from typing import override
 from pydantic import JsonValue
 
 from app.features.tools.types import Tool, ToolOutput
-from lib.mcp import McpClientContract, McpToolInfo
+from lib.mcp import MCPClientContract, MCPToolInfo
 
 
 def _without(schema: JsonValue, keys: Iterable[str]) -> JsonValue:
@@ -28,8 +28,8 @@ def _without(schema: JsonValue, keys: Iterable[str]) -> JsonValue:
     return result
 
 
-class McpTool(Tool):
-    client: McpClientContract
+class MCPTool(Tool):
+    client: MCPClientContract
     server: str
     tool: str
     input_schema: JsonValue
@@ -37,9 +37,9 @@ class McpTool(Tool):
 
     def __init__(
         self,
-        client: McpClientContract,
+        client: MCPClientContract,
         server: str,
-        info: McpToolInfo,
+        info: MCPToolInfo,
         inject: Mapping[str, JsonValue],
     ) -> None:
         self.name = namespaced(server, info.name)
@@ -66,15 +66,15 @@ class McpTool(Tool):
 
 
 def build_mcp_tools(
-    client: McpClientContract,
+    client: MCPClientContract,
     server: str,
-    infos: Sequence[McpToolInfo],
+    infos: Sequence[MCPToolInfo],
     allow: Sequence[str],
     inject: Mapping[str, JsonValue],
-) -> list[McpTool]:
+) -> list[MCPTool]:
     # NOTE: deny by default
     return [
-        McpTool(client, server, info, inject) for info in infos if info.name in allow
+        MCPTool(client, server, info, inject) for info in infos if info.name in allow
     ]
 
 

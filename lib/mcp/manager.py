@@ -11,18 +11,18 @@ from pydantic import JsonValue
 
 from lib.http import HTTPClientContract
 
-from .contracts import McpClientContract
-from .exceptions import McpConnectionError, UnknownMcpServerError
-from .types import McpServer, McpToolInfo
+from .contracts import MCPClientContract
+from .exceptions import MCPConnectionError, UnknownMCPServerError
+from .types import MCPServer, MCPToolInfo
 
 logger = logging.getLogger(__name__)
 
-type Connector = Callable[[McpServer], AbstractAsyncContextManager[ClientSession]]
+type Connector = Callable[[MCPServer], AbstractAsyncContextManager[ClientSession]]
 
 
 def streamable_http_connector(http: HTTPClientContract) -> Connector:
     @asynccontextmanager
-    async def connect(server: McpServer) -> AsyncIterator[ClientSession]:
+    async def connect(server: MCPServer) -> AsyncIterator[ClientSession]:
         async with http.connect(headers=server.headers) as client:
             async with streamable_http_client(server.url, http_client=client) as (
                 read,
@@ -52,7 +52,7 @@ def _render(result: CallToolResult) -> str:
 
 
 class _Connection:
-    server: McpServer
+    server: MCPServer
     connector: Connector
     session: ClientSession | None
     task: asyncio.Task[None] | None
@@ -60,7 +60,7 @@ class _Connection:
     stop: asyncio.Event
     error: BaseException | None
 
-    def __init__(self, server: McpServer, connector: Connector) -> None:
+    def __init__(self, server: MCPServer, connector: Connector) -> None:
         self.server = server
         self.connector = connector
         self.session = None
@@ -74,7 +74,7 @@ class _Connection:
         self.task = asyncio.create_task(self._serve())
         await self.ready.wait()
         if self.session is None:
-            raise McpConnectionError(
+            raise MCPConnectionError(
                 f'{self.server.name}: {_describe(self.error)}'
             ) from self.error
 
@@ -87,10 +87,10 @@ class _Connection:
         result = await self._require().call_tool(tool, dict(arguments))
         return _render(result)
 
-    async def list_tools(self) -> tuple[McpToolInfo, ...]:
+    async def list_tools(self) -> tuple[MCPToolInfo, ...]:
         result = await self._require().list_tools()
         return tuple(
-            McpToolInfo(
+            MCPToolInfo(
                 name=tool.name,
                 description=tool.description or '',
                 input_schema=tool.inputSchema,
@@ -100,7 +100,7 @@ class _Connection:
 
     def _require(self) -> ClientSession:
         if self.session is None:
-            raise McpConnectionError(f'{self.server.name}: not connected')
+            raise MCPConnectionError(f'{self.server.name}: not connected')
         return self.session
 
     async def _serve(self) -> None:
@@ -116,15 +116,15 @@ class _Connection:
             self.ready.set()
 
 
-class McpManager(McpClientContract):
+class MCPManager(MCPClientContract):
     connections: dict[str, _Connection]
     connector: Connector
-    servers: tuple[McpServer, ...]
+    servers: tuple[MCPServer, ...]
     unavailable: list[str]
 
     def __init__(
         self,
-        servers: Sequence[McpServer],
+        servers: Sequence[MCPServer],
         connector: Connector,
     ) -> None:
         self.connections = {}
@@ -151,14 +151,14 @@ class McpManager(McpClientContract):
         return await self._connection(server).call_tool(tool, arguments)
 
     @override
-    async def list_tools(self, server: str) -> tuple[McpToolInfo, ...]:
+    async def list_tools(self, server: str) -> tuple[MCPToolInfo, ...]:
         return await self._connection(server).list_tools()
 
-    async def _connect(self, server: McpServer) -> None:
+    async def _connect(self, server: MCPServer) -> None:
         connection = _Connection(server, self.connector)
         try:
             await connection.start()
-        except McpConnectionError as error:
+        except MCPConnectionError as error:
             # NOTE: not fail to boot because a tool server is briefly unreachable
             logger.warning(
                 'MCP server %s is unavailable; its tools will be absent (%s)',
@@ -172,5 +172,5 @@ class McpManager(McpClientContract):
 
     def _connection(self, server: str) -> _Connection:
         if server not in self.connections:
-            raise UnknownMcpServerError(f'mcp server {server!r} is not connected')
+            raise UnknownMCPServerError(f'mcp server {server!r} is not connected')
         return self.connections[server]

@@ -2,7 +2,7 @@ from typing import override
 
 from app.core.config.registry import SectionRegistry
 from app.core.providers.config import ConfigProvider
-from app.features.tools.providers import McpConfigProvider, ToolsConfigProvider
+from app.features.tools.providers import MCPConfigProvider, ToolsConfigProvider
 from app.features.tools.registry import ToolRegistry
 from lib.container import ContainerContract, ProviderContract
 
@@ -10,7 +10,7 @@ from .config import build_sections
 
 
 class AgentsConfigProvider(ProviderContract):
-    dependencies = (ConfigProvider, ToolsConfigProvider, McpConfigProvider)
+    dependencies = (ConfigProvider, ToolsConfigProvider, MCPConfigProvider)
 
     @override
     def __call__(self, container: ContainerContract) -> None:

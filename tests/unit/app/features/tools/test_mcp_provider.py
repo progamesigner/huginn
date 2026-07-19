@@ -9,9 +9,9 @@ from mcp.shared.memory import create_connected_server_and_client_session
 
 from app.core.application import App
 from app.core.providers.config import ConfigProvider
-from app.features.tools.mcp.config import McpServersConfig
-from app.features.tools.providers import McpProvider, build_servers
-from lib.mcp import McpClientContract, McpServer
+from app.features.tools.mcp.config import MCPServersConfig
+from app.features.tools.providers import MCPProvider, build_servers
+from lib.mcp import MCPClientContract, MCPServer
 
 _CONFIG = """
 mcp_servers:
@@ -34,13 +34,13 @@ def _echo_server() -> FastMCP:
 
 
 @asynccontextmanager
-async def _memory_connector(_: McpServer) -> AsyncIterator[ClientSession]:
+async def _memory_connector(_: MCPServer) -> AsyncIterator[ClientSession]:
     async with create_connected_server_and_client_session(_echo_server()) as session:
         yield session
 
 
 def test_build_servers_maps_auth_to_bearer_header() -> None:
-    config = McpServersConfig.model_validate_json(
+    config = MCPServersConfig.model_validate_json(
         json.dumps(
             {
                 'memory': {
@@ -66,12 +66,11 @@ async def test_provider_connects_configured_servers(tmp_path: Path) -> None:
 
     container = App().build(
         ConfigProvider(path=config),
-        McpProvider(connector=_memory_connector),
+        MCPProvider(connector=_memory_connector),
     )
 
-    async with container.scope():
-        await container.start()
-        client = container.resolve(McpClientContract)
+    async with container:
+        client = container.resolve(MCPClientContract)
         tools = await client.list_tools('memory')
 
     assert {tool.name for tool in tools} == {'echo'}

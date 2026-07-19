@@ -16,7 +16,7 @@ from .exceptions import (
     InvalidToolOverlayError,
     MissingModelError,
     UnknownAgentReferenceError,
-    UnknownMcpServerReferenceError,
+    UnknownMCPServerReferenceError,
     UnknownToolReferenceError,
 )
 
@@ -31,7 +31,7 @@ class ToolRef(ConfigValue):
     inject: Annotated[dict[str, JsonValue], Field()] = Field(default_factory=dict)
 
 
-class McpRef(ConfigValue):
+class MCPRef(ConfigValue):
     server: Annotated[str, Field()]
     allow: Annotated[tuple[str, ...], Field()] = ()
     inject: Annotated[dict[str, str], Field()] = Field(default_factory=dict)
@@ -43,7 +43,7 @@ class AgentConfig(ConfigValue):
     instructions: Annotated[str | None, Field()] = None
     instructions_file: Annotated[str | None, Field()] = None
     tools: Annotated[tuple[ToolRef, ...], Field()] = ()
-    mcp: Annotated[tuple[McpRef, ...], Field()] = ()
+    mcp: Annotated[tuple[MCPRef, ...], Field()] = ()
 
 
 class ChannelRouterConfig(ConfigValue):
@@ -127,7 +127,7 @@ def _validate_agents(config: HuginnConfig, registry: ToolRegistry) -> None:
         for index, mcp in enumerate(agent.mcp):
             if mcp.server not in mcp_servers:
                 available = ', '.join(sorted(mcp_servers)) or 'none'
-                raise UnknownMcpServerReferenceError(
+                raise UnknownMCPServerReferenceError(
                     f'{base}.mcp[{index}].server: unknown mcp server {mcp.server!r}; '
                     f'available: {available}'
                 )

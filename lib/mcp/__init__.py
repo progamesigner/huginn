@@ -1,16 +1,16 @@
-from .contracts import McpClientContract
-from .exceptions import McpConnectionError, McpError, UnknownMcpServerError
-from .manager import Connector, McpManager, streamable_http_connector
-from .types import McpServer, McpToolInfo
+from .contracts import MCPClientContract
+from .exceptions import MCPConnectionError, MCPError, UnknownMCPServerError
+from .manager import Connector, MCPManager, streamable_http_connector
+from .types import MCPServer, MCPToolInfo
 
 __all__ = [
     'Connector',
-    'McpClientContract',
-    'McpConnectionError',
-    'McpError',
-    'McpManager',
-    'McpServer',
-    'McpToolInfo',
-    'UnknownMcpServerError',
+    'MCPClientContract',
+    'MCPConnectionError',
+    'MCPError',
+    'MCPManager',
+    'MCPServer',
+    'MCPToolInfo',
+    'UnknownMCPServerError',
     'streamable_http_connector',
 ]

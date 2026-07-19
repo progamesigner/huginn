@@ -11,7 +11,7 @@ from structlog.contextvars import bound_contextvars
 
 from app.features.tools.binding import build_bound_tool
 from app.features.tools.config import ToolConfig
-from app.features.tools.mcp.bridge import McpTool, build_mcp_tools
+from app.features.tools.mcp.bridge import MCPTool, build_mcp_tools
 from app.features.tools.registry import ToolRegistry, ToolSet
 from lib.llm import (
     CompletionChunk,
@@ -26,9 +26,9 @@ from lib.llm import (
     ToolCallSegment,
     ToolResultSegment,
 )
-from lib.mcp import McpClientContract, UnknownMcpServerError
+from lib.mcp import MCPClientContract, UnknownMCPServerError
 
-from .config import AgentConfig, McpRef
+from .config import AgentConfig, MCPRef
 from .exceptions import AgentError, TurnTimeout
 
 logger = logging.getLogger(__name__)
@@ -236,7 +236,7 @@ class AgentRunner:
 async def build_tool_set(
     registry: ToolRegistry,
     tool_configs: Mapping[str, ToolConfig],
-    client: McpClientContract,
+    client: MCPClientContract,
     agent: AgentConfig,
 ) -> ToolSet:
     tools = ToolSet()
@@ -251,14 +251,14 @@ async def build_tool_set(
 
 
 async def collect_mcp_tools(
-    client: McpClientContract,
-    refs: Sequence[McpRef],
-) -> list[McpTool]:
-    collected: list[McpTool] = []
+    client: MCPClientContract,
+    refs: Sequence[MCPRef],
+) -> list[MCPTool]:
+    collected: list[MCPTool] = []
     for ref in refs:
         try:
             infos = await client.list_tools(ref.server)
-        except UnknownMcpServerError:
+        except UnknownMCPServerError:
             logger.warning(
                 'agent references mcp server %r which is unavailable; skipping',
                 ref.server,

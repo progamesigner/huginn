@@ -8,13 +8,13 @@ from app.core.config.schema import ConfigValue
 type Transport = Literal['http']
 
 
-class McpServerConfig(ConfigValue):
+class MCPServerConfig(ConfigValue):
     transport: Annotated[Transport, Field()]
     url: Annotated[HttpUrl, Field()]
     auth: Annotated[SecretStr | None, Field()] = None
 
 
-class McpServersConfig(RootModel[dict[str, McpServerConfig]]):
+class MCPServersConfig(RootModel[dict[str, MCPServerConfig]]):
     pass
 
 
@@ -25,6 +25,6 @@ def _describe_mcp_servers(config: HuginnConfig) -> list[str]:
 
 MCP_SERVERS = SectionSpec(
     'mcp_servers',
-    McpServersConfig,
+    MCPServersConfig,
     describe=_describe_mcp_servers,
 )

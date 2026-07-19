@@ -3,21 +3,21 @@ from typing import override
 
 from pydantic import JsonValue
 
-from app.features.agents.config import McpRef
+from app.features.agents.config import MCPRef
 from app.features.agents.services import collect_mcp_tools
-from lib.mcp import McpClientContract, McpToolInfo, UnknownMcpServerError
+from lib.mcp import MCPClientContract, MCPToolInfo, UnknownMCPServerError
 
 
-class FakeClient(McpClientContract):
-    tools: dict[str, tuple[McpToolInfo, ...]]
+class FakeClient(MCPClientContract):
+    tools: dict[str, tuple[MCPToolInfo, ...]]
 
-    def __init__(self, tools: dict[str, tuple[McpToolInfo, ...]]) -> None:
+    def __init__(self, tools: dict[str, tuple[MCPToolInfo, ...]]) -> None:
         self.tools = tools
 
     @override
-    async def list_tools(self, server: str) -> tuple[McpToolInfo, ...]:
+    async def list_tools(self, server: str) -> tuple[MCPToolInfo, ...]:
         if server not in self.tools:
-            raise UnknownMcpServerError(server)
+            raise UnknownMCPServerError(server)
 
         return self.tools[server]
 
@@ -31,13 +31,13 @@ class FakeClient(McpClientContract):
         return 'called'
 
 
-def _info(name: str) -> McpToolInfo:
-    return McpToolInfo(name=name, description='', input_schema={'type': 'object'})
+def _info(name: str) -> MCPToolInfo:
+    return MCPToolInfo(name=name, description='', input_schema={'type': 'object'})
 
 
 async def test_collect_namespaces_and_applies_allowlist() -> None:
     client = FakeClient({'memory': (_info('recall'), _info('forget'))})
-    refs = [McpRef(server='memory', allow=('recall',), inject={'user': 'swag'})]
+    refs = [MCPRef(server='memory', allow=('recall',), inject={'user': 'swag'})]
 
     tools = await collect_mcp_tools(client, refs)
 
@@ -47,8 +47,8 @@ async def test_collect_namespaces_and_applies_allowlist() -> None:
 async def test_collect_skips_unavailable_servers() -> None:
     client = FakeClient({'memory': (_info('recall'),)})
     refs = [
-        McpRef(server='stock', allow=('quote',)),
-        McpRef(server='memory', allow=('recall',)),
+        MCPRef(server='stock', allow=('quote',)),
+        MCPRef(server='memory', allow=('recall',)),
     ]
 
     tools = await collect_mcp_tools(client, refs)

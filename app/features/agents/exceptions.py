@@ -21,7 +21,7 @@ class UnknownAgentReferenceError(ConfigError):
     pass
 
 
-class UnknownMcpServerReferenceError(ConfigError):
+class UnknownMCPServerReferenceError(ConfigError):
     pass
 
 

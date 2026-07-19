@@ -8,7 +8,7 @@ from app.features.agents.config import (
     ChannelRouterConfig,
     ChannelsConfig,
     DefaultsConfig,
-    McpRef,
+    MCPRef,
     ToolRef,
 )
 
@@ -22,7 +22,7 @@ def test_agents_config_accepts_full_example() -> None:
                 instructions='You are scout.',
                 tools=(ToolRef(name='websearch', params={'max_results': 5}),),
                 mcp=(
-                    McpRef(
+                    MCPRef(
                         server='memory',
                         allow=('recall_memory_notes',),
                         inject={'agent': 'default', 'user': 'swag'},
@@ -87,7 +87,7 @@ def test_tool_ref_accepts_params_and_inject() -> None:
 
 
 def test_mcp_ref_defaults_to_no_allowlist_or_injected_params() -> None:
-    ref = McpRef(server='memory')
+    ref = MCPRef(server='memory')
 
     assert ref.allow == ()
     assert ref.inject == {}

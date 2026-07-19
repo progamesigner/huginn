@@ -5,7 +5,7 @@ from typing import Annotated, override
 import pytest
 from pydantic import Field, JsonValue
 
-from app.features.agents.config import AgentConfig, McpRef, ToolRef
+from app.features.agents.config import AgentConfig, MCPRef, ToolRef
 from app.features.agents.exceptions import AgentError
 from app.features.agents.services import build_tool_set, load_instructions
 from app.features.tools.binding import ConfiguredTool
@@ -13,7 +13,7 @@ from app.features.tools.config import ToolConfig
 from app.features.tools.exceptions import DuplicateToolError
 from app.features.tools.registry import ToolRegistry
 from app.features.tools.types import ToolOutput, ToolParams, TypedTool
-from lib.mcp import McpClientContract, McpToolInfo, UnknownMcpServerError
+from lib.mcp import MCPClientContract, MCPToolInfo, UnknownMCPServerError
 
 
 class EchoParams(ToolParams):
@@ -30,16 +30,16 @@ class EchoTool(TypedTool[EchoParams]):
         return params.text
 
 
-class FakeClient(McpClientContract):
-    tools: dict[str, tuple[McpToolInfo, ...]]
+class FakeClient(MCPClientContract):
+    tools: dict[str, tuple[MCPToolInfo, ...]]
 
-    def __init__(self, tools: dict[str, tuple[McpToolInfo, ...]]) -> None:
+    def __init__(self, tools: dict[str, tuple[MCPToolInfo, ...]]) -> None:
         self.tools = tools
 
     @override
-    async def list_tools(self, server: str) -> tuple[McpToolInfo, ...]:
+    async def list_tools(self, server: str) -> tuple[MCPToolInfo, ...]:
         if server not in self.tools:
-            raise UnknownMcpServerError(server)
+            raise UnknownMCPServerError(server)
 
         return self.tools[server]
 
@@ -53,8 +53,8 @@ class FakeClient(McpClientContract):
         return 'called'
 
 
-def _info(name: str) -> McpToolInfo:
-    return McpToolInfo(name=name, description='', input_schema={'type': 'object'})
+def _info(name: str) -> MCPToolInfo:
+    return MCPToolInfo(name=name, description='', input_schema={'type': 'object'})
 
 
 def _registry() -> ToolRegistry:
@@ -64,7 +64,7 @@ def _registry() -> ToolRegistry:
 
 
 def _agent(
-    *, tools: tuple[ToolRef, ...] = (), mcp: tuple[McpRef, ...] = ()
+    *, tools: tuple[ToolRef, ...] = (), mcp: tuple[MCPRef, ...] = ()
 ) -> AgentConfig:
     return AgentConfig(description='x', instructions='y', tools=tools, mcp=mcp)
 
@@ -74,7 +74,7 @@ async def test_build_tool_set_combines_native_and_mcp_tools() -> None:
     client = FakeClient({'memory': (_info('recall'),)})
     agent = _agent(
         tools=(ToolRef(name='echo'),),
-        mcp=(McpRef(server='memory', allow=('recall',)),),
+        mcp=(MCPRef(server='memory', allow=('recall',)),),
     )
 
     tools = await build_tool_set(_registry(), configs, client, agent)
@@ -97,7 +97,7 @@ async def test_build_tool_set_rejects_name_collision_between_native_and_mcp() ->
     client = FakeClient({'memory': (_info('recall'),)})
     agent = _agent(
         tools=(ToolRef(name='mcp__memory__recall'),),
-        mcp=(McpRef(server='memory', allow=('recall',)),),
+        mcp=(MCPRef(server='memory', allow=('recall',)),),
     )
 
     with pytest.raises(DuplicateToolError, match='mcp__memory__recall'):

@@ -29,7 +29,7 @@ from app.features.agents.config import (
     ChannelRouterConfig,
     ChannelsConfig,
     DefaultsConfig,
-    McpRef,
+    MCPRef,
     ToolRef,
     _validate_agents,
     _validate_channels,
@@ -40,13 +40,13 @@ from app.features.agents.exceptions import (
     AmbiguousInstructionsError,
     MissingModelError,
     UnknownAgentReferenceError,
-    UnknownMcpServerReferenceError,
+    UnknownMCPServerReferenceError,
     UnknownToolReferenceError,
 )
 from app.features.tools.config import TOOLS, ToolConfig, ToolsConfig, _validate_tools
 from app.features.tools.config import build_sections as build_tool_sections
 from app.features.tools.exceptions import UnknownToolKindError
-from app.features.tools.mcp.config import MCP_SERVERS, McpServerConfig, McpServersConfig
+from app.features.tools.mcp.config import MCP_SERVERS, MCPServerConfig, MCPServersConfig
 from app.features.tools.registry import ToolRegistry
 from app.features.tools.types import ToolOutput, ToolParams, TypedTool
 from app.features.tools.websearch.config import WebSearchToolConfig
@@ -118,7 +118,7 @@ def websearch_config() -> WebSearchToolConfig:
 def build_app_config(
     agents: dict[str, AgentConfig] | None = None,
     tools: dict[str, WebSearchToolConfig] | None = None,
-    mcp_servers: dict[str, McpServerConfig] | None = None,
+    mcp_servers: dict[str, MCPServerConfig] | None = None,
     channels: ChannelsConfig | None = None,
     defaults: DefaultsConfig | None = None,
 ) -> HuginnConfig:
@@ -126,7 +126,7 @@ def build_app_config(
         {
             'agents': AgentsConfig(agents or {}),
             'tools': ToolsConfig(tools or {}),
-            'mcp_servers': McpServersConfig(mcp_servers or {}),
+            'mcp_servers': MCPServersConfig(mcp_servers or {}),
             'channels': channels or ChannelsConfig(),
             'defaults': defaults or DefaultsConfig(model='test-model'),
         }
@@ -456,12 +456,12 @@ def test_validators_accept_a_fully_consistent_config() -> None:
         agents={
             'scout': build_agent(
                 tools=(ToolRef(name='websearch'),),
-                mcp=(McpRef(server='memory'),),
+                mcp=(MCPRef(server='memory'),),
             ),
         },
         tools={'websearch': websearch_config()},
         mcp_servers={
-            'memory': McpServerConfig(
+            'memory': MCPServerConfig(
                 transport='http',
                 url=HttpUrl('https://memory.example.internal/mcp'),
             ),
@@ -500,11 +500,11 @@ def test_validate_agents_rejects_unknown_tool_reference() -> None:
 
 def test_validate_agents_rejects_unknown_mcp_server() -> None:
     config = build_app_config(
-        agents={'scout': build_agent(mcp=(McpRef(server='ghost'),))},
+        agents={'scout': build_agent(mcp=(MCPRef(server='ghost'),))},
     )
 
     with pytest.raises(
-        UnknownMcpServerReferenceError, match=r'agents\.scout\.mcp\[0\]\.server'
+        UnknownMCPServerReferenceError, match=r'agents\.scout\.mcp\[0\]\.server'
     ):
         _validate_agents(config, build_tool_registry())
 

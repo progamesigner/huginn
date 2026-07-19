@@ -3,11 +3,11 @@ from typing import override
 
 from pydantic import JsonValue
 
-from app.features.tools.mcp.bridge import McpTool, build_mcp_tools, namespaced
-from lib.mcp import McpClientContract, McpToolInfo
+from app.features.tools.mcp.bridge import MCPTool, build_mcp_tools, namespaced
+from lib.mcp import MCPClientContract, MCPToolInfo
 
 
-class FakeClient(McpClientContract):
+class FakeClient(MCPClientContract):
     calls: list[tuple[str, str, dict[str, JsonValue]]]
 
     def __init__(self) -> None:
@@ -24,12 +24,12 @@ class FakeClient(McpClientContract):
         return 'called'
 
     @override
-    async def list_tools(self, server: str) -> tuple[McpToolInfo, ...]:
+    async def list_tools(self, server: str) -> tuple[MCPToolInfo, ...]:
         return ()
 
 
-def _info(name: str, schema: JsonValue | None = None) -> McpToolInfo:
-    return McpToolInfo(
+def _info(name: str, schema: JsonValue | None = None) -> MCPToolInfo:
+    return MCPToolInfo(
         name=name,
         description=f'{name} description',
         input_schema=schema or {'type': 'object', 'properties': {}, 'required': []},
@@ -60,7 +60,7 @@ def test_schema_hides_injected_parameters() -> None:
         'properties': {'query': {'type': 'string'}, 'user': {'type': 'string'}},
         'required': ['query', 'user'],
     }
-    tool = McpTool(FakeClient(), 'memory', _info('recall', schema), {'user': 'swag'})
+    tool = MCPTool(FakeClient(), 'memory', _info('recall', schema), {'user': 'swag'})
 
     result = tool.schema()
 
@@ -71,7 +71,7 @@ def test_schema_hides_injected_parameters() -> None:
 
 async def test_invoke_merges_injected_parameters() -> None:
     client = FakeClient()
-    tool = McpTool(
+    tool = MCPTool(
         client,
         'memory',
         _info('recall'),
@@ -88,7 +88,7 @@ async def test_invoke_merges_injected_parameters() -> None:
 
 async def test_invoke_tolerates_empty_arguments() -> None:
     client = FakeClient()
-    tool = McpTool(client, 'memory', _info('ping'), {})
+    tool = MCPTool(client, 'memory', _info('ping'), {})
 
     await tool.invoke('')
 

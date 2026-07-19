@@ -1,10 +1,10 @@
-class McpError(Exception):
+class MCPError(Exception):
     pass
 
 
-class McpConnectionError(McpError):
+class MCPConnectionError(MCPError):
     pass
 
 
-class UnknownMcpServerError(McpError):
+class UnknownMCPServerError(MCPError):
     pass

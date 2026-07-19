@@ -3,10 +3,10 @@ from collections.abc import Mapping
 
 from pydantic import JsonValue
 
-from .types import McpToolInfo
+from .types import MCPToolInfo
 
 
-class McpClientContract(ABC):
+class MCPClientContract(ABC):
     @abstractmethod
     async def call_tool(
         self,
@@ -16,4 +16,4 @@ class McpClientContract(ABC):
     ) -> str: ...
 
     @abstractmethod
-    async def list_tools(self, server: str) -> tuple[McpToolInfo, ...]: ...
+    async def list_tools(self, server: str) -> tuple[MCPToolInfo, ...]: ...

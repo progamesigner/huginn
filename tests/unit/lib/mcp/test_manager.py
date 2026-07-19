@@ -6,7 +6,7 @@ from mcp import ClientSession
 from mcp.server.fastmcp import FastMCP
 from mcp.shared.memory import create_connected_server_and_client_session
 
-from lib.mcp import Connector, McpManager, McpServer, UnknownMcpServerError
+from lib.mcp import Connector, MCPManager, MCPServer, UnknownMCPServerError
 
 
 def _echo_server() -> FastMCP:
@@ -22,7 +22,7 @@ def _echo_server() -> FastMCP:
 
 def _memory_connector(server: FastMCP) -> Connector:
     @asynccontextmanager
-    async def connect(_: McpServer) -> AsyncIterator[ClientSession]:
+    async def connect(_: MCPServer) -> AsyncIterator[ClientSession]:
         async with create_connected_server_and_client_session(server) as session:
             yield session
 
@@ -30,13 +30,13 @@ def _memory_connector(server: FastMCP) -> Connector:
 
 
 @asynccontextmanager
-async def _failing_connector(_: McpServer) -> AsyncIterator[ClientSession]:
+async def _failing_connector(_: MCPServer) -> AsyncIterator[ClientSession]:
     raise ConnectionError('connection refused')
     yield  # pragma: no cover
 
 
 @asynccontextmanager
-async def _group_failing_connector(_: McpServer) -> AsyncIterator[ClientSession]:
+async def _group_failing_connector(_: MCPServer) -> AsyncIterator[ClientSession]:
     raise ExceptionGroup(
         'unhandled errors in a TaskGroup',
         [ConnectionError('server responded with 404')],
@@ -45,8 +45,8 @@ async def _group_failing_connector(_: McpServer) -> AsyncIterator[ClientSession]
 
 
 async def test_list_tools_maps_to_our_types() -> None:
-    manager = McpManager(
-        [McpServer('memory', 'http://memory.test')],
+    manager = MCPManager(
+        [MCPServer('memory', 'http://memory.test')],
         _memory_connector(_echo_server()),
     )
     await manager.start()
@@ -62,8 +62,8 @@ async def test_list_tools_maps_to_our_types() -> None:
 
 
 async def test_call_tool_returns_rendered_text() -> None:
-    manager = McpManager(
-        [McpServer('memory', 'http://memory.test')],
+    manager = MCPManager(
+        [MCPServer('memory', 'http://memory.test')],
         _memory_connector(_echo_server()),
     )
     await manager.start()
@@ -76,15 +76,15 @@ async def test_call_tool_returns_rendered_text() -> None:
 
 
 async def test_unreachable_server_degrades_without_raising() -> None:
-    manager = McpManager(
-        [McpServer('memory', 'http://memory.test')], _failing_connector
+    manager = MCPManager(
+        [MCPServer('memory', 'http://memory.test')], _failing_connector
     )
 
     await manager.start()
     try:
         assert manager.connections == {}
         assert manager.unavailable == ['memory']
-        with pytest.raises(UnknownMcpServerError):
+        with pytest.raises(UnknownMCPServerError):
             await manager.list_tools('memory')
     finally:
         await manager.dispose()
@@ -93,8 +93,8 @@ async def test_unreachable_server_degrades_without_raising() -> None:
 async def test_degraded_start_logs_the_underlying_error(
     caplog: pytest.LogCaptureFixture,
 ) -> None:
-    manager = McpManager(
-        [McpServer('memory', 'http://memory.test')], _group_failing_connector
+    manager = MCPManager(
+        [MCPServer('memory', 'http://memory.test')], _group_failing_connector
     )
 
     with caplog.at_level('WARNING', logger='lib.mcp.manager'):
@@ -109,10 +109,10 @@ async def test_degraded_start_logs_the_underlying_error(
 
 
 async def test_call_unknown_server_raises() -> None:
-    manager = McpManager([], _memory_connector(_echo_server()))
+    manager = MCPManager([], _memory_connector(_echo_server()))
     await manager.start()
     try:
-        with pytest.raises(UnknownMcpServerError):
+        with pytest.raises(UnknownMCPServerError):
             await manager.call_tool('missing', 'echo', {})
     finally:
         await manager.dispose()
