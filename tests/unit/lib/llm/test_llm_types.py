@@ -126,3 +126,4 @@ def test_completion_request_defaults_to_no_tools_and_no_effort() -> None:
 
     assert request.tools == ()
     assert request.effort == 'none'
+    assert request.max_completion_tokens is None

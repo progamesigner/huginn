@@ -1,3 +1,7 @@
+from collections.abc import AsyncIterator
+from types import SimpleNamespace
+
+import pytest
 from anthropic.types import (
     InputJSONDelta,
     MessageDeltaUsage,
@@ -6,14 +10,18 @@ from anthropic.types import (
     RawContentBlockStopEvent,
     RawMessageDeltaEvent,
     RawMessageStopEvent,
+    RawMessageStreamEvent,
     TextBlock,
     TextDelta,
     ThinkingDelta,
     ToolUseBlock,
 )
 from anthropic.types.raw_message_delta_event import Delta
+from pydantic import SecretStr
 
+from lib.http import HTTPClientManager
 from lib.llm import (
+    CompletionRequest,
     FinishChunk,
     Message,
     TextChunk,
@@ -24,7 +32,13 @@ from lib.llm import (
     ToolCallSegment,
     ToolResultSegment,
 )
-from lib.llm.adapters.anthropic import build_messages, build_tools, decode_event
+from lib.llm.adapters.anthropic import (
+    AnthropicAdapter,
+    build_messages,
+    build_tools,
+    decode_event,
+)
+from lib.llm.client import ProviderConfig
 
 
 def test_build_messages_wraps_text_segment_in_text_block() -> None:
@@ -253,3 +267,75 @@ def test_decode_event_ignores_content_block_stop_and_message_stop() -> None:
         == []
     )
     assert list(decode_event(RawMessageStopEvent(type='message_stop'))) == []
+
+
+def _provider() -> ProviderConfig:
+    return ProviderConfig(
+        name='anthropic',
+        adapter='anthropic',
+        api_key=SecretStr('secret'),
+        models=('claude-opus-4-8',),
+        base_url='https://api.example',
+    )
+
+
+def _request(max_completion_tokens: int | None = None) -> CompletionRequest:
+    return CompletionRequest(
+        model='claude-opus-4-8',
+        messages=(Message(role='user', segments=(TextSegment(text='hi'),)),),
+        max_completion_tokens=max_completion_tokens,
+    )
+
+
+def _fake_client(recorded: dict[str, object]) -> object:
+    async def create(**kwargs: object) -> AsyncIterator[RawMessageStreamEvent]:
+        recorded.clear()
+        recorded.update(kwargs)
+
+        async def stream() -> AsyncIterator[RawMessageStreamEvent]:
+            for event in ():
+                yield event
+
+        return stream()
+
+    def factory(**_: object) -> SimpleNamespace:
+        return SimpleNamespace(messages=SimpleNamespace(create=create))
+
+    return factory
+
+
+async def _drain(adapter: AnthropicAdapter, request: CompletionRequest) -> None:
+    async for _ in adapter.stream(request):
+        pass
+
+
+async def test_stream_forwards_max_completion_tokens_as_max_tokens(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    recorded: dict[str, object] = {}
+    monkeypatch.setattr(
+        'lib.llm.adapters.anthropic.AsyncAnthropic', _fake_client(recorded)
+    )
+
+    await _drain(
+        AnthropicAdapter(_provider(), HTTPClientManager()),
+        _request(max_completion_tokens=64),
+    )
+
+    assert recorded['max_tokens'] == 64
+
+
+async def test_stream_falls_back_to_instance_max_tokens_when_unset(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    recorded: dict[str, object] = {}
+    monkeypatch.setattr(
+        'lib.llm.adapters.anthropic.AsyncAnthropic', _fake_client(recorded)
+    )
+
+    await _drain(
+        AnthropicAdapter(_provider(), HTTPClientManager(), max_tokens=4096),
+        _request(),
+    )
+
+    assert recorded['max_tokens'] == 4096

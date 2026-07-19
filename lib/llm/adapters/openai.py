@@ -151,6 +151,7 @@ class OpenAIAdapter:
                 messages=build_messages(request.messages),
                 tools=build_tools(request.tools) if request.tools else omit,
                 reasoning_effort=request.effort if request.effort != 'none' else omit,
+                max_completion_tokens=request.max_completion_tokens or omit,
                 stream=True,
             )
 

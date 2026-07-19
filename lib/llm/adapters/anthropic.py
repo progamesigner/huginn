@@ -182,7 +182,7 @@ class AnthropicAdapter:
             )
             message = await client.messages.create(
                 model=request.model,
-                max_tokens=self.max_tokens,
+                max_tokens=request.max_completion_tokens or self.max_tokens,
                 messages=build_messages(request.messages),
                 tools=build_tools(request.tools) if request.tools else omit,
                 thinking=thinking,

@@ -67,3 +67,4 @@ class CompletionRequest(LLMValue):
     messages: Annotated[tuple[Message, ...], Field()]
     tools: Annotated[tuple[JsonValue, ...], Field()] = ()
     effort: Annotated[Effort, Field()] = 'none'
+    max_completion_tokens: Annotated[int | None, Field()] = None

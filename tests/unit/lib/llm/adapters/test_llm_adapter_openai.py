@@ -1,3 +1,8 @@
+from collections.abc import AsyncIterator
+from types import SimpleNamespace
+
+import pytest
+from openai import omit
 from openai.types.chat.chat_completion_chunk import (
     ChatCompletionChunk,
     Choice,
@@ -5,8 +10,11 @@ from openai.types.chat.chat_completion_chunk import (
     ChoiceDeltaToolCall,
     ChoiceDeltaToolCallFunction,
 )
+from pydantic import SecretStr
 
+from lib.http import HTTPClientManager
 from lib.llm import (
+    CompletionRequest,
     FinishChunk,
     Message,
     TextChunk,
@@ -16,7 +24,8 @@ from lib.llm import (
     ToolCallSegment,
     ToolResultSegment,
 )
-from lib.llm.adapters.openai import build_messages, decode_chunk
+from lib.llm.adapters.openai import OpenAIAdapter, build_messages, decode_chunk
+from lib.llm.client import ProviderConfig
 
 
 def make_chunk(*choices: Choice) -> ChatCompletionChunk:
@@ -189,3 +198,69 @@ def test_decode_chunk_maps_content_filter_finish_reason_to_error() -> None:
     )
 
     assert list(decode_chunk(chunk)) == [FinishChunk(reason='error')]
+
+
+def _provider() -> ProviderConfig:
+    return ProviderConfig(
+        name='openai',
+        adapter='openai',
+        api_key=SecretStr('secret'),
+        models=('gpt-5',),
+        base_url='https://api.example',
+    )
+
+
+def _request(max_completion_tokens: int | None = None) -> CompletionRequest:
+    return CompletionRequest(
+        model='gpt-5',
+        messages=(Message(role='user', segments=(TextSegment(text='hi'),)),),
+        max_completion_tokens=max_completion_tokens,
+    )
+
+
+def _fake_client(recorded: dict[str, object]) -> object:
+    async def create(**kwargs: object) -> AsyncIterator[ChatCompletionChunk]:
+        recorded.clear()
+        recorded.update(kwargs)
+
+        async def stream() -> AsyncIterator[ChatCompletionChunk]:
+            for chunk in ():
+                yield chunk
+
+        return stream()
+
+    def factory(**_: object) -> SimpleNamespace:
+        completions = SimpleNamespace(create=create)
+        return SimpleNamespace(chat=SimpleNamespace(completions=completions))
+
+    return factory
+
+
+async def _drain(adapter: OpenAIAdapter, request: CompletionRequest) -> None:
+    async for _ in adapter.stream(request):
+        pass
+
+
+async def test_stream_forwards_max_completion_tokens(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    recorded: dict[str, object] = {}
+    monkeypatch.setattr('lib.llm.adapters.openai.AsyncOpenAI', _fake_client(recorded))
+
+    await _drain(
+        OpenAIAdapter(_provider(), HTTPClientManager()),
+        _request(max_completion_tokens=64),
+    )
+
+    assert recorded['max_completion_tokens'] == 64
+
+
+async def test_stream_omits_max_completion_tokens_when_unset(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    recorded: dict[str, object] = {}
+    monkeypatch.setattr('lib.llm.adapters.openai.AsyncOpenAI', _fake_client(recorded))
+
+    await _drain(OpenAIAdapter(_provider(), HTTPClientManager()), _request())
+
+    assert recorded['max_completion_tokens'] is omit
