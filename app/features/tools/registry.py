@@ -56,6 +56,10 @@ class ToolRegistry:
 
         return self.tools[kind]
 
+    def params_model(self, kind: str) -> type[BaseModel] | None:
+        tool = self.tools.get(kind)
+        return getattr(tool, 'params', None) if tool is not None else None
+
 
 class ToolSet:
     tools: Instances
@@ -64,6 +68,9 @@ class ToolSet:
         self.tools = dict(tools or {})
 
     def add(self, name: str, tool: Tool) -> None:
+        if name in self.tools:
+            raise DuplicateToolError(f'tool {name!r} is already in the set')
+
         self.tools[name] = tool
 
     def schemas(self) -> tuple[JsonValue, ...]:

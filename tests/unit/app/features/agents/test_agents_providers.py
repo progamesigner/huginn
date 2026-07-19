@@ -1,5 +1,12 @@
+from pathlib import Path
+
+import pytest
+
 from app.core.application import App
-from app.core.config.registry import SectionRegistry
+from app.core.config.registry import HuginnConfig, SectionRegistry
+from app.core.providers.config import ConfigProvider
+from app.features.agents.config import AGENTS
+from app.features.agents.exceptions import InvalidToolOverlayError
 from app.features.agents.providers import AgentsConfigProvider
 from app.features.tools.providers import (
     ToolProvider,
@@ -8,6 +15,40 @@ from app.features.tools.providers import (
 )
 from app.features.tools.registry import ToolRegistry
 from app.features.tools.websearch.repositories import WebSearchRepository
+
+_VALID_OVERLAY = """
+defaults:
+  model: gpt-5-mini
+tools:
+  websearch:
+    kind: websearch
+    api_key: felo-key
+agents:
+  scout:
+    description: Research agent
+    instructions: You are scout.
+    tools:
+    - name: websearch
+      params:
+        max_results: 3
+"""
+
+_INVALID_OVERLAY = """
+defaults:
+  model: gpt-5-mini
+tools:
+  websearch:
+    kind: websearch
+    api_key: felo-key
+agents:
+  scout:
+    description: Research agent
+    instructions: You are scout.
+    tools:
+    - name: websearch
+      params:
+        bogus: 1
+"""
 
 
 def test_tool_registry_provider_binds_registry() -> None:
@@ -42,3 +83,22 @@ def test_agents_config_provider_contributes_all_sections() -> None:
     keys = {spec.key for spec in app.resolve(SectionRegistry)}
 
     assert keys == {'agents', 'defaults', 'mcp_servers', 'channels', 'tools'}
+
+
+def test_agents_config_provider_accepts_valid_tool_overlay(tmp_path: Path) -> None:
+    path = tmp_path / 'huginn.yaml'
+    path.write_text(_VALID_OVERLAY)
+    app = App().build(ConfigProvider(path), ToolProvider(), AgentsConfigProvider())
+
+    config = app.resolve(HuginnConfig)
+
+    assert 'scout' in config.section(AGENTS).root
+
+
+def test_agents_config_provider_rejects_invalid_tool_overlay(tmp_path: Path) -> None:
+    path = tmp_path / 'huginn.yaml'
+    path.write_text(_INVALID_OVERLAY)
+    app = App().build(ConfigProvider(path), ToolProvider(), AgentsConfigProvider())
+
+    with pytest.raises(InvalidToolOverlayError):
+        app.resolve(HuginnConfig)

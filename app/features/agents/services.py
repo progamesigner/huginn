@@ -1,15 +1,18 @@
 import asyncio
 import logging
 import time
-from collections.abc import AsyncIterator, Callable, Iterator, Sequence
+from collections.abc import AsyncIterator, Callable, Iterator, Mapping, Sequence
 from dataclasses import dataclass
+from pathlib import Path
 from typing import cast
 from uuid import uuid4
 
 from structlog.contextvars import bound_contextvars
 
+from app.features.tools.binding import build_bound_tool
+from app.features.tools.config import ToolConfig
 from app.features.tools.mcp.bridge import McpTool, build_mcp_tools
-from app.features.tools.registry import ToolSet
+from app.features.tools.registry import ToolRegistry, ToolSet
 from lib.llm import (
     CompletionChunk,
     CompletionRequest,
@@ -25,8 +28,8 @@ from lib.llm import (
 )
 from lib.mcp import McpClientContract, UnknownMcpServerError
 
-from .config import McpRef
-from .exceptions import TurnTimeout
+from .config import AgentConfig, McpRef
+from .exceptions import AgentError, TurnTimeout
 
 logger = logging.getLogger(__name__)
 
@@ -230,6 +233,23 @@ class AgentRunner:
         return TurnOutput(text=text, completed=False, steps=tuple(steps))
 
 
+async def build_tool_set(
+    registry: ToolRegistry,
+    tool_configs: Mapping[str, ToolConfig],
+    client: McpClientContract,
+    agent: AgentConfig,
+) -> ToolSet:
+    tools = ToolSet()
+    for ref in agent.tools:
+        config = tool_configs[ref.name]
+        tools.add(ref.name, build_bound_tool(registry, config, ref.params, ref.inject))
+
+    for tool in await collect_mcp_tools(client, agent.mcp):
+        tools.add(tool.name, tool)
+
+    return tools
+
+
 async def collect_mcp_tools(
     client: McpClientContract,
     refs: Sequence[McpRef],
@@ -255,3 +275,13 @@ async def collect_mcp_tools(
         collected.extend(tools)
 
     return collected
+
+
+def load_instructions(agent: AgentConfig) -> str:
+    if agent.instructions is not None:
+        return agent.instructions
+
+    if agent.instructions_file is not None:
+        return Path(agent.instructions_file).read_text(encoding='utf-8')
+
+    raise AgentError('agent has neither instructions nor instructions_file')

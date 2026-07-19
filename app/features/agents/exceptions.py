@@ -23,3 +23,7 @@ class UnknownMcpServerReferenceError(ConfigError):
 
 class UnknownToolReferenceError(ConfigError):
     pass
+
+
+class InvalidToolOverlayError(ConfigError):
+    pass

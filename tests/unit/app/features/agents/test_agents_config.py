@@ -72,6 +72,20 @@ def test_tool_ref_rejects_unknown_field() -> None:
         ToolRef.model_validate({'name': 'websearch', 'bogus': True})
 
 
+def test_tool_ref_defaults_to_no_params_or_inject() -> None:
+    ref = ToolRef(name='websearch')
+
+    assert ref.params == {}
+    assert ref.inject == {}
+
+
+def test_tool_ref_accepts_params_and_inject() -> None:
+    ref = ToolRef(name='websearch', params={'max_results': 5}, inject={'region': 'tw'})
+
+    assert ref.params == {'max_results': 5}
+    assert ref.inject == {'region': 'tw'}
+
+
 def test_mcp_ref_defaults_to_no_allowlist_or_injected_params() -> None:
     ref = McpRef(server='memory')
 

@@ -95,6 +95,25 @@ def test_config_models_maps_configless_tools_to_none() -> None:
     assert registry.config_models == {'greet': None}
 
 
+def test_toolset_add_rejects_duplicate_name() -> None:
+    tools = ToolSet()
+    tools.add('greet', GreetTool())
+
+    with pytest.raises(DuplicateToolError, match='greet'):
+        tools.add('greet', GreetTool())
+
+
+def test_params_model_returns_typed_tool_params() -> None:
+    registry = ToolRegistry()
+    registry.register(GreetTool)
+
+    assert registry.params_model('greet') is GreetParams
+
+
+def test_params_model_returns_none_for_unknown_kind() -> None:
+    assert ToolRegistry().params_model('missing') is None
+
+
 def test_toolset_schemas_use_instance_names() -> None:
     tools = ToolSet()
     tools.add('greet-a', GreetTool())

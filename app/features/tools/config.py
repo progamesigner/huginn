@@ -15,6 +15,7 @@ from .registry import ToolRegistry
 
 class ToolConfig(ConfigValue):
     kind: Annotated[str, Field()]
+    description: Annotated[str | None, Field()] = None
 
 
 class ToolsConfig(RootModel[dict[str, ToolConfig]]):

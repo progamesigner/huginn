@@ -7,6 +7,12 @@ tools:
     api_key:
       value_from:
         env: FELO_API_KEY
+  supersearch:
+    kind: websearch
+    description: Deep web search with broader, paid access; prefer for hard questions.
+    api_key:
+      value_from:
+        env: SUPERSEARCH_API_KEY
 
 mcp_servers:
   memory:
@@ -27,6 +33,9 @@ agents:
     - name: websearch
       params:
         max_results: 5
+    - name: supersearch
+      inject:
+        max_results: 3
     mcp:
     - server: memory
       allow:

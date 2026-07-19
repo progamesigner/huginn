@@ -52,6 +52,7 @@ from app.features.tools.websearch.config import WebSearchToolConfig
 
 class SearchParams(ToolParams):
     query: Annotated[str, Field()]
+    max_results: Annotated[int, Field()] = 5
 
 
 class WebSearchTool(TypedTool[SearchParams]):
@@ -91,9 +92,10 @@ def build_tool_registry() -> ToolRegistry:
 
 def build_section_registry(tools: ToolRegistry | None = None) -> SectionRegistry:
     registry = SectionRegistry()
-    for spec in build_tool_sections(tools or build_tool_registry()):
+    tool_registry = tools or build_tool_registry()
+    for spec in build_tool_sections(tool_registry):
         registry.register(spec)
-    for spec in build_agent_sections():
+    for spec in build_agent_sections(tool_registry):
         registry.register(spec)
     registry.register(MCP_SERVERS)
     return registry
@@ -463,7 +465,7 @@ def test_validators_accept_a_fully_consistent_config() -> None:
     )
 
     _validate_tools(config, build_tool_registry())
-    _validate_agents(config)
+    _validate_agents(config, build_tool_registry())
     _validate_channels(config)
 
 
@@ -483,7 +485,7 @@ def test_validate_agents_rejects_unknown_tool_reference() -> None:
     with pytest.raises(
         UnknownToolReferenceError, match=r'agents\.scout\.tools\[0\]\.name'
     ):
-        _validate_agents(config)
+        _validate_agents(config, build_tool_registry())
 
 
 def test_validate_agents_rejects_unknown_mcp_server() -> None:
@@ -494,7 +496,7 @@ def test_validate_agents_rejects_unknown_mcp_server() -> None:
     with pytest.raises(
         UnknownMcpServerReferenceError, match=r'agents\.scout\.mcp\[0\]\.server'
     ):
-        _validate_agents(config)
+        _validate_agents(config, build_tool_registry())
 
 
 def test_validate_agents_requires_exactly_one_instruction_source() -> None:
@@ -502,10 +504,14 @@ def test_validate_agents_requires_exactly_one_instruction_source() -> None:
     neither = build_agent(instructions=None)
 
     with pytest.raises(AmbiguousInstructionsError, match=r'agents\.scout'):
-        _validate_agents(build_app_config(agents={'scout': both}))
+        _validate_agents(
+            build_app_config(agents={'scout': both}), build_tool_registry()
+        )
 
     with pytest.raises(AmbiguousInstructionsError, match=r'agents\.scout'):
-        _validate_agents(build_app_config(agents={'scout': neither}))
+        _validate_agents(
+            build_app_config(agents={'scout': neither}), build_tool_registry()
+        )
 
 
 def test_validate_channels_rejects_unknown_binding_agent() -> None:
