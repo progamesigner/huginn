@@ -7,8 +7,8 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 from app.exts.felo.client import FeloClient
 from app.features.agents.services import AgentRunner, TurnInput
 from app.features.tools.registry import ToolSet
-from app.features.tools.repositories import WebSearchRepository
-from app.features.tools.websearch import WebSearchTool
+from app.features.tools.websearch.repositories import WebSearchRepository
+from app.features.tools.websearch.tool import WebSearchTool
 from lib.http import HTTPClientManager
 from lib.llm.adapters.openai import OpenAIAdapter
 from lib.llm.client import ProviderConfig

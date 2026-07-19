@@ -49,7 +49,7 @@ from app.features.tools.config import build_sections as build_tool_sections
 from app.features.tools.exceptions import UnknownToolKindError
 from app.features.tools.registry import ToolRegistry
 from app.features.tools.types import Tool, ToolOutput, ToolParams
-from app.features.tools.websearch import WebSearchToolConfig
+from app.features.tools.websearch.config import WebSearchToolConfig
 
 
 class SearchParams(ToolParams):

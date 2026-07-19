@@ -2,12 +2,12 @@ from app.core.application import App
 from app.core.config.registry import SectionRegistry
 from app.features.agents.providers import AgentsConfigProvider
 from app.features.tools.providers import (
+    ToolProvider,
     ToolRegistryProvider,
     ToolsConfigProvider,
-    WebSearchToolProvider,
 )
 from app.features.tools.registry import ToolRegistry
-from app.features.tools.repositories import WebSearchRepository
+from app.features.tools.websearch.repositories import WebSearchRepository
 
 
 def test_tool_registry_provider_binds_registry() -> None:
@@ -16,14 +16,14 @@ def test_tool_registry_provider_binds_registry() -> None:
     assert app.bound(ToolRegistry)
 
 
-def test_websearch_provider_binds_repository() -> None:
-    app = App().build(WebSearchToolProvider())
+def test_tool_provider_binds_repository() -> None:
+    app = App().build(ToolProvider())
 
     assert app.bound(WebSearchRepository)
 
 
-def test_websearch_provider_declares_kind() -> None:
-    app = App().build(WebSearchToolProvider())
+def test_tool_provider_registers_websearch_kind() -> None:
+    app = App().build(ToolProvider())
 
     assert 'websearch' in app.resolve(ToolRegistry).tools
 

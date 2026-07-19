@@ -3,15 +3,15 @@ import pytest
 import respx
 from pydantic import SecretStr, ValidationError
 
-from app.features.tools.repositories import (
+from app.features.tools.websearch.config import WebSearchToolConfig
+from app.features.tools.websearch.repositories import (
     WebSearchRepository,
     WebSearchResult,
     WebSearchSource,
 )
-from app.features.tools.websearch import (
+from app.features.tools.websearch.tool import (
     WebSearchParams,
     WebSearchTool,
-    WebSearchToolConfig,
     _format_result,
     build_websearch,
 )
