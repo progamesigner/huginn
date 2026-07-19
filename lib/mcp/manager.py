@@ -5,9 +5,11 @@ from contextlib import AbstractAsyncContextManager, asynccontextmanager
 from typing import override
 
 from mcp import ClientSession
-from mcp.client.streamable_http import streamablehttp_client
+from mcp.client.streamable_http import streamable_http_client
 from mcp.types import CallToolResult, TextContent
 from pydantic import JsonValue
+
+from lib.http import HTTPClientContract
 
 from .contracts import McpClientContract
 from .exceptions import McpConnectionError, UnknownMcpServerError
@@ -18,16 +20,20 @@ logger = logging.getLogger(__name__)
 type Connector = Callable[[McpServer], AbstractAsyncContextManager[ClientSession]]
 
 
-@asynccontextmanager
-async def connect_streamable_http(server: McpServer) -> AsyncIterator[ClientSession]:
-    async with streamablehttp_client(server.url, headers=dict(server.headers)) as (
-        read,
-        write,
-        _,
-    ):
-        async with ClientSession(read, write) as session:
-            await session.initialize()
-            yield session
+def streamable_http_connector(http: HTTPClientContract) -> Connector:
+    @asynccontextmanager
+    async def connect(server: McpServer) -> AsyncIterator[ClientSession]:
+        async with http.connect(headers=server.headers) as client:
+            async with streamable_http_client(server.url, http_client=client) as (
+                read,
+                write,
+                _,
+            ):
+                async with ClientSession(read, write) as session:
+                    await session.initialize()
+                    yield session
+
+    return connect
 
 
 def _render(result: CallToolResult) -> str:
@@ -108,7 +114,7 @@ class McpManager(McpClientContract):
     def __init__(
         self,
         servers: Sequence[McpServer],
-        connector: Connector = connect_streamable_http,
+        connector: Connector,
     ) -> None:
         self.connections = {}
         self.connector = connector

@@ -4,7 +4,8 @@ import pytest
 from pydantic import Field, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-from lib.mcp import McpManager, McpServer
+from lib.http import HTTPClientManager
+from lib.mcp import McpManager, McpServer, streamable_http_connector
 
 pytestmark = pytest.mark.integration
 
@@ -30,7 +31,8 @@ def require_memory_server() -> McpServer:
 
 
 async def test_lists_and_calls_a_read_only_tool() -> None:
-    manager = McpManager([require_memory_server()])
+    http = HTTPClientManager()
+    manager = McpManager([require_memory_server()], streamable_http_connector(http))
 
     await manager.start()
     try:
@@ -49,3 +51,4 @@ async def test_lists_and_calls_a_read_only_tool() -> None:
         assert isinstance(output, str)
     finally:
         await manager.dispose()
+        await http.dispose()

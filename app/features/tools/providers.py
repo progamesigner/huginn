@@ -5,7 +5,13 @@ from app.core.providers.config import ConfigProvider
 from app.core.providers.http import HTTPClientProvider
 from lib.container import ContainerContract, ProviderContract
 from lib.http import HTTPClientContract
-from lib.mcp import Connector, McpClientContract, McpManager, McpServer
+from lib.mcp import (
+    Connector,
+    McpClientContract,
+    McpManager,
+    McpServer,
+    streamable_http_connector,
+)
 
 from .config import build_sections
 from .mcp.config import MCP_SERVERS, McpServerConfig, McpServersConfig
@@ -38,7 +44,7 @@ class McpConfigProvider(ProviderContract):
 
 
 class McpProvider(ProviderContract):
-    dependencies = (McpConfigProvider,)
+    dependencies = (HTTPClientProvider, McpConfigProvider)
 
     connector: Connector | None
 
@@ -56,10 +62,10 @@ class McpProvider(ProviderContract):
 
     def _build(self, container: ContainerContract) -> McpManager:
         servers = build_servers(container.resolve(HuginnConfig).section(MCP_SERVERS))
-        if self.connector is None:
-            return McpManager(servers)
-
-        return McpManager(servers, self.connector)
+        connector = self.connector or streamable_http_connector(
+            container.resolve(HTTPClientContract)
+        )
+        return McpManager(servers, connector)
 
 
 class ToolRegistryProvider(ProviderContract):
