@@ -35,6 +35,15 @@ async def _failing_connector(_: McpServer) -> AsyncIterator[ClientSession]:
     yield  # pragma: no cover
 
 
+@asynccontextmanager
+async def _group_failing_connector(_: McpServer) -> AsyncIterator[ClientSession]:
+    raise ExceptionGroup(
+        'unhandled errors in a TaskGroup',
+        [ConnectionError('server responded with 404')],
+    )
+    yield  # pragma: no cover
+
+
 async def test_list_tools_maps_to_our_types() -> None:
     manager = McpManager(
         [McpServer('memory', 'http://memory.test')],
@@ -77,6 +86,24 @@ async def test_unreachable_server_degrades_without_raising() -> None:
         assert manager.unavailable == ['memory']
         with pytest.raises(UnknownMcpServerError):
             await manager.list_tools('memory')
+    finally:
+        await manager.dispose()
+
+
+async def test_degraded_start_logs_the_underlying_error(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    manager = McpManager(
+        [McpServer('memory', 'http://memory.test')], _group_failing_connector
+    )
+
+    with caplog.at_level('WARNING', logger='lib.mcp.manager'):
+        await manager.start()
+    try:
+        assert manager.unavailable == ['memory']
+        assert any(
+            'server responded with 404' in message for message in caplog.messages
+        )
     finally:
         await manager.dispose()
 

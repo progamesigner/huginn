@@ -36,6 +36,15 @@ def streamable_http_connector(http: HTTPClientContract) -> Connector:
     return connect
 
 
+def _describe(error: BaseException | None) -> str:
+    # NOTE: anyio task groups bury the real failure inside ExceptionGroup
+    if error is None:
+        return 'connection closed unexpectedly'
+    if isinstance(error, BaseExceptionGroup):
+        return '; '.join(_describe(exception) for exception in error.exceptions)
+    return f'{type(error).__name__}: {error}'
+
+
 def _render(result: CallToolResult) -> str:
     return '\n'.join(
         block.text for block in result.content if isinstance(block, TextContent)
@@ -65,7 +74,9 @@ class _Connection:
         self.task = asyncio.create_task(self._serve())
         await self.ready.wait()
         if self.session is None:
-            raise McpConnectionError(f'{self.server.name}: {self.error}')
+            raise McpConnectionError(
+                f'{self.server.name}: {_describe(self.error)}'
+            ) from self.error
 
     async def aclose(self) -> None:
         self.stop.set()
