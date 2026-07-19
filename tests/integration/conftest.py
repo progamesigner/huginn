@@ -6,14 +6,34 @@ from alembic import command
 from alembic.config import Config
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 
+_IMAGE = 'postgres:16'
+
 
 @pytest.fixture(scope='session')
 def database_url() -> Iterator[str]:
+    # NOTE: an explicit url (CI service container) wins; otherwise spin a container
     url = os.environ.get('HUGINN_DATABASE_URL')
-    if not url:
-        pytest.skip('HUGINN_DATABASE_URL is not set')
+    if url:
+        yield url
+        return
 
-    yield url
+    try:
+        from testcontainers.postgres import PostgresContainer
+    except ImportError:
+        pytest.skip('set HUGINN_DATABASE_URL or add the testcontainers dev dependency')
+
+    try:
+        container = PostgresContainer(_IMAGE, driver='asyncpg')
+        with container:
+            spun = container.get_connection_url()
+            # NOTE: env.py resolves its dsn from settings, so expose the container there
+            with pytest.MonkeyPatch.context() as patch:
+                patch.setenv('HUGINN_DATABASE_URL', spun)
+                yield spun
+    except Exception as error:
+        pytest.skip(
+            f'Docker unavailable; set HUGINN_DATABASE_URL to run db tests ({error})'
+        )
 
 
 @pytest.fixture(scope='session')
