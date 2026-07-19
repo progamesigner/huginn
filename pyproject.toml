@@ -3,6 +3,8 @@ name = "huginn"
 version = "0.1.0"
 requires-python = "==3.14.*"
 dependencies = [
+    "alembic==1.18.5",
+    "asyncpg==0.31.0",
     "fastapi==0.139.0",
     "httptools==0.8.0",
     "httpx==0.28.1",
@@ -10,6 +12,7 @@ dependencies = [
     "pydantic==2.13.4",
     "pydantic-settings==2.14.2",
     "pyyaml==6.0.3",
+    "sqlalchemy[asyncio]==2.0.51",
     "structlog==26.1.0",
     "typer==0.27.0",
     "uvicorn==0.51.0",
@@ -33,6 +36,7 @@ dev = [
     "pytest-asyncio==1.4.0",
     "respx==0.23.1",
     "ruff==0.15.21",
+    "testcontainers==4.14.2",
     "ty==0.0.58",
     "watchfiles==1.2.0",
 ]
@@ -40,6 +44,13 @@ dev = [
 [build-system]
 build-backend = "hatchling.build"
 requires = ["hatchling==1.31.0"]
+
+[tool.alembic]
+script_location = "migrations"
+prepend_sys_path = ["."]
+version_locations = ["migrations/revisions"]
+file_template = "%%(year)d%%(month).2d%%(day).2d%%(hour).2d%%(minute).2d_%%(rev)s"
+timezone = "UTC"
 
 [tool.hatch.build.targets.wheel]
 packages = ["app", "bin", "lib"]
