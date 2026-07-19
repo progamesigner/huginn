@@ -306,27 +306,95 @@ def test_to_shares_instance_bindings_but_not_overrides() -> None:
     assert clone.resolve(Greeter) is real
 
 
-async def test_scope_disposes_resolved_instances_without_starting_eager() -> None:
+async def test_scope_yields_child_sharing_registry() -> None:
+    container = Container()
+    container.bind(Greeter, instance=Greeter('root'))
+
+    async with container.scope() as scope:
+        assert scope is not container
+        assert scope.resolve(Greeter).name == 'root'
+
+
+async def test_scoped_binding_requires_active_scope() -> None:
+    container = Container()
+    container.bind(Greeter, factory=lambda _: Greeter('scoped'), scoped=True)
+
+    with pytest.raises(ResolutionError, match='Greeter is scoped'):
+        container.resolve(Greeter)
+
+
+async def test_scope_caches_scoped_instance_within_scope() -> None:
+    container = Container()
+    container.bind(Greeter, factory=lambda _: Greeter(), scoped=True)
+
+    async with container.scope() as scope:
+        assert scope.resolve(Greeter) is scope.resolve(Greeter)
+
+
+async def test_scopes_get_independent_scoped_instances() -> None:
+    container = Container()
+    container.bind(Greeter, factory=lambda _: Greeter(), scoped=True)
+
+    async with container.scope() as first:
+        one = first.resolve(Greeter)
+    async with container.scope() as second:
+        two = second.resolve(Greeter)
+
+    assert one is not two
+
+
+async def test_scoped_binding_may_depend_on_root_singleton() -> None:
+    container = Container()
+    container.bind(Greeter, factory=lambda _: Greeter('root'), shared=True)
+    container.bind(
+        Farewell, factory=lambda c: Farewell(c.resolve(Greeter)), scoped=True
+    )
+
+    async with container.scope() as scope:
+        assert scope.resolve(Farewell).greeter is container.resolve(Greeter)
+
+
+async def test_singleton_cannot_capture_scoped_binding() -> None:
+    container = Container()
+    container.bind(Greeter, factory=lambda _: Greeter('scoped'), scoped=True)
+    container.bind(
+        Farewell, factory=lambda c: Farewell(c.resolve(Greeter)), shared=True
+    )
+
+    async with container.scope() as scope:
+        with pytest.raises(ResolutionError, match='Greeter is scoped'):
+            scope.resolve(Farewell)
+
+
+async def test_scope_disposes_scoped_instances_on_exit() -> None:
     journal = []
     container = Container()
     container.bind(
         RecordingManager,
-        factory=lambda _: RecordingManager(journal, 'eager'),
-        shared=True,
-        eager=True,
-    )
-    container.bind(
-        OtherManager,
-        factory=lambda _: OtherManager(journal, 'used'),
-        shared=True,
+        factory=lambda _: RecordingManager(journal, 'scoped'),
+        scoped=True,
     )
 
-    async with container.scope() as scoped:
-        assert scoped is container
-        scoped.resolve(OtherManager)
+    async with container.scope() as scope:
+        scope.resolve(RecordingManager)
         assert journal == []
 
-    assert journal == ['used:dispose']
+    assert journal == ['scoped:dispose']
+
+
+async def test_scope_leaves_root_singletons_untouched() -> None:
+    journal = []
+    container = Container()
+    container.bind(
+        RecordingManager,
+        factory=lambda _: RecordingManager(journal, 'shared'),
+        shared=True,
+    )
+
+    async with container.scope() as scope:
+        scope.resolve(RecordingManager)
+
+    assert journal == []
 
 
 async def test_scope_disposes_even_when_body_raises() -> None:
@@ -334,16 +402,32 @@ async def test_scope_disposes_even_when_body_raises() -> None:
     container = Container()
     container.bind(
         RecordingManager,
-        factory=lambda _: RecordingManager(journal, 'used'),
-        shared=True,
+        factory=lambda _: RecordingManager(journal, 'scoped'),
+        scoped=True,
     )
 
     with pytest.raises(RuntimeError, match='boom'):
-        async with container.scope():
-            container.resolve(RecordingManager)
+        async with container.scope() as scope:
+            scope.resolve(RecordingManager)
             raise RuntimeError('boom')
 
-    assert journal == ['used:dispose']
+    assert journal == ['scoped:dispose']
+
+
+def test_scoped_binding_rejects_shared_and_eager() -> None:
+    container = Container()
+
+    with pytest.raises(BindingError):
+        container.bind(Greeter, factory=lambda _: Greeter(), scoped=True, shared=True)
+    with pytest.raises(BindingError):
+        container.bind(Farewell, factory=lambda _: Greeter(), scoped=True, eager=True)
+
+
+def test_scoped_instance_binding_rejected() -> None:
+    container = Container()
+
+    with pytest.raises(BindingError):
+        container.bind(Greeter, instance=Greeter(), scoped=True)
 
 
 async def test_async_with_starts_and_closes() -> None:

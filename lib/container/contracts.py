@@ -1,6 +1,6 @@
 from abc import ABC, abstractmethod
-from collections.abc import AsyncIterator, Callable
-from contextlib import AbstractContextManager, asynccontextmanager
+from collections.abc import Callable
+from contextlib import AbstractAsyncContextManager, AbstractContextManager
 from types import TracebackType
 from typing import ClassVar, Protocol, Self, runtime_checkable
 
@@ -28,6 +28,7 @@ class ContainerContract(ABC):
         factory: Callable[[ContainerContract], T] | None = None,
         instance: T | None = None,
         shared: bool = False,
+        scoped: bool = False,
         eager: bool = False,
     ) -> None: ...
 
@@ -43,19 +44,15 @@ class ContainerContract(ABC):
     @abstractmethod
     def use[T](self, binding: type[T], value: T) -> AbstractContextManager[T]: ...
 
+    # NOTE: a child scope holds its own scoped instances and disposes them on exit
+    @abstractmethod
+    def scope(self) -> AbstractAsyncContextManager[ContainerContract]: ...
+
     @abstractmethod
     async def start(self) -> None: ...
 
     @abstractmethod
     async def dispose(self) -> None: ...
-
-    # NOTE: scope for short-lived entrypoints
-    @asynccontextmanager
-    async def scope(self) -> AsyncIterator[Self]:
-        try:
-            yield self
-        finally:
-            await self.dispose()
 
     async def __aenter__(self) -> Self:
         await self.start()
