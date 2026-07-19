@@ -9,6 +9,10 @@ class TurnTimeout(AgentError):
     pass
 
 
+class UnroutableError(AgentError):
+    pass
+
+
 class AmbiguousInstructionsError(ConfigError):
     pass
 
