@@ -1,21 +1,20 @@
 import logging
 from collections.abc import Callable, Mapping
-from typing import cast
 
 from pydantic import BaseModel, JsonValue, ValidationError
 
 from lib.llm import ToolCallSegment, ToolResultSegment
 
 from .exceptions import DuplicateToolError, UnknownToolError
-from .types import Tool, ToolParams
+from .types import Tool
 
 logger = logging.getLogger(__name__)
 
-type ToolBuilder = Callable[[BaseModel], Tool[ToolParams]]
+type ToolBuilder = Callable[[BaseModel], Tool]
 type Builders = dict[str, ToolBuilder]
 type Configs = dict[str, type[BaseModel]]
-type Instances = dict[str, Tool[ToolParams]]
-type Tools = dict[str, type[Tool[ToolParams]]]
+type Instances = dict[str, Tool]
+type Tools = dict[str, type[Tool]]
 
 
 class ToolRegistry:
@@ -32,25 +31,25 @@ class ToolRegistry:
         self.configs = {}
         self.tools = {}
 
-    def register[P: ToolParams](
+    def register(
         self,
-        tool: type[Tool[P]],
+        tool: type[Tool],
         config: type[BaseModel] | None = None,
-        builder: Callable[[BaseModel], Tool[P]] | None = None,
+        builder: ToolBuilder | None = None,
     ) -> None:
         if tool.name in self.tools:
             raise DuplicateToolError(f'tool {tool.name!r} is already registered')
 
-        self.tools[tool.name] = cast(type[Tool[ToolParams]], tool)
-        self.builders[tool.name] = cast(ToolBuilder, builder or (lambda _: tool()))
+        self.tools[tool.name] = tool
+        self.builders[tool.name] = builder or (lambda _: tool())
         if config is not None:
             self.configs[tool.name] = config
 
-    def build(self, kind: str, config: BaseModel) -> Tool[ToolParams]:
+    def build(self, kind: str, config: BaseModel) -> Tool:
         self.get(kind)
         return self.builders[kind](config)
 
-    def get(self, kind: str) -> type[Tool[ToolParams]]:
+    def get(self, kind: str) -> type[Tool]:
         if kind not in self.tools:
             available = ', '.join(sorted(self.tools)) or 'none'
             raise UnknownToolError(f'unknown tool {kind!r}; available: {available}')
@@ -61,11 +60,11 @@ class ToolRegistry:
 class ToolSet:
     tools: Instances
 
-    def __init__(self, tools: Mapping[str, Tool[ToolParams]] | None = None) -> None:
+    def __init__(self, tools: Mapping[str, Tool] | None = None) -> None:
         self.tools = dict(tools or {})
 
-    def add[P: ToolParams](self, name: str, tool: Tool[P]) -> None:
-        self.tools[name] = cast(Tool[ToolParams], tool)
+    def add(self, name: str, tool: Tool) -> None:
+        self.tools[name] = tool
 
     def schemas(self) -> tuple[JsonValue, ...]:
         return tuple(
@@ -74,7 +73,7 @@ class ToolSet:
                 'function': {
                     'name': name,
                     'description': tool.description,
-                    'parameters': tool.params.model_json_schema(),
+                    'parameters': tool.schema(),
                 },
             }
             for name, tool in self.tools.items()
@@ -91,16 +90,13 @@ class ToolSet:
 
         tool = self.tools[call.name]
         try:
-            params = tool.params.model_validate_json(call.arguments)
+            output = await tool.invoke(call.arguments)
         except ValidationError as error:
             return ToolResultSegment(
                 tool_call_id=call.id,
                 content=str(error),
                 error=True,
             )
-
-        try:
-            output = await tool.run(params)
         except Exception:
             logger.exception('Tool %s raised while executing', call.name)
             return ToolResultSegment(

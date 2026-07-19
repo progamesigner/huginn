@@ -1,13 +1,14 @@
 import asyncio
 import logging
 import time
-from collections.abc import AsyncIterator, Callable, Iterator
+from collections.abc import AsyncIterator, Callable, Iterator, Sequence
 from dataclasses import dataclass
 from typing import cast
 from uuid import uuid4
 
 from structlog.contextvars import bound_contextvars
 
+from app.features.tools.mcp.bridge import McpTool, build_mcp_tools
 from app.features.tools.registry import ToolSet
 from lib.llm import (
     CompletionChunk,
@@ -22,7 +23,9 @@ from lib.llm import (
     ToolCallSegment,
     ToolResultSegment,
 )
+from lib.mcp import McpClientContract, UnknownMcpServerError
 
+from .config import McpRef
 from .exceptions import TurnTimeout
 
 logger = logging.getLogger(__name__)
@@ -225,3 +228,30 @@ class AgentRunner:
             turn.max_iterations,
         )
         return TurnOutput(text=text, completed=False, steps=tuple(steps))
+
+
+async def collect_mcp_tools(
+    client: McpClientContract,
+    refs: Sequence[McpRef],
+) -> list[McpTool]:
+    collected: list[McpTool] = []
+    for ref in refs:
+        try:
+            infos = await client.list_tools(ref.server)
+        except UnknownMcpServerError:
+            logger.warning(
+                'agent references mcp server %r which is unavailable; skipping',
+                ref.server,
+            )
+            continue
+
+        tools = build_mcp_tools(client, ref.server, infos, ref.allow, ref.inject)
+        if not tools:
+            logger.warning(
+                'mcp server %r contributed no tools for this agent (allow=%s)',
+                ref.server,
+                list(ref.allow),
+            )
+        collected.extend(tools)
+
+    return collected

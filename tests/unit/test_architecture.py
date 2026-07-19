@@ -7,7 +7,7 @@ from pathlib import Path
 from app.core import exceptions
 
 CROSS_FEATURE_SURFACE: dict[tuple[str, str], frozenset[str]] = {
-    ('agents', 'tools'): frozenset({'config', 'providers', 'registry'}),
+    ('agents', 'tools'): frozenset({'config', 'mcp', 'providers', 'registry'}),
 }
 FEATURES_PACKAGE = 'app.features'
 EXT_SLICE_NAMES = frozenset({'client', 'payloads', 'exceptions'})

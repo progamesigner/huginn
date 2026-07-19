@@ -1,5 +1,5 @@
 import pytest
-from pydantic import HttpUrl, SecretStr, ValidationError
+from pydantic import ValidationError
 
 from app.features.agents.config import (
     AgentConfig,
@@ -9,8 +9,6 @@ from app.features.agents.config import (
     ChannelsConfig,
     DefaultsConfig,
     McpRef,
-    McpServerConfig,
-    McpServersConfig,
     ToolRef,
 )
 
@@ -36,20 +34,6 @@ def test_agents_config_accepts_full_example() -> None:
 
     assert agents.root['scout'].description == 'General-purpose research agent'
     assert agents.root['scout'].tools[0].name == 'websearch'
-
-
-def test_mcp_servers_config_holds_named_declarations() -> None:
-    servers = McpServersConfig(
-        {
-            'memory': McpServerConfig(
-                transport='http',
-                url=HttpUrl('https://memory.example.internal/mcp'),
-                auth=SecretStr('token'),
-            ),
-        }
-    )
-
-    assert servers.root['memory'].transport == 'http'
 
 
 def test_defaults_config_defaults_to_no_model() -> None:
@@ -81,21 +65,6 @@ def test_agent_config_is_frozen() -> None:
 
     with pytest.raises(ValidationError):
         setattr(agent, field, 'y')
-
-
-def test_mcp_server_config_requires_transport_and_url() -> None:
-    with pytest.raises(ValidationError, match='transport'):
-        McpServerConfig.model_validate({'url': 'https://memory.example.internal/mcp'})
-
-    with pytest.raises(ValidationError, match='url'):
-        McpServerConfig.model_validate({'transport': 'http'})
-
-
-def test_mcp_server_config_rejects_unknown_transport() -> None:
-    with pytest.raises(ValidationError):
-        McpServerConfig.model_validate(
-            {'transport': 'stdio', 'url': 'https://memory.example.internal/mcp'}
-        )
 
 
 def test_tool_ref_rejects_unknown_field() -> None:

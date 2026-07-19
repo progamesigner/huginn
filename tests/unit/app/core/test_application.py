@@ -11,7 +11,7 @@ from app.core.settings import HuginnSettings
 from app.features.tools.exceptions import DuplicateToolError
 from app.features.tools.providers import ToolRegistryProvider
 from app.features.tools.registry import ToolRegistry
-from app.features.tools.types import Tool, ToolOutput, ToolParams
+from app.features.tools.types import ToolOutput, ToolParams, TypedTool
 from lib.container import ContainerContract, ProviderContract
 from lib.llm import LLMContract
 from lib.observability import Logger
@@ -211,7 +211,7 @@ def test_build_wires_tool_registry_provider() -> None:
 
 
 def test_build_fails_when_two_providers_register_the_same_tool_name() -> None:
-    class Echo(Tool[ToolParams]):
+    class Echo(TypedTool[ToolParams]):
         name = 'echo'
         description = 'Echo tool'
         params = ToolParams

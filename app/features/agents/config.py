@@ -1,11 +1,12 @@
 from collections.abc import Iterator
-from typing import Annotated, Literal
+from typing import Annotated
 
-from pydantic import BaseModel, Field, HttpUrl, JsonValue, RootModel, SecretStr
+from pydantic import BaseModel, Field, JsonValue, RootModel
 
 from app.core.config.registry import HuginnConfig, SectionSpec
 from app.core.config.schema import ConfigValue
 from app.features.tools.config import TOOLS
+from app.features.tools.mcp.config import MCP_SERVERS
 
 from .exceptions import (
     AmbiguousInstructionsError,
@@ -14,17 +15,9 @@ from .exceptions import (
     UnknownToolReferenceError,
 )
 
-type Transport = Literal['http']
-
 
 class DefaultsConfig(ConfigValue):
     model: Annotated[str | None, Field()] = None
-
-
-class McpServerConfig(ConfigValue):
-    transport: Annotated[Transport, Field()]
-    url: Annotated[HttpUrl, Field()]
-    auth: Annotated[SecretStr | None, Field()] = None
 
 
 class ToolRef(ConfigValue):
@@ -65,10 +58,6 @@ class AgentsConfig(RootModel[dict[str, AgentConfig]]):
     pass
 
 
-class McpServersConfig(RootModel[dict[str, McpServerConfig]]):
-    pass
-
-
 def _describe_agent(name: str, agent: AgentConfig) -> str:
     model = agent.model or 'default'
     tools = ', '.join(tool.name for tool in agent.tools) or 'none'
@@ -82,11 +71,6 @@ def _describe_agents(config: HuginnConfig) -> list[str]:
     lines = [f'agents ({len(agents)}):']
     lines.extend(_describe_agent(name, agent) for name, agent in agents.items())
     return lines
-
-
-def _describe_mcp_servers(config: HuginnConfig) -> list[str]:
-    servers = config.section(MCP_SERVERS).root
-    return [f'mcp_servers: {", ".join(sorted(servers)) or "none"}']
 
 
 def _describe_channels(config: HuginnConfig) -> list[str]:
@@ -148,7 +132,6 @@ def _validate_channels(config: HuginnConfig) -> None:
 def build_sections() -> Iterator[SectionSpec[BaseModel]]:
     yield AGENTS
     yield DEFAULTS
-    yield MCP_SERVERS
     yield CHANNELS
 
 
@@ -167,6 +150,3 @@ CHANNELS = SectionSpec(
     validate=_validate_channels,
 )
 DEFAULTS = SectionSpec('defaults', DefaultsConfig)
-MCP_SERVERS = SectionSpec(
-    'mcp_servers', McpServersConfig, describe=_describe_mcp_servers
-)

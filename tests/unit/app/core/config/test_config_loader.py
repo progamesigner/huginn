@@ -23,7 +23,6 @@ from app.features.agents.config import (
     AGENTS,
     CHANNELS,
     DEFAULTS,
-    MCP_SERVERS,
     AgentConfig,
     AgentsConfig,
     ChannelConfig,
@@ -31,8 +30,6 @@ from app.features.agents.config import (
     ChannelsConfig,
     DefaultsConfig,
     McpRef,
-    McpServerConfig,
-    McpServersConfig,
     ToolRef,
     _validate_agents,
     _validate_channels,
@@ -47,8 +44,9 @@ from app.features.agents.exceptions import (
 from app.features.tools.config import TOOLS, ToolConfig, ToolsConfig, _validate_tools
 from app.features.tools.config import build_sections as build_tool_sections
 from app.features.tools.exceptions import UnknownToolKindError
+from app.features.tools.mcp.config import MCP_SERVERS, McpServerConfig, McpServersConfig
 from app.features.tools.registry import ToolRegistry
-from app.features.tools.types import Tool, ToolOutput, ToolParams
+from app.features.tools.types import ToolOutput, ToolParams, TypedTool
 from app.features.tools.websearch.config import WebSearchToolConfig
 
 
@@ -56,7 +54,7 @@ class SearchParams(ToolParams):
     query: Annotated[str, Field()]
 
 
-class WebSearchTool(Tool[SearchParams]):
+class WebSearchTool(TypedTool[SearchParams]):
     name = 'websearch'
     description = 'Fake tool for config loader tests'
     params = SearchParams
@@ -70,7 +68,7 @@ class FakeParams(ToolParams):
     pass
 
 
-class FakeTool(Tool[FakeParams]):
+class FakeTool(TypedTool[FakeParams]):
     name = 'faketool'
     description = 'Fake tool kind that lives outside features/tools/config.py'
     params = FakeParams
@@ -97,6 +95,7 @@ def build_section_registry(tools: ToolRegistry | None = None) -> SectionRegistry
         registry.register(spec)
     for spec in build_agent_sections():
         registry.register(spec)
+    registry.register(MCP_SERVERS)
     return registry
 
 

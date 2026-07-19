@@ -3,7 +3,7 @@ from typing import Annotated, override
 from pydantic import Field
 
 from app.features.tools.registry import ToolSet
-from app.features.tools.types import Tool, ToolOutput, ToolParams
+from app.features.tools.types import ToolOutput, ToolParams, TypedTool
 from lib.llm import ToolCallSegment
 
 
@@ -11,7 +11,7 @@ class EchoParams(ToolParams):
     text: Annotated[str, Field()]
 
 
-class EchoTool(Tool[EchoParams]):
+class EchoTool(TypedTool[EchoParams]):
     name = 'echo'
     description = 'Echo the given text back'
     params = EchoParams
@@ -21,7 +21,7 @@ class EchoTool(Tool[EchoParams]):
         return params.text
 
 
-class BoomTool(Tool[EchoParams]):
+class BoomTool(TypedTool[EchoParams]):
     name = 'boom'
     description = 'Always raises'
     params = EchoParams

@@ -5,14 +5,14 @@ from pydantic import BaseModel, Field
 
 from app.features.tools.exceptions import DuplicateToolError, UnknownToolError
 from app.features.tools.registry import ToolRegistry, ToolSet
-from app.features.tools.types import Tool, ToolOutput, ToolParams
+from app.features.tools.types import ToolOutput, ToolParams, TypedTool
 
 
 class GreetParams(ToolParams):
     name: Annotated[str, Field()]
 
 
-class GreetTool(Tool[GreetParams]):
+class GreetTool(TypedTool[GreetParams]):
     name = 'greet'
     description = 'Greet someone by name'
     params = GreetParams

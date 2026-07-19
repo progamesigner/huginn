@@ -10,7 +10,7 @@ from structlog.contextvars import get_contextvars
 from app.features.agents.exceptions import TurnTimeout
 from app.features.agents.services import AgentRunner, TurnInput
 from app.features.tools.registry import ToolSet
-from app.features.tools.types import Tool, ToolOutput, ToolParams
+from app.features.tools.types import ToolOutput, ToolParams, TypedTool
 from lib.llm import (
     CompletionChunk,
     CompletionRequest,
@@ -45,7 +45,7 @@ class EchoParams(ToolParams):
     text: Annotated[str, Field()]
 
 
-class EchoTool(Tool[EchoParams]):
+class EchoTool(TypedTool[EchoParams]):
     name = 'echo'
     description = 'Echo the given text back'
     params = EchoParams
@@ -59,7 +59,7 @@ class SleepParams(ToolParams):
     seconds: Annotated[float, Field()]
 
 
-class SleepTool(Tool[SleepParams]):
+class SleepTool(TypedTool[SleepParams]):
     name = 'sleep'
     description = 'Sleep for the given number of seconds'
     params = SleepParams
@@ -74,7 +74,7 @@ class ProbeParams(ToolParams):
     pass
 
 
-class ProbeTool(Tool[ProbeParams]):
+class ProbeTool(TypedTool[ProbeParams]):
     name = 'probe'
     description = 'Capture the contextvars bound during execution'
     params = ProbeParams

@@ -4,7 +4,7 @@ from typing import Annotated, override
 from pydantic import BaseModel, Field, SecretStr
 
 from app.features.tools.exceptions import ToolError
-from app.features.tools.types import Tool, ToolOutput, ToolParams
+from app.features.tools.types import ToolOutput, ToolParams, TypedTool
 
 from .config import WebSearchToolConfig
 from .repositories import WebSearchRepository, WebSearchResult
@@ -37,7 +37,7 @@ def _format_result(result: WebSearchResult, max_results: int) -> str:
     return '\n'.join(lines) if lines else 'No results found.'
 
 
-class WebSearchTool(Tool[WebSearchParams]):
+class WebSearchTool(TypedTool[WebSearchParams]):
     name = 'websearch'
     description = (
         'Search the web for current information. Returns a synthesized answer'
