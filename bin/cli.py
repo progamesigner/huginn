@@ -5,9 +5,8 @@ from app.core.providers.config import ConfigCommandProvider
 from app.providers.bootstrap import BootstrapProvider
 from app.providers.features import FeaturesProvider
 from lib.command import CommandContract, echo
-from lib.container import ProviderContract
 
-COMMANDS: tuple[ProviderContract, ...] = (ConfigCommandProvider(),)
+COMMANDS = (ConfigCommandProvider(),)
 
 
 def main() -> None:

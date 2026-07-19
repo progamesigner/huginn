@@ -9,10 +9,10 @@ from app.core.application import App
 from app.core.providers.router import RouterProvider
 from app.features.probes.providers import ProbesEndpointProvider
 from app.providers.bootstrap import BootstrapProvider
-from lib.container import ProviderContract
+from app.providers.features import FeaturesProvider
 from lib.router import RouterContract
 
-ENDPOINTS: tuple[ProviderContract, ...] = (ProbesEndpointProvider(),)
+ENDPOINTS = (ProbesEndpointProvider(),)
 
 
 class ServerOptions(BaseSettings):
@@ -23,13 +23,17 @@ class ServerOptions(BaseSettings):
     reload: Annotated[bool, Field()] = False
 
 
-def create() -> ASGIApp:
-    container = App().build(
+def build() -> App:
+    return App().build(
         BootstrapProvider(),
+        FeaturesProvider(),
         RouterProvider(excludes=frozenset({'/healthz', '/readyz'})),
         *ENDPOINTS,
     )
-    return container.resolve(RouterContract).app
+
+
+def create() -> ASGIApp:
+    return build().resolve(RouterContract).app
 
 
 def main() -> None:
