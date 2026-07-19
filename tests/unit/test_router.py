@@ -7,6 +7,7 @@ import fastapi
 import fastapi.params
 import fastapi.responses
 import httpx
+import pytest
 from fastapi import APIRouter, FastAPI
 from starlette.applications import Starlette
 from starlette.middleware import Middleware
@@ -14,6 +15,7 @@ from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from lib.router import (
     Depends,
+    DuplicateRouteError,
     PlainTextResponse,
     Request,
     Response,
@@ -105,6 +107,45 @@ async def test_include_after_build_registers_routes() -> None:
     manager.include(probe_router('/pong'))
 
     assert (await fetch(manager.app, '/pong')).status_code == 200
+
+
+def test_duplicate_route_same_path_and_method_is_rejected() -> None:
+    manager = RouterManager()
+    manager.include(probe_router('/ping'))
+    manager.include(probe_router('/ping'))
+
+    with pytest.raises(DuplicateRouteError):
+        _ = manager.app
+
+
+async def test_same_path_with_different_methods_is_allowed() -> None:
+    read_router = Router()
+
+    @read_router.get('/thing')
+    async def read() -> dict[str, str]:
+        return {'status': 'read'}
+
+    write_router = Router()
+
+    @write_router.post('/thing')
+    async def write() -> dict[str, str]:
+        return {'status': 'write'}
+
+    manager = RouterManager()
+    manager.include(read_router)
+    manager.include(write_router)
+
+    assert (await fetch(manager.app, '/thing')).status_code == 200
+
+
+async def test_duplicate_route_added_after_build_is_rejected() -> None:
+    manager = RouterManager()
+    manager.include(probe_router('/ping'))
+
+    assert (await fetch(manager.app, '/ping')).status_code == 200
+
+    with pytest.raises(DuplicateRouteError):
+        manager.include(probe_router('/ping'))
 
 
 async def test_docs_enabled_exposes_openapi() -> None:

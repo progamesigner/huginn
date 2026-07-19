@@ -25,12 +25,14 @@ from fastapi.responses import (
 )
 
 from .contracts import RouterContract
+from .exceptions import DuplicateRouteError, RouterError
 from .manager import RouterManager
 
 __all__ = [
     'Body',
     'Cookie',
     'Depends',
+    'DuplicateRouteError',
     'EventSourceResponse',
     'File',
     'FileResponse',
@@ -48,6 +50,7 @@ __all__ = [
     'Response',
     'Router',
     'RouterContract',
+    'RouterError',
     'RouterManager',
     'Security',
     'StreamingResponse',
