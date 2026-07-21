@@ -1,7 +1,8 @@
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Callable
 from types import SimpleNamespace
+from typing import cast
 
-import pytest
+from anthropic import AsyncAnthropic
 from anthropic.types import (
     InputJSONDelta,
     MessageDeltaUsage,
@@ -287,7 +288,7 @@ def _request(max_completion_tokens: int | None = None) -> CompletionRequest:
     )
 
 
-def _fake_client(recorded: dict[str, object]) -> object:
+def _fake_client(recorded: dict[str, object]) -> Callable[..., AsyncAnthropic]:
     async def create(**kwargs: object) -> AsyncIterator[RawMessageStreamEvent]:
         recorded.clear()
         recorded.update(kwargs)
@@ -301,7 +302,7 @@ def _fake_client(recorded: dict[str, object]) -> object:
     def factory(**_: object) -> SimpleNamespace:
         return SimpleNamespace(messages=SimpleNamespace(create=create))
 
-    return factory
+    return cast(Callable[..., AsyncAnthropic], factory)
 
 
 async def _drain(adapter: AnthropicAdapter, request: CompletionRequest) -> None:
@@ -309,32 +310,29 @@ async def _drain(adapter: AnthropicAdapter, request: CompletionRequest) -> None:
         pass
 
 
-async def test_stream_forwards_max_completion_tokens_as_max_tokens(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+async def test_stream_forwards_max_completion_tokens_as_max_tokens() -> None:
     recorded: dict[str, object] = {}
-    monkeypatch.setattr(
-        'lib.llm.adapters.anthropic.AsyncAnthropic', _fake_client(recorded)
-    )
 
     await _drain(
-        AnthropicAdapter(_provider(), HTTPClientManager()),
+        AnthropicAdapter(
+            _provider(), HTTPClientManager(), client_factory=_fake_client(recorded)
+        ),
         _request(max_completion_tokens=64),
     )
 
     assert recorded['max_tokens'] == 64
 
 
-async def test_stream_falls_back_to_instance_max_tokens_when_unset(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+async def test_stream_falls_back_to_instance_max_tokens_when_unset() -> None:
     recorded: dict[str, object] = {}
-    monkeypatch.setattr(
-        'lib.llm.adapters.anthropic.AsyncAnthropic', _fake_client(recorded)
-    )
 
     await _drain(
-        AnthropicAdapter(_provider(), HTTPClientManager(), max_tokens=4096),
+        AnthropicAdapter(
+            _provider(),
+            HTTPClientManager(),
+            max_tokens=4096,
+            client_factory=_fake_client(recorded),
+        ),
         _request(),
     )
 

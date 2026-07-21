@@ -1,18 +1,18 @@
 import pytest
 
 from app.core.application import App
+from app.core.providers.settings import SettingsProvider
 from app.features.conversations.providers import ConversationsProvider
 from app.features.conversations.repositories import ConversationRepository
 from lib.container import ResolutionError
+from tests.helpers.settings import make_settings
 
 _URL = 'postgresql+asyncpg://user:pass@localhost/huginn'
 
 
-async def test_repository_resolves_scoped(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setenv('HUGINN_DATABASE_URL', _URL)
-    container = App().build(ConversationsProvider())
+async def test_repository_resolves_scoped() -> None:
+    settings = make_settings(database_url=_URL)
+    container = App().build(SettingsProvider(settings), ConversationsProvider())
 
     with pytest.raises(ResolutionError, match='scoped'):
         container.resolve(ConversationRepository)

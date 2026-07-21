@@ -43,11 +43,8 @@ def _migrated(database_url: str) -> None:
 
 
 @pytest.fixture
-async def session(
-    _migrated: None,
-    database_url: str,
-) -> AsyncIterator[AsyncSession]:
-    # NOTE: each test runs inside one transaction rolled back on teardown -> isolation
+async def session(_migrated: None, database_url: str) -> AsyncIterator[AsyncSession]:
+    # NOTE: each test runs inside one transaction rolled back on teardown
     engine = create_async_engine(database_url)
     connection = await engine.connect()
     transaction = await connection.begin()

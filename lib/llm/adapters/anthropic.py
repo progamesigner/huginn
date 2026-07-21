@@ -1,5 +1,5 @@
 import json
-from collections.abc import AsyncIterator, Iterator
+from collections.abc import AsyncIterator, Callable, Iterator
 from typing import cast
 
 from anthropic import AsyncAnthropic, omit
@@ -150,19 +150,22 @@ def decode_event(event: RawMessageStreamEvent) -> Iterator[CompletionChunk]:
 
 
 class AnthropicAdapter:
-    provider: ProviderConfig
+    client_factory: Callable[..., AsyncAnthropic]
     http: HTTPClientContract
     max_tokens: int
+    provider: ProviderConfig
 
     def __init__(
         self,
         provider: ProviderConfig,
         http: HTTPClientContract,
         max_tokens: int = _DEFAULT_MAX_TOKENS,
+        client_factory: Callable[..., AsyncAnthropic] = AsyncAnthropic,
     ) -> None:
         self.provider = provider
         self.http = http
         self.max_tokens = max_tokens
+        self.client_factory = client_factory
 
     async def stream(
         self,
@@ -175,7 +178,7 @@ class AnthropicAdapter:
             output_config = OutputConfigParam(effort=request.effort)
 
         async with self.http.connect() as http_client:
-            client = AsyncAnthropic(
+            client = self.client_factory(
                 api_key=self.provider.api_key.get_secret_value(),
                 base_url=self.provider.base_url,
                 http_client=http_client,

@@ -1,8 +1,8 @@
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Callable
 from types import SimpleNamespace
+from typing import cast
 
-import pytest
-from openai import omit
+from openai import AsyncOpenAI, omit
 from openai.types.chat.chat_completion_chunk import (
     ChatCompletionChunk,
     Choice,
@@ -218,7 +218,7 @@ def _request(max_completion_tokens: int | None = None) -> CompletionRequest:
     )
 
 
-def _fake_client(recorded: dict[str, object]) -> object:
+def _fake_client(recorded: dict[str, object]) -> Callable[..., AsyncOpenAI]:
     async def create(**kwargs: object) -> AsyncIterator[ChatCompletionChunk]:
         recorded.clear()
         recorded.update(kwargs)
@@ -233,7 +233,7 @@ def _fake_client(recorded: dict[str, object]) -> object:
         completions = SimpleNamespace(create=create)
         return SimpleNamespace(chat=SimpleNamespace(completions=completions))
 
-    return factory
+    return cast(Callable[..., AsyncOpenAI], factory)
 
 
 async def _drain(adapter: OpenAIAdapter, request: CompletionRequest) -> None:
@@ -241,26 +241,27 @@ async def _drain(adapter: OpenAIAdapter, request: CompletionRequest) -> None:
         pass
 
 
-async def test_stream_forwards_max_completion_tokens(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+async def test_stream_forwards_max_completion_tokens() -> None:
     recorded: dict[str, object] = {}
-    monkeypatch.setattr('lib.llm.adapters.openai.AsyncOpenAI', _fake_client(recorded))
 
     await _drain(
-        OpenAIAdapter(_provider(), HTTPClientManager()),
+        OpenAIAdapter(
+            _provider(), HTTPClientManager(), client_factory=_fake_client(recorded)
+        ),
         _request(max_completion_tokens=64),
     )
 
     assert recorded['max_completion_tokens'] == 64
 
 
-async def test_stream_omits_max_completion_tokens_when_unset(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+async def test_stream_omits_max_completion_tokens_when_unset() -> None:
     recorded: dict[str, object] = {}
-    monkeypatch.setattr('lib.llm.adapters.openai.AsyncOpenAI', _fake_client(recorded))
 
-    await _drain(OpenAIAdapter(_provider(), HTTPClientManager()), _request())
+    await _drain(
+        OpenAIAdapter(
+            _provider(), HTTPClientManager(), client_factory=_fake_client(recorded)
+        ),
+        _request(),
+    )
 
     assert recorded['max_completion_tokens'] is omit

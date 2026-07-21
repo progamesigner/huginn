@@ -1,4 +1,4 @@
-from collections.abc import AsyncIterator, Iterator
+from collections.abc import AsyncIterator, Callable, Iterator
 from typing import cast
 
 from openai import AsyncOpenAI, omit
@@ -129,19 +129,26 @@ def decode_chunk(chunk: ChatCompletionChunk) -> Iterator[CompletionChunk]:
 
 
 class OpenAIAdapter:
+    client_factory: Callable[..., AsyncOpenAI]
     provider: ProviderConfig
     http: HTTPClientContract
 
-    def __init__(self, provider: ProviderConfig, http: HTTPClientContract) -> None:
+    def __init__(
+        self,
+        provider: ProviderConfig,
+        http: HTTPClientContract,
+        client_factory: Callable[..., AsyncOpenAI] = AsyncOpenAI,
+    ) -> None:
         self.provider = provider
         self.http = http
+        self.client_factory = client_factory
 
     async def stream(
         self,
         request: CompletionRequest,
     ) -> AsyncIterator[CompletionChunk]:
         async with self.http.connect() as http_client:
-            client = AsyncOpenAI(
+            client = self.client_factory(
                 api_key=self.provider.api_key.get_secret_value(),
                 base_url=self.provider.base_url,
                 http_client=http_client,
