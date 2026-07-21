@@ -1,4 +1,5 @@
 from collections.abc import Mapping
+from datetime import datetime
 from typing import cast
 from uuid import UUID
 
@@ -6,10 +7,20 @@ from pydantic import JsonValue
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.features.identities.types import ExternalIdentity, IdentityAuditEvent, User
+from app.features.identities.types import (
+    ExternalIdentity,
+    IdentityAuditEvent,
+    IdentityLinkInvite,
+    User,
+)
 from lib.guid import GUIDContract
 
-from .sqlalchemy import ExternalIdentityRecord, IdentityAuditEventRecord, UserRecord
+from .sqlalchemy import (
+    ExternalIdentityRecord,
+    IdentityAuditEventRecord,
+    IdentityLinkInviteRecord,
+    UserRecord,
+)
 
 
 def _to_user(record: UserRecord) -> User:
@@ -45,6 +56,22 @@ def _to_audit(record: IdentityAuditEventRecord) -> IdentityAuditEvent:
         external_identity_id=record.external_identity_id,
         metadata=cast(Mapping[str, JsonValue], record.metadata_),
         occurred_at=record.occurred_at,
+    )
+
+
+def _to_invite(
+    record: IdentityLinkInviteRecord,
+) -> IdentityLinkInvite:
+    return IdentityLinkInvite(
+        id=record.id,
+        user_id=record.user_id,
+        provider=record.provider,
+        realm=record.realm,
+        expires_at=record.expires_at,
+        created_by=record.created_by,
+        consumed_at=record.consumed_at,
+        revoked_at=record.revoked_at,
+        created_at=record.created_at,
     )
 
 
@@ -117,7 +144,6 @@ class IdentityRepository:
         record = await self.session.get(ExternalIdentityRecord, identity_id)
         if record is None:
             return False
-
         await self.session.delete(record)
         await self.session.flush()
         return True
@@ -144,3 +170,57 @@ class IdentityRepository:
         self.session.add(record)
         await self.session.flush()
         return _to_audit(record)
+
+    async def issue_invite(
+        self,
+        user_id: UUID,
+        provider: str,
+        realm: str,
+        token_digest: bytes,
+        expires_at: datetime,
+        created_by: str,
+    ) -> IdentityLinkInvite:
+        record = IdentityLinkInviteRecord(
+            id=self.guid.generate(),
+            user_id=user_id,
+            provider=provider,
+            realm=realm,
+            token_digest=token_digest,
+            expires_at=expires_at,
+            created_by=created_by,
+        )
+        self.session.add(record)
+        await self.session.flush()
+        return _to_invite(record)
+
+    async def lock_invite(self, token_digest: bytes) -> IdentityLinkInvite | None:
+        query = (
+            select(IdentityLinkInviteRecord)
+            .where(IdentityLinkInviteRecord.token_digest == token_digest)
+            .with_for_update()
+        )
+        record = (await self.session.execute(query)).scalar_one_or_none()
+        return _to_invite(record) if record else None
+
+    async def lock_invite_by_id(self, invite_id: UUID) -> IdentityLinkInvite | None:
+        query = (
+            select(IdentityLinkInviteRecord)
+            .where(IdentityLinkInviteRecord.id == invite_id)
+            .with_for_update()
+        )
+        record = (await self.session.execute(query)).scalar_one_or_none()
+        return _to_invite(record) if record else None
+
+    async def consume_invite(self, invite_id: UUID, consumed_at: datetime) -> None:
+        record = await self.session.get(IdentityLinkInviteRecord, invite_id)
+        if record is None:
+            raise LookupError('identity link invite not found')
+        record.consumed_at = consumed_at
+        await self.session.flush()
+
+    async def revoke_invite(self, invite_id: UUID, revoked_at: datetime) -> None:
+        record = await self.session.get(IdentityLinkInviteRecord, invite_id)
+        if record is None:
+            raise LookupError('identity link invite not found')
+        record.revoked_at = revoked_at
+        await self.session.flush()

@@ -37,3 +37,23 @@ class IdentityAuditEvent:
     external_identity_id: UUID | None = None
     metadata: Mapping[str, JsonValue] = field(default_factory=dict)
     occurred_at: datetime | None = None
+
+
+@dataclass(frozen=True)
+class IdentityLinkInvite:
+    id: UUID
+    user_id: UUID
+    provider: str
+    realm: str
+    expires_at: datetime
+    created_by: str
+    consumed_at: datetime | None = None
+    revoked_at: datetime | None = None
+    created_at: datetime | None = None
+
+
+@dataclass(frozen=True)
+class IssuedIdentityLinkInvite:
+    token: str = field(repr=False)
+    short_code: str = field(repr=False)
+    expires_at: datetime

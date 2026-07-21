@@ -24,6 +24,7 @@ class HuginnSettings(BaseSettings):
     database_password: Annotated[SecretStr | None, Field()] = None
     database_name: Annotated[str | None, Field()] = None
     environment: Annotated[Environment, Field()] = 'dev'
+    identity_link_secret: Annotated[SecretStr | None, Field()] = None
     providers: Annotated[tuple[ProviderConfig, ...], Field()] = ()
 
     def running_in_mode(self, *modes: Environment) -> bool:

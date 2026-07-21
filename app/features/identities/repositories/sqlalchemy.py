@@ -6,6 +6,7 @@ from sqlalchemy import CheckConstraint, ForeignKey, Index, UniqueConstraint, fun
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.records import AppRecord, TimestampRecordMixin
+from lib.database import Timestamp
 
 
 class UserRecord(TimestampRecordMixin, AppRecord):
@@ -54,3 +55,25 @@ class IdentityAuditEventRecord(AppRecord):
     realm: Mapped[str]
     occurred_at: Mapped[datetime] = mapped_column(server_default=func.now())
     metadata_: Mapped[JsonValue] = mapped_column('metadata')
+
+
+class IdentityLinkInviteRecord(AppRecord):
+    __tablename__ = 'identity_link_invites'
+    __table_args__ = (
+        UniqueConstraint('token_digest'),
+        CheckConstraint(
+            'NOT (consumed_at IS NOT NULL AND revoked_at IS NOT NULL)',
+            name='ck_identity_link_invites_terminal_state',
+        ),
+        Index('ix_identity_link_invites_user_created', 'user_id', 'created_at'),
+    )
+
+    user_id: Mapped[UUID] = mapped_column(ForeignKey('users.id', ondelete='CASCADE'))
+    provider: Mapped[str]
+    realm: Mapped[str]
+    token_digest: Mapped[bytes]
+    expires_at: Mapped[datetime] = mapped_column(Timestamp())
+    consumed_at: Mapped[datetime | None] = mapped_column(Timestamp())
+    revoked_at: Mapped[datetime | None] = mapped_column(Timestamp())
+    created_at: Mapped[datetime] = mapped_column(server_default=func.now())
+    created_by: Mapped[str]

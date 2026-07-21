@@ -11,6 +11,7 @@ _TABLES = {
     'conversations',
     'external_identities',
     'identity_audit_events',
+    'identity_link_invites',
     'parts',
     'turns',
     'users',
