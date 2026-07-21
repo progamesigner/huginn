@@ -7,7 +7,14 @@ from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
 
 pytestmark = pytest.mark.integration
 
-_TABLES = {'conversations', 'turns', 'parts'}
+_TABLES = {
+    'conversations',
+    'external_identities',
+    'identity_audit_events',
+    'parts',
+    'turns',
+    'users',
+}
 
 
 def _migrate(connection: Connection, direction: str, revision: str) -> None:
