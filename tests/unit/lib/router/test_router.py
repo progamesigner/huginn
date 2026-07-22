@@ -166,8 +166,13 @@ async def test_docs_disabled_hides_openapi() -> None:
 
 
 def test_debug_flag_reaches_app() -> None:
-    assert cast(FastAPI, RouterManager(debug=True).app).debug is True
-    assert cast(FastAPI, RouterManager(debug=False).app).debug is False
+    debug_app = RouterManager(debug=True).app
+    production_app = RouterManager(debug=False).app
+
+    assert isinstance(debug_app, FastAPI)
+    assert isinstance(production_app, FastAPI)
+    assert debug_app.debug is True
+    assert production_app.debug is False
 
 
 async def test_middlewares_wrap_the_app() -> None:

@@ -136,47 +136,43 @@ def build_app_config(
 # _interpolate()
 
 
-def test_interpolate_substitutes_known_env_var(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv('AGENT_MODEL', 'claude-sonnet-5')
-
+def test_interpolate_substitutes_known_env_var() -> None:
     assert (
-        _interpolate('model: ${AGENT_MODEL}', 'defaults.model')
+        _interpolate(
+            'model: ${AGENT_MODEL}',
+            'defaults.model',
+            {'AGENT_MODEL': 'claude-sonnet-5'},
+        )
         == 'model: claude-sonnet-5'
     )
 
 
-def test_interpolate_raises_for_missing_env_var(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.delenv('MISSING_VAR', raising=False)
-
+def test_interpolate_raises_for_missing_env_var() -> None:
     with pytest.raises(
         MissingEnvironmentVariableError, match=r'defaults\.model.*MISSING_VAR'
     ):
-        _interpolate('${MISSING_VAR}', 'defaults.model')
+        _interpolate('${MISSING_VAR}', 'defaults.model', {})
 
 
 # _resolve_value_from()
 
 
-def test_resolve_value_from_env_succeeds(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv('MEMORY_MCP_TOKEN', 'secret-token')
-
+def test_resolve_value_from_env_succeeds() -> None:
     resolved = _resolve_value_from(
-        {'env': 'MEMORY_MCP_TOKEN'}, 'mcp_servers.memory.auth'
+        {'env': 'MEMORY_MCP_TOKEN'},
+        'mcp_servers.memory.auth',
+        {'MEMORY_MCP_TOKEN': 'secret-token'},
     )
 
     assert resolved == 'secret-token'
 
 
-def test_resolve_value_from_env_missing_raises(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.delenv('MEMORY_MCP_TOKEN', raising=False)
-
+def test_resolve_value_from_env_missing_raises() -> None:
     with pytest.raises(
         MissingEnvironmentVariableError,
         match=r'mcp_servers\.memory\.auth.*MEMORY_MCP_TOKEN',
     ):
-        _resolve_value_from({'env': 'MEMORY_MCP_TOKEN'}, 'mcp_servers.memory.auth')
+        _resolve_value_from({'env': 'MEMORY_MCP_TOKEN'}, 'mcp_servers.memory.auth', {})
 
 
 def test_resolve_value_from_file_succeeds(tmp_path: Path) -> None:
@@ -184,7 +180,7 @@ def test_resolve_value_from_file_succeeds(tmp_path: Path) -> None:
     secret_file.write_text('felo-secret\n')
 
     resolved = _resolve_value_from(
-        {'file': str(secret_file)}, 'tools.websearch.api_key'
+        {'file': str(secret_file)}, 'tools.websearch.api_key', {}
     )
 
     assert resolved == 'felo-secret'
@@ -194,28 +190,23 @@ def test_resolve_value_from_file_missing_raises(tmp_path: Path) -> None:
     missing_file = tmp_path / 'missing.token'
 
     with pytest.raises(MissingConfigFileError, match=r'tools\.websearch\.api_key'):
-        _resolve_value_from({'file': str(missing_file)}, 'tools.websearch.api_key')
+        _resolve_value_from({'file': str(missing_file)}, 'tools.websearch.api_key', {})
 
 
 def test_resolve_value_from_rejects_both_env_and_file() -> None:
     with pytest.raises(InvalidValueReferenceError):
-        _resolve_value_from({'env': 'A', 'file': 'b'}, 'mcp_servers.memory.auth')
+        _resolve_value_from({'env': 'A', 'file': 'b'}, 'mcp_servers.memory.auth', {})
 
 
 def test_resolve_value_from_rejects_unknown_shape() -> None:
     with pytest.raises(InvalidValueReferenceError):
-        _resolve_value_from({'bogus': 'A'}, 'mcp_servers.memory.auth')
+        _resolve_value_from({'bogus': 'A'}, 'mcp_servers.memory.auth', {})
 
 
 # _resolve_references()
 
 
-def test_resolve_references_walks_nested_structure(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setenv('FELO_API_KEY', 'felo-secret')
-    monkeypatch.setenv('AGENT_MODEL', 'claude-sonnet-5')
-
+def test_resolve_references_walks_nested_structure() -> None:
     raw = {
         'defaults': {'model': '${AGENT_MODEL}'},
         'tools': {
@@ -229,7 +220,13 @@ def test_resolve_references_walks_nested_structure(
         },
     }
 
-    resolved = _resolve_references(raw)
+    resolved = _resolve_references(
+        raw,
+        environment={
+            'FELO_API_KEY': 'felo-secret',
+            'AGENT_MODEL': 'claude-sonnet-5',
+        },
+    )
 
     assert resolved == {
         'defaults': {'model': 'claude-sonnet-5'},
@@ -245,17 +242,13 @@ def test_resolve_references_walks_nested_structure(
     }
 
 
-def test_resolve_references_reports_field_path_for_missing_env(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.delenv('FELO_API_KEY', raising=False)
-
+def test_resolve_references_reports_field_path_for_missing_env() -> None:
     raw = {'tools': {'websearch': {'api_key': {'value_from': {'env': 'FELO_API_KEY'}}}}}
 
     with pytest.raises(
         MissingEnvironmentVariableError, match=r'tools\.websearch\.api_key'
     ):
-        _resolve_references(raw)
+        _resolve_references(raw, environment={})
 
 
 # load_config()
@@ -301,12 +294,8 @@ def test_load_config_defaults_optional_sections(tmp_path: Path) -> None:
 
 
 def test_load_config_resolves_env_and_value_from_then_validates(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path,
 ) -> None:
-    monkeypatch.setenv('FELO_API_KEY', 'felo-secret')
-    monkeypatch.setenv('MEMORY_MCP_TOKEN', 'secret-token')
-    monkeypatch.setenv('AGENT_MODEL', 'claude-sonnet-5')
-
     config_file = tmp_path / 'huginn.yaml'
     config_file.write_text(
         'defaults:\n'
@@ -334,7 +323,15 @@ def test_load_config_resolves_env_and_value_from_then_validates(
         '    router: {fallback: scout}\n'
     )
 
-    config = load_config(config_file, build_section_registry())
+    config = load_config(
+        config_file,
+        build_section_registry(),
+        {
+            'FELO_API_KEY': 'felo-secret',
+            'MEMORY_MCP_TOKEN': 'secret-token',
+            'AGENT_MODEL': 'claude-sonnet-5',
+        },
+    )
 
     agents = config.section(AGENTS).root
     tools = config.section(TOOLS).root

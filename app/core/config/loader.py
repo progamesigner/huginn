@@ -1,6 +1,7 @@
 import json
 import os
 import re
+from collections.abc import Mapping
 from pathlib import Path
 
 import yaml
@@ -17,30 +18,39 @@ from .exceptions import (
 from .registry import HuginnConfig, SectionRegistry
 
 _ENV_PATTERN = re.compile(r'\$\{([A-Za-z_][A-Za-z0-9_]*)\}')
+type Environment = Mapping[str, str]
 
 
-def _interpolate(text: str, path: str) -> str:
+def _interpolate(
+    text: str,
+    path: str,
+    environment: Environment,
+) -> str:
     def replace(match: re.Match[str]) -> str:
         name = match.group(1)
-        if name not in os.environ:
+        if name not in environment:
             raise MissingEnvironmentVariableError(
                 f'{path}: environment variable {name!r} is not set'
             )
 
-        return os.environ[name]
+        return environment[name]
 
     return _ENV_PATTERN.sub(replace, text)
 
 
-def _resolve_value_from(reference: JsonValue, path: str) -> JsonValue:
+def _resolve_value_from(
+    reference: JsonValue,
+    path: str,
+    environment: Environment,
+) -> JsonValue:
     match reference:
         case {'env': str(name), **rest} if not rest:
-            if name not in os.environ:
+            if name not in environment:
                 raise MissingEnvironmentVariableError(
                     f'{path}: environment variable {name!r} is not set'
                 )
 
-            return os.environ[name]
+            return environment[name]
         case {'file': str(file_path), **rest} if not rest:
             try:
                 return Path(file_path).read_text().strip()
@@ -54,24 +64,32 @@ def _resolve_value_from(reference: JsonValue, path: str) -> JsonValue:
             )
 
 
-def _resolve_references(node: JsonValue, path: str = '') -> JsonValue:
+def _resolve_references(
+    node: JsonValue,
+    environment: Environment,
+    path: str = '',
+) -> JsonValue:
     if isinstance(node, dict):
         if node.keys() == {'value_from'}:
-            return _resolve_value_from(node['value_from'], path)
+            return _resolve_value_from(node['value_from'], path, environment)
 
         return {
-            key: _resolve_references(value, f'{path}.{key}' if path else f'{key}')
+            key: _resolve_references(
+                value,
+                environment,
+                f'{path}.{key}' if path else f'{key}',
+            )
             for key, value in node.items()
         }
 
     if isinstance(node, list):
         return [
-            _resolve_references(item, f'{path}[{index}]')
+            _resolve_references(item, environment, f'{path}[{index}]')
             for index, item in enumerate(node)
         ]
 
     if isinstance(node, str):
-        return _interpolate(node, path)
+        return _interpolate(node, path, environment)
 
     return node
 
@@ -112,9 +130,13 @@ def _parse_sections(
     return HuginnConfig(sections)
 
 
-def load_config(path: str | Path, registry: SectionRegistry) -> HuginnConfig:
+def load_config(
+    path: str | Path,
+    registry: SectionRegistry,
+    environment: Environment = os.environ,
+) -> HuginnConfig:
     raw = _read_yaml(Path(path))
-    resolved = _resolve_references(raw)
+    resolved = _resolve_references(raw, environment=environment)
     if not isinstance(resolved, dict):
         raise InvalidConfigError('config root must be a mapping of sections')
 

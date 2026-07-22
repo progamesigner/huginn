@@ -5,10 +5,13 @@ import pytest
 from typer.testing import CliRunner, Result
 
 from app.core.application import App
+from app.core.providers.settings import SettingsProvider
+from app.core.settings import HuginnSettings
 from app.providers.bootstrap import BootstrapProvider
 from app.providers.features import FeaturesProvider
 from bin.cli import COMMANDS
 from lib.command import CommandContract
+from tests.helpers.settings import make_settings
 
 runner = CliRunner()
 
@@ -36,8 +39,16 @@ channels:
 """
 
 
-def invoke_cli(arguments: list[str]) -> Result:
-    container = App().build(BootstrapProvider(), FeaturesProvider(), *COMMANDS)
+def invoke_cli(
+    arguments: list[str],
+    settings: HuginnSettings | None = None,
+) -> Result:
+    container = App().build(
+        SettingsProvider(settings),
+        BootstrapProvider(),
+        FeaturesProvider(),
+        *COMMANDS,
+    )
     return runner.invoke(container.resolve(CommandContract).app, arguments)
 
 
@@ -65,13 +76,13 @@ def test_validate_never_echoes_instructions(tmp_path: Path) -> None:
     assert 'secret persona' not in result.output
 
 
-def test_validate_defaults_to_settings_config_file(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_validate_defaults_to_settings_config_file(tmp_path: Path) -> None:
     path = write_config(tmp_path / 'huginn.yaml')
-    monkeypatch.setenv('HUGINN_CONFIG_FILE', str(path))
 
-    result = invoke_cli(['config', 'validate'])
+    result = invoke_cli(
+        ['config', 'validate'],
+        make_settings(config_file=path),
+    )
 
     assert result.exit_code == 0
 
@@ -93,7 +104,8 @@ def test_validate_fails_on_missing_file(tmp_path: Path) -> None:
 
 
 def test_cli_builds_without_ext_secrets(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.chdir(tmp_path)
     monkeypatch.delenv('EXT_FELO_API_KEY', raising=False)

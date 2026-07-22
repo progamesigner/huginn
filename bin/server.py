@@ -7,6 +7,7 @@ from uvicorn import run
 
 from app.core.application import App
 from app.core.providers.router import RouterProvider
+from app.core.providers.settings import SettingsProvider
 from app.features.probes.providers import ProbesEndpointProvider
 from app.providers.bootstrap import BootstrapProvider
 from app.providers.features import FeaturesProvider
@@ -25,6 +26,7 @@ class ServerOptions(BaseSettings):
 
 def build() -> App:
     return App().build(
+        SettingsProvider(),
         BootstrapProvider(),
         FeaturesProvider(),
         RouterProvider(excludes=frozenset({'/healthz', '/readyz'})),
