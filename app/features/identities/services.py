@@ -9,9 +9,12 @@ from .exceptions import InvalidIdentityLinkError
 from .repositories import IdentityRepository
 from .tokens import IdentityTokenCodec
 from .types import (
+    AnonymousPrincipal,
     ExternalIdentity,
     IdentityLinkInvite,
     IssuedIdentityLinkInvite,
+    LinkedPrincipal,
+    Principal,
 )
 
 
@@ -153,3 +156,25 @@ class IdentityLinkingService:
             realm,
             metadata={'reason': reason},
         )
+
+
+class IdentityResolver:
+    def __init__(self, repository: IdentityRepository) -> None:
+        self.repository = repository
+
+    async def resolve(
+        self,
+        provider: str,
+        realm: str,
+        external_user_id: str,
+    ) -> Principal:
+        identity = await self.repository.find_external(
+            provider,
+            realm,
+            external_user_id,
+        )
+
+        if identity is None:
+            return AnonymousPrincipal(provider, realm, external_user_id)
+
+        return LinkedPrincipal(identity.user_id, identity.id)

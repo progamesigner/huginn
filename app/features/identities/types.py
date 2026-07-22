@@ -53,6 +53,32 @@ class IdentityLinkInvite:
 
 
 @dataclass(frozen=True)
+class LinkedPrincipal:
+    user_id: UUID
+    external_identity_id: UUID
+
+    @property
+    def stable_key(self) -> str:
+        return f'user:{self.user_id}'
+
+
+@dataclass(frozen=True)
+class AnonymousPrincipal:
+    provider: str
+    realm: str
+    external_user_id: str
+
+    @property
+    def stable_key(self) -> str:
+        parts = (self.provider, self.realm, self.external_user_id)
+        encoded = ':'.join(f'{len(part)}:{part}' for part in parts)
+        return f'anonymous:{encoded}'
+
+
+type Principal = LinkedPrincipal | AnonymousPrincipal
+
+
+@dataclass(frozen=True)
 class IssuedIdentityLinkInvite:
     token: str = field(repr=False)
     short_code: str = field(repr=False)

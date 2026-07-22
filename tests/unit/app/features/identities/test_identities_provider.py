@@ -5,7 +5,7 @@ from app.core.providers.settings import SettingsProvider
 from app.features.identities.exceptions import IdentityLinkSecretError
 from app.features.identities.providers import IdentitiesProvider
 from app.features.identities.repositories import IdentityRepository
-from app.features.identities.services import IdentityLinkingService
+from app.features.identities.services import IdentityLinkingService, IdentityResolver
 from lib.container import ResolutionError
 from tests.helpers.settings import make_settings
 
@@ -21,6 +21,8 @@ async def test_repository_resolves_scoped() -> None:
 
     async with container.scope() as scope:
         repository = scope.resolve(IdentityRepository)
+        resolver = scope.resolve(IdentityResolver)
+        assert resolver.repository is repository
         assert scope.resolve(IdentityRepository) is repository
 
     await container.dispose()

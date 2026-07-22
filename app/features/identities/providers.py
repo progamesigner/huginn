@@ -7,7 +7,7 @@ from lib.container import ContainerContract, ProviderContract
 
 from .exceptions import IdentityLinkSecretError
 from .repositories import IdentityRepository
-from .services import IdentityLinkingService
+from .services import IdentityLinkingService, IdentityResolver
 from .tokens import IdentityTokenCodec
 
 
@@ -30,3 +30,5 @@ class IdentitiesProvider(ProviderContract):
             constructor=IdentityLinkingService,
             scoped=True,
         )
+
+        container.bind(IdentityResolver, constructor=IdentityResolver, scoped=True)
