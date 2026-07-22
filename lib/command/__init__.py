@@ -1,4 +1,4 @@
-from typer import Argument, Exit, Typer, echo
+from typer import Argument, Exit, Option, Typer, echo
 
 from .contracts import CommandContract
 from .manager import CommandManager, resolve, scoped
@@ -8,6 +8,7 @@ __all__ = [
     'CommandContract',
     'CommandManager',
     'Exit',
+    'Option',
     'Typer',
     'echo',
     'resolve',

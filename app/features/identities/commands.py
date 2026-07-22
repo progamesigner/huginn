@@ -20,10 +20,7 @@ _TTL_UNITS = {
     'd': timedelta(days=1),
 }
 
-cli = Typer(
-    no_args_is_help=True,
-    help='Manage canonical users and identity links.',
-)
+cli = Typer(no_args_is_help=True, help='Manage canonical users and identity links.')
 users = Typer(no_args_is_help=True, help='Manage canonical users.')
 cli.add_typer(users, name='user')
 
