@@ -5,6 +5,8 @@ from alembic import op
 
 from lib.database import GUID, Timestamp
 
+SCHEMA = 'public'
+
 revision: str = '6b4de18291a7'
 down_revision: str | None = 'c2f96ac19f84'
 branch_labels: str | Sequence[str] | None = None
@@ -31,7 +33,7 @@ def upgrade() -> None:
         sa.Column('created_by', sa.Text(), nullable=False),
         sa.ForeignKeyConstraint(
             ['user_id'],
-            ['users.id'],
+            [f'{SCHEMA}.users.id'],
             name='fk_identity_link_invites_user_id_users',
             ondelete='CASCADE',
         ),
@@ -44,13 +46,15 @@ def upgrade() -> None:
             'token_digest',
             name='uq_identity_link_invites_token_digest',
         ),
+        schema=SCHEMA,
     )
     op.create_index(
         'ix_identity_link_invites_user_created',
         'identity_link_invites',
         ['user_id', 'created_at'],
+        schema=SCHEMA,
     )
 
 
 def downgrade() -> None:
-    op.drop_table('identity_link_invites')
+    op.drop_table('identity_link_invites', schema=SCHEMA)

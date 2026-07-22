@@ -44,13 +44,13 @@ async def _public_tables(engine: AsyncEngine) -> set[str]:
 async def test_migration_upgrade_downgrade_upgrade_roundtrip(database_url: str) -> None:
     engine = create_async_engine(database_url)
     try:
-        await _drive(engine, 'up', 'head')
+        await _drive(engine, 'up', 'default@head')
         assert _TABLES <= await _public_tables(engine)
 
-        await _drive(engine, 'down', 'base')
+        await _drive(engine, 'down', 'default@base')
         assert not (_TABLES & await _public_tables(engine))
 
-        await _drive(engine, 'up', 'head')
+        await _drive(engine, 'up', 'default@head')
         assert _TABLES <= await _public_tables(engine)
     finally:
         await engine.dispose()

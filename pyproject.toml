@@ -49,7 +49,7 @@ requires = ["hatchling==1.31.0"]
 [tool.alembic]
 script_location = "migrations"
 prepend_sys_path = ["."]
-version_locations = ["migrations/revisions"]
+version_locations = ["migrations/default/revisions"]
 file_template = "%%(year)d%%(month).2d%%(day).2d%%(hour).2d%%(minute).2d_%%(rev)s"
 timezone = "UTC"
 

@@ -53,7 +53,7 @@ Dependencies go through uv. Add them with `uv add <pkg>==<version>`, always pinn
 
 Tests run with `uv run pytest`. Tests in `tests/unit/` carry no marker and must pass without external resources (no network, no database). Tests in `tests/integration/` declare `pytestmark = pytest.mark.integration` at file level and may require real resources (PostgreSQL, Redis, network); deselect them with `-m 'not integration'`. Async tests need no decorator: `asyncio_mode = "auto"` treats every `async def test_*` as an asyncio test.
 
-The database integration tests apply the Alembic migrations to a scratch database once, then wrap each test in a transaction that is rolled back on teardown, so no test leaves state behind. They resolve their database three ways, in order: an explicit `HUGINN_DATABASE_URL` (used as-is — this is the CI path); otherwise a throwaway `postgres:16` container started via [testcontainers](https://testcontainers.com/) when Docker is reachable; otherwise they skip. So locally, with Docker available, `uv run pytest -m integration` just works — the container is created and torn down automatically. The devcontainer enables the Docker socket through the `docker-outside-of-docker` feature (rebuild the container once to pick it up).
+The database integration tests apply the Alembic migrations to a scratch database once, then wrap each test in a transaction that is rolled back on teardown, so no test leaves state behind. They resolve their database three ways, in order: an explicit `HUGINN_DATABASE_URL` (this is the CI path); otherwise a throwaway `postgres:16` container started via [testcontainers](https://testcontainers.com/) when Docker is reachable; otherwise they skip. So locally, with Docker available, `uv run pytest -m integration` just works — the container is created and torn down automatically. The devcontainer enables the Docker socket through the `docker-outside-of-docker` feature (rebuild the container once to pick it up).
 
 To run them against your own PostgreSQL instead of a spun container, set the url explicitly:
 
@@ -61,7 +61,14 @@ To run them against your own PostgreSQL instead of a spun container, set the url
 HUGINN_DATABASE_URL=postgresql+asyncpg://huginn:huginn@localhost:5432/huginn_test uv run pytest -m integration
 ```
 
-Migrations live in `migrations/`, configured under `[tool.alembic]` in `pyproject.toml`; apply them by hand against a `HUGINN_DATABASE_URL` with `uv run alembic upgrade head` (or `downgrade base`).
+Migrations are organized under `migrations/<domain>/revisions/`. Each domain maps to one fixed `(database connection, PostgreSQL schema)` pair in `migrations/env.py`. The current lineage lives in `migrations/default/revisions/`; its revisions explicitly target the `public` schema and store their history in `public.migrations`. Apply it against `HUGINN_DATABASE_URL` with:
+
+```sh
+uv run alembic upgrade default@head
+uv run alembic downgrade default@base
+```
+
+A future domain or schema gets its own revision directory, root branch label, and version-table schema. Add that directory to Alembic `version_locations`; do not select the target through runtime `-x database` or `-x schema` arguments.
 
 Types are checked with `uv run ty check`. All rules run at error severity.
 

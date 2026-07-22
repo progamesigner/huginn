@@ -5,6 +5,8 @@ from alembic import op
 
 from lib.database import GUID, Json, Timestamp
 
+SCHEMA = 'public'
+
 revision: str = 'c2f96ac19f84'
 down_revision: str | None = '0c7a74dd213c'
 branch_labels: str | Sequence[str] | None = None
@@ -35,6 +37,7 @@ def upgrade() -> None:
         ),
         sa.PrimaryKeyConstraint('id', name='pk_users'),
         sa.UniqueConstraint('handle', name='uq_users_handle'),
+        schema=SCHEMA,
     )
     op.create_table(
         'external_identities',
@@ -63,7 +66,7 @@ def upgrade() -> None:
         ),
         sa.ForeignKeyConstraint(
             ['user_id'],
-            ['users.id'],
+            [f'{SCHEMA}.users.id'],
             name='fk_external_identities_user_id_users',
             ondelete='CASCADE',
         ),
@@ -74,11 +77,13 @@ def upgrade() -> None:
             'external_user_id',
             name='uq_external_identities_provider',
         ),
+        schema=SCHEMA,
     )
     op.create_index(
         'ix_external_identities_user_provider',
         'external_identities',
         ['user_id', 'provider'],
+        schema=SCHEMA,
     )
     op.create_table(
         'identity_audit_events',
@@ -102,20 +107,22 @@ def upgrade() -> None:
         ),
         sa.ForeignKeyConstraint(
             ['user_id'],
-            ['users.id'],
+            [f'{SCHEMA}.users.id'],
             name='fk_identity_audit_events_user_id_users',
             ondelete='SET NULL',
         ),
         sa.PrimaryKeyConstraint('id', name='pk_identity_audit_events'),
+        schema=SCHEMA,
     )
     op.create_index(
         'ix_identity_audit_events_user_occurred',
         'identity_audit_events',
         ['user_id', 'occurred_at'],
+        schema=SCHEMA,
     )
 
 
 def downgrade() -> None:
-    op.drop_table('identity_audit_events')
-    op.drop_table('external_identities')
-    op.drop_table('users')
+    op.drop_table('identity_audit_events', schema=SCHEMA)
+    op.drop_table('external_identities', schema=SCHEMA)
+    op.drop_table('users', schema=SCHEMA)
