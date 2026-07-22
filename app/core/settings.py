@@ -1,7 +1,7 @@
 from pathlib import Path
 from typing import Annotated, Literal
 
-from pydantic import Field, PostgresDsn, Secret, SecretStr, computed_field
+from pydantic import Field, PostgresDsn, RedisDsn, Secret, SecretStr, computed_field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from lib.llm import ProviderConfig
@@ -25,6 +25,12 @@ class HuginnSettings(BaseSettings):
     database_user: Annotated[str | None, Field()] = None
     database_password: Annotated[SecretStr | None, Field()] = None
     database_name: Annotated[str | None, Field()] = None
+    redis_url: Annotated[Secret[RedisDsn] | None, Field()] = None
+    redis_host: Annotated[str | None, Field()] = None
+    redis_port: Annotated[int, Field()] = 6379
+    redis_user: Annotated[str | None, Field()] = None
+    redis_password: Annotated[SecretStr | None, Field()] = None
+    redis_database: Annotated[int, Field()] = 0
     identity_link_secret: Annotated[SecretStr | None, Field()] = None
     providers: Annotated[tuple[ProviderConfig, ...], Field()] = ()
 
@@ -50,6 +56,32 @@ class HuginnSettings(BaseSettings):
                     host=self.database_host,
                     port=self.database_port,
                     path=self.database_name,
+                )
+            )
+        }
+
+    @computed_field
+    @property
+    def redis_urls(self) -> dict[ConnectionName, Secret[RedisDsn]]:
+        if self.redis_url is not None:
+            return {None: self.redis_url}
+
+        if self.redis_host is None:
+            return {}
+
+        return {
+            None: Secret(
+                RedisDsn.build(
+                    scheme='redis',
+                    username=self.redis_user,
+                    password=(
+                        self.redis_password.get_secret_value()
+                        if self.redis_password is not None
+                        else None
+                    ),
+                    host=self.redis_host,
+                    port=self.redis_port,
+                    path=str(self.redis_database),
                 )
             )
         }
