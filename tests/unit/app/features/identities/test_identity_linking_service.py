@@ -31,6 +31,7 @@ def repository() -> MagicMock:
     value.lock_invite_by_id = AsyncMock()
     value.revoke_invite = AsyncMock()
     value.session.begin_nested.return_value.__aenter__ = AsyncMock()
+    value.unlink = AsyncMock(return_value=True)
     value.session.begin_nested.return_value.__aexit__ = AsyncMock(return_value=False)
     return value
 
@@ -178,5 +179,27 @@ async def test_issue_invite_rejects_non_positive_ttl() -> None:
             timedelta(),
             'operator',
         )
-
     repo.issue_invite.assert_not_awaited()
+
+
+async def test_unlink_removes_identity_and_audits_revocation() -> None:
+    repo = repository()
+    linked = ExternalIdentity(
+        _IDENTITY_ID,
+        _USER_ID,
+        'telegram',
+        'primary',
+        '42',
+    )
+    linking = service(repo)
+
+    assert await linking.unlink(linked)
+
+    repo.unlink.assert_awaited_once_with(_IDENTITY_ID)
+    repo.record_audit.assert_awaited_once_with(
+        'link_revoked',
+        'telegram',
+        'primary',
+        user_id=_USER_ID,
+        external_identity_id=_IDENTITY_ID,
+    )

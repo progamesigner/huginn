@@ -1,8 +1,10 @@
 from typing import override
 
+from app.core.providers.command import CommandProvider
 from app.core.providers.database import DatabaseProvider
 from app.core.providers.guid import GUIDProvider
 from app.core.settings import HuginnSettings
+from lib.command import CommandContract
 from lib.container import ContainerContract, ProviderContract
 
 from .exceptions import IdentityLinkSecretError
@@ -32,3 +34,13 @@ class IdentitiesProvider(ProviderContract):
         )
 
         container.bind(IdentityResolver, constructor=IdentityResolver, scoped=True)
+
+
+class IdentitiesCommandProvider(ProviderContract):
+    dependencies = (CommandProvider, IdentitiesProvider)
+
+    @override
+    def __call__(self, container: ContainerContract) -> None:
+        from .commands import cli
+
+        container.resolve(CommandContract).mount('identities', cli)

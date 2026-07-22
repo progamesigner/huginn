@@ -138,6 +138,20 @@ class IdentityLinkingService:
         )
         return True
 
+    async def unlink(self, identity: ExternalIdentity) -> bool:
+        if not await self.repository.unlink(identity.id):
+            return False
+
+        await self.repository.record_audit(
+            'link_revoked',
+            identity.provider,
+            identity.realm,
+            user_id=identity.user_id,
+            external_identity_id=identity.id,
+        )
+
+        return True
+
     def _invalid_reason(
         self, invite: IdentityLinkInvite, provider: str, realm: str
     ) -> str | None:

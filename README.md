@@ -107,3 +107,29 @@ Inspect the published multi-arch manifest with:
 ```sh
 docker buildx imagetools inspect ghcr.io/progamesigner/huginn:latest
 ```
+
+## Identity administration
+
+Identity linking requires PostgreSQL and a dedicated HMAC secret of at least 32 bytes:
+
+- `HUGINN_DATABASE_URL` points to the migrated Huginn database.
+- `HUGINN_IDENTITY_LINK_SECRET` is generated independently of database and legacy registration credentials. Store it in the deployment secret manager; never log or commit it.
+
+Create canonical users before issuing short-lived, provider- and realm-bound invites:
+
+```sh
+huginn identities user create alice "Alice Example"
+huginn identities invite alice telegram primary 10m operator --bot-username huginn_bot
+huginn identities list alice
+huginn identities unlink telegram primary 123456789
+```
+
+The invite command prints the plaintext credential once. With `--bot-username` it prints a Telegram deep link; without it, it prints the `link_<token>` payload for the transport layer. It always prints the fallback short code. The database stores only an HMAC digest.
+
+For the legacy registration cutover:
+
+1. Apply all Huginn migrations and create the required canonical users.
+2. Do not import Windmill `c_agent_channel.users[]` or any other legacy channel-to-user mapping.
+3. Deploy the new identity resolver. Unlinked senders remain isolated anonymous principals and are not denied access merely because they are unlinked.
+4. Issue a fresh invite to each user and have them relink through the vendor-verified account.
+5. Verify links with `huginn identities list <handle>`, then retire the legacy registration flow and its shared registration secret.

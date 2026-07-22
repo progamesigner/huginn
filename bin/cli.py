@@ -2,11 +2,12 @@ from pydantic import ValidationError
 
 from app.core.application import App
 from app.core.providers.config import ConfigCommandProvider
+from app.features.identities.providers import IdentitiesCommandProvider
 from app.providers.bootstrap import BootstrapProvider
 from app.providers.features import FeaturesProvider
 from lib.command import CommandContract, echo
 
-COMMANDS = (ConfigCommandProvider(),)
+COMMANDS = (ConfigCommandProvider(), IdentitiesCommandProvider())
 
 
 def main() -> None:
