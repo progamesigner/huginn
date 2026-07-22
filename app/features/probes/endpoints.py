@@ -1,4 +1,8 @@
-from lib.router import Router
+from typing import Annotated
+
+from app.core.dependencies import Provide
+from lib.redis import RedisContract
+from lib.router import Depends, Router
 
 router = Router()
 
@@ -9,5 +13,9 @@ async def healthz() -> dict[str, str]:
 
 
 @router.get('/readyz')
-async def readyz() -> dict[str, str]:
+async def readyz(
+    redis: Annotated[RedisContract, Depends(Provide(RedisContract))],
+) -> dict[str, str]:
+    async with redis.connect() as client:
+        await client.ping()
     return {'status': 'ok'}

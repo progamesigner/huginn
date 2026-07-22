@@ -2,6 +2,7 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from typing import override
 
+from fastapi import FastAPI
 from starlette.middleware import Middleware
 
 from app.core.exceptions import AppError
@@ -26,7 +27,8 @@ class RouterProvider(ProviderContract):
         develop = container.resolve(HuginnSettings).running_in_mode('dev')
 
         @asynccontextmanager
-        async def lifespan(_: object) -> AsyncIterator[None]:
+        async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+            app.state.container = container
             async with container:
                 yield
 
