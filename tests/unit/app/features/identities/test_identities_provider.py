@@ -12,7 +12,7 @@ from tests.helpers.settings import make_settings
 
 async def test_repository_resolves_scoped() -> None:
     settings = make_settings(
-        database_url='postgresql+asyncpg://user:pass@localhost/huginn'
+        database_url='postgresql+asyncpg://user:pass@localhost/huginn',
     )
     container = App().build(SettingsProvider(settings), IdentitiesProvider())
 
@@ -30,7 +30,7 @@ async def test_repository_resolves_scoped() -> None:
 
 async def test_linking_service_requires_configured_secret() -> None:
     settings = make_settings(
-        database_url='postgresql+asyncpg://user:pass@localhost/huginn'
+        database_url='postgresql+asyncpg://user:pass@localhost/huginn',
     )
     container = App().build(SettingsProvider(settings), IdentitiesProvider())
 

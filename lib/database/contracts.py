@@ -3,7 +3,15 @@ from contextlib import AbstractAsyncContextManager
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from .session import ScopedSession
+
 
 class DatabaseContract(ABC):
     @abstractmethod
-    def session(self) -> AbstractAsyncContextManager[AsyncSession]: ...
+    def scoped(self, instance: str | None = None) -> ScopedSession: ...
+
+    @abstractmethod
+    def session(
+        self,
+        instance: str | None = None,
+    ) -> AbstractAsyncContextManager[AsyncSession]: ...

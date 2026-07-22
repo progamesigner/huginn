@@ -9,7 +9,7 @@ _URL = 'postgresql+asyncpg://user:pass@localhost/huginn'
 
 
 async def test_session_context_manager_yields_a_session() -> None:
-    manager = DatabaseManager(_URL)
+    manager = DatabaseManager({None: _URL})
 
     async with manager.session() as session:
         assert isinstance(session, AsyncSession)
@@ -18,7 +18,7 @@ async def test_session_context_manager_yields_a_session() -> None:
 
 
 async def test_scoped_returns_a_disposable_session_holder() -> None:
-    manager = DatabaseManager(_URL)
+    manager = DatabaseManager({None: _URL})
 
     scoped = manager.scoped()
     assert isinstance(scoped.session, AsyncSession)
@@ -28,25 +28,49 @@ async def test_scoped_returns_a_disposable_session_holder() -> None:
 
 
 async def test_manager_reuses_engine_and_sessionmaker() -> None:
-    manager = DatabaseManager(_URL)
+    manager = DatabaseManager({None: _URL})
 
     manager.scoped()
-    engine = manager.engine
+    engine = manager.engines[None]
+    session_maker = manager.session_makers[None]
     manager.scoped()
 
-    assert manager.engine is engine
+    assert manager.engines[None] is engine
+    assert manager.session_makers[None] is session_maker
     await manager.dispose()
 
 
-def test_missing_url_raises_database_error() -> None:
-    manager = DatabaseManager('')
+async def test_named_instance_uses_an_independent_engine() -> None:
+    manager = DatabaseManager(
+        {
+            None: _URL,
+            'analytics': _URL.replace('huginn', 'analytics'),
+        }
+    )
 
-    with pytest.raises(DatabaseError):
-        manager.scoped()
+    manager.scoped()
+    manager.scoped('analytics')
+
+    assert manager.engines[None] is not manager.engines['analytics']
+    await manager.dispose()
+    assert manager.engines == {}
+    assert manager.session_makers == {}
+
+
+def test_unknown_instance_raises_database_error() -> None:
+    manager = DatabaseManager({None: _URL})
+
+    with pytest.raises(DatabaseError, match='analytics'):
+        manager.scoped('analytics')
+
+
+def test_empty_urls_raise_database_error() -> None:
+    with pytest.raises(DatabaseError, match='database urls are required'):
+        DatabaseManager({})
 
 
 async def test_dispose_without_engine_is_a_noop() -> None:
-    await DatabaseManager('').dispose()
+    await DatabaseManager({None: _URL}).dispose()
 
 
 async def test_scoped_session_dispose_closes_the_session() -> None:

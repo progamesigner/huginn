@@ -1,4 +1,3 @@
-import os
 from collections.abc import AsyncIterator, Iterator
 
 import pytest
@@ -6,15 +5,16 @@ from alembic import command
 from alembic.config import Config
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 
-_IMAGE = 'postgres:16'
+from app.core.settings import HuginnSettings
+
+_IMAGE = 'postgres:18'
 
 
 @pytest.fixture(scope='session')
 def database_url() -> Iterator[str]:
-    # NOTE: an explicit url (CI service container) wins; otherwise spin a container
-    url = os.environ.get('HUGINN_DATABASE_URL')
-    if url:
-        yield url
+    configured = HuginnSettings().database_urls.get(None)
+    if configured is not None:
+        yield str(configured.get_secret_value())
         return
 
     try:

@@ -5,7 +5,7 @@ from app.core.application import App
 from app.core.providers.database import DatabaseProvider
 from app.core.providers.settings import SettingsProvider
 from lib.container import ResolutionError
-from lib.database import DatabaseContract, DatabaseManager
+from lib.database import DatabaseContract, DatabaseError, DatabaseManager
 from tests.helpers.settings import make_settings
 
 _URL = 'postgresql+asyncpg://user:pass@localhost/huginn'
@@ -22,6 +22,16 @@ def test_binds_database_contract_as_shared_manager() -> None:
     manager = container.resolve(DatabaseContract)
     assert isinstance(manager, DatabaseManager)
     assert container.resolve(DatabaseContract) is manager
+
+
+def test_provider_defers_missing_url_until_resolution() -> None:
+    container = App().build(
+        SettingsProvider(make_settings()),
+        DatabaseProvider(),
+    )
+
+    with pytest.raises(DatabaseError, match='not configured'):
+        container.resolve(DatabaseContract)
 
 
 def test_session_binding_requires_an_active_scope() -> None:

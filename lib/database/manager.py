@@ -1,4 +1,4 @@
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Mapping
 from contextlib import asynccontextmanager
 from typing import override
 
@@ -15,37 +15,48 @@ from .session import ScopedSession
 
 
 class DatabaseManager(DatabaseContract):
-    engine: AsyncEngine | None
-    sessions: async_sessionmaker[AsyncSession] | None
-    url: str
+    engines: dict[str | None, AsyncEngine]
+    session_makers: dict[str | None, async_sessionmaker[AsyncSession]]
+    urls: dict[str | None, str]
 
-    def __init__(self, url: str) -> None:
-        self.engine = None
-        self.sessions = None
-        self.url = url
+    def __init__(self, urls: Mapping[str | None, str]) -> None:
+        if not urls or any(name == '' or not url for name, url in urls.items()):
+            raise DatabaseError('database urls are required')
 
-    def scoped(self) -> ScopedSession:
+        self.engines = {}
+        self.session_makers = {}
+        self.urls = dict(urls)
+
+    @override
+    def scoped(self, instance: str | None = None) -> ScopedSession:
         # NOTE: the caller owns the session lifetime
-        return ScopedSession(self._factory()())
+        return ScopedSession(self._async_session(instance)())
 
     @asynccontextmanager
     @override
-    async def session(self) -> AsyncIterator[AsyncSession]:
-        async with self._factory()() as session:
+    async def session(self, instance: str | None = None) -> AsyncIterator[AsyncSession]:
+        async with self._async_session(instance)() as session:
             yield session
 
     async def dispose(self) -> None:
-        if self.engine is not None:
-            await self.engine.dispose()
-        self.engine = None
-        self.sessions = None
+        for engine in self.engines.values():
+            await engine.dispose()
+        self.engines.clear()
+        self.session_makers.clear()
 
-    def _factory(self) -> async_sessionmaker[AsyncSession]:
-        if not self.url:
-            raise DatabaseError('database url is not configured')
+    def url(self, instance: str | None = None) -> str:
+        if instance not in self.urls:
+            raise DatabaseError(f'database instance {instance!r} is not configured')
 
-        if self.sessions is None:
-            self.engine = create_async_engine(self.url)
-            self.sessions = async_sessionmaker(self.engine, expire_on_commit=False)
+        return self.urls[instance]
 
-        return self.sessions
+    def _async_session(self, instance: str | None) -> async_sessionmaker[AsyncSession]:
+        if instance not in self.session_makers:
+            engine = create_async_engine(self.url(instance))
+            self.engines[instance] = engine
+            self.session_makers[instance] = async_sessionmaker(
+                engine,
+                expire_on_commit=False,
+            )
+
+        return self.session_makers[instance]
