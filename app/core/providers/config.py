@@ -1,7 +1,6 @@
 from pathlib import Path
 from typing import override
 
-from app.core.config.commands import build_commands
 from app.core.config.loader import load_config
 from app.core.config.registry import HuginnConfig, SectionRegistry
 from app.core.settings import HuginnSettings
@@ -35,4 +34,6 @@ class ConfigCommandProvider(ProviderContract):
 
     @override
     def __call__(self, container: ContainerContract) -> None:
-        container.resolve(CommandContract).mount('config', build_commands(container))
+        from app.core.config.commands import cli
+
+        container.resolve(CommandContract).mount('config', cli)

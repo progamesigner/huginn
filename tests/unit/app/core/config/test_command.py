@@ -2,13 +2,13 @@ import json
 from pathlib import Path
 
 import pytest
-from typer.testing import CliRunner
+from typer.testing import CliRunner, Result
 
 from app.core.application import App
 from app.providers.bootstrap import BootstrapProvider
 from app.providers.features import FeaturesProvider
 from bin.cli import COMMANDS
-from lib.command import CommandContract, Typer
+from lib.command import CommandContract
 
 runner = CliRunner()
 
@@ -36,9 +36,9 @@ channels:
 """
 
 
-def build_cli() -> Typer:
+def invoke_cli(arguments: list[str]) -> Result:
     container = App().build(BootstrapProvider(), FeaturesProvider(), *COMMANDS)
-    return container.resolve(CommandContract).app
+    return runner.invoke(container.resolve(CommandContract).app, arguments)
 
 
 def write_config(path: Path, text: str = _VALID) -> Path:
@@ -49,7 +49,7 @@ def write_config(path: Path, text: str = _VALID) -> Path:
 def test_validate_prints_summary(tmp_path: Path) -> None:
     path = write_config(tmp_path / 'huginn.yaml')
 
-    result = runner.invoke(build_cli(), ['config', 'validate', str(path)])
+    result = invoke_cli(['config', 'validate', str(path)])
 
     assert result.exit_code == 0
     assert 'scout' in result.output
@@ -60,7 +60,7 @@ def test_validate_prints_summary(tmp_path: Path) -> None:
 def test_validate_never_echoes_instructions(tmp_path: Path) -> None:
     path = write_config(tmp_path / 'huginn.yaml')
 
-    result = runner.invoke(build_cli(), ['config', 'validate', str(path)])
+    result = invoke_cli(['config', 'validate', str(path)])
 
     assert 'secret persona' not in result.output
 
@@ -71,7 +71,7 @@ def test_validate_defaults_to_settings_config_file(
     path = write_config(tmp_path / 'huginn.yaml')
     monkeypatch.setenv('HUGINN_CONFIG_FILE', str(path))
 
-    result = runner.invoke(build_cli(), ['config', 'validate'])
+    result = invoke_cli(['config', 'validate'])
 
     assert result.exit_code == 0
 
@@ -80,16 +80,14 @@ def test_validate_reports_field_path_on_bad_reference(tmp_path: Path) -> None:
     bad = _VALID.replace('name: websearch', 'name: nonexistent')
     path = write_config(tmp_path / 'huginn.yaml', bad)
 
-    result = runner.invoke(build_cli(), ['config', 'validate', str(path)])
+    result = invoke_cli(['config', 'validate', str(path)])
 
     assert result.exit_code == 1
     assert 'agents.scout.tools[0].name' in result.stderr
 
 
 def test_validate_fails_on_missing_file(tmp_path: Path) -> None:
-    result = runner.invoke(
-        build_cli(), ['config', 'validate', str(tmp_path / 'missing.yaml')]
-    )
+    result = invoke_cli(['config', 'validate', str(tmp_path / 'missing.yaml')])
 
     assert result.exit_code == 1
 
@@ -101,13 +99,13 @@ def test_cli_builds_without_ext_secrets(
     monkeypatch.delenv('EXT_FELO_API_KEY', raising=False)
     path = write_config(tmp_path / 'huginn.yaml')
 
-    result = runner.invoke(build_cli(), ['config', 'validate', str(path)])
+    result = invoke_cli(['config', 'validate', str(path)])
 
     assert result.exit_code == 0
 
 
 def test_schema_prints_json_schema() -> None:
-    result = runner.invoke(build_cli(), ['config', 'schema'])
+    result = invoke_cli(['config', 'schema'])
 
     assert result.exit_code == 0
     assert 'agents' in json.loads(result.output)['properties']

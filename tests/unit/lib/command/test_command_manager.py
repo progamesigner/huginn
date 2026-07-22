@@ -1,8 +1,28 @@
+import asyncio
+
 from typer.testing import CliRunner
 
-from lib.command import CommandManager, Typer, echo
+from lib.command import CommandManager, Typer, echo, resolve, scoped
+from lib.container import Container
 
 runner = CliRunner()
+
+
+class Service:
+    message: str
+
+    def __init__(self, message: str) -> None:
+        self.message = message
+
+
+class ScopedService:
+    disposed: bool
+
+    def __init__(self) -> None:
+        self.disposed = False
+
+    async def dispose(self) -> None:
+        self.disposed = True
 
 
 def build_commands(message: str) -> Typer:
@@ -16,7 +36,7 @@ def build_commands(message: str) -> Typer:
 
 
 def test_mount_exposes_named_command_group() -> None:
-    manager = CommandManager()
+    manager = CommandManager(Container())
     manager.mount('demo', build_commands('hi from demo'))
 
     result = runner.invoke(manager.app, ['demo', 'hello'])
@@ -26,7 +46,7 @@ def test_mount_exposes_named_command_group() -> None:
 
 
 def test_mounted_groups_stay_separate() -> None:
-    manager = CommandManager()
+    manager = CommandManager(Container())
     manager.mount('first', build_commands('one'))
     manager.mount('second', build_commands('two'))
 
@@ -35,3 +55,47 @@ def test_mounted_groups_stay_separate() -> None:
 
     assert 'one' in first.output
     assert 'two' in second.output
+
+
+def test_resolve_uses_command_container() -> None:
+    container = Container()
+    container.bind(Service, instance=Service('from container'))
+    manager = CommandManager(container)
+    commands = Typer()
+
+    @commands.command()
+    def show() -> None:
+        echo(resolve(Service).message)
+
+    manager.mount('demo', commands)
+
+    result = runner.invoke(manager.app, ['demo', 'show'])
+
+    assert result.exit_code == 0
+    assert result.output == 'from container\n'
+
+
+def test_scoped_uses_and_disposes_child_container() -> None:
+    container = Container()
+    container.bind(ScopedService, constructor=ScopedService, scoped=True)
+    manager = CommandManager(container)
+    commands = Typer()
+    instances: list[ScopedService] = []
+
+    @commands.command()
+    def show() -> None:
+        async def execute() -> None:
+            async with scoped() as scope:
+                service = scope.resolve(ScopedService)
+                instances.append(service)
+                echo(str(service is scope.resolve(ScopedService)))
+
+        asyncio.run(execute())
+
+    manager.mount('demo', commands)
+
+    result = runner.invoke(manager.app, ['demo', 'show'])
+
+    assert result.exit_code == 0
+    assert result.output == 'True\n'
+    assert instances[0].disposed
