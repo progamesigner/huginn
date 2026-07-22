@@ -54,15 +54,36 @@ def test_client_for_caches_adapter_per_provider() -> None:
     assert manager.client_for('gpt-5') is manager.client_for('gpt-5')
 
 
-def test_client_for_reports_missing_extra(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setitem(sys.modules, 'lib.llm.adapters.openai', None)
-    provider = ProviderConfig(
-        name='openai',
-        adapter='openai',
-        api_key=SecretStr('secret'),
-        models=('gpt-5',),
-    )
+@pytest.mark.parametrize(
+    ('provider', 'model'),
+    (
+        (
+            ProviderConfig(
+                name='openai',
+                adapter='openai',
+                api_key=SecretStr('secret'),
+                models=('gpt-5',),
+            ),
+            'gpt-5',
+        ),
+        (
+            ProviderConfig(
+                name='anthropic',
+                adapter='anthropic',
+                api_key=SecretStr('secret'),
+                models=('claude-opus-4-8',),
+            ),
+            'claude-opus-4-8',
+        ),
+    ),
+)
+def test_client_for_reports_missing_extra(
+    monkeypatch: pytest.MonkeyPatch,
+    provider: ProviderConfig,
+    model: str,
+) -> None:
+    monkeypatch.setitem(sys.modules, f'lib.llm.adapters.{provider.adapter}', None)
     manager = LLMManager((provider,), HTTPClientManager())
 
-    with pytest.raises(ModuleNotFoundError, match=r'huginn\[openai\]'):
-        manager.client_for('gpt-5')
+    with pytest.raises(ModuleNotFoundError, match=rf'huginn\[{provider.adapter}\]'):
+        manager.client_for(model)
