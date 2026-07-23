@@ -12,9 +12,9 @@ class ConversationRecord(TimestampRecordMixin, AppRecord):
     __tablename__ = 'conversations'
     __table_args__ = (UniqueConstraint('channel', 'chat_id', 'agent'),)
 
-    channel: Mapped[str]
-    chat_id: Mapped[str]
-    agent: Mapped[str]
+    channel: Mapped[str] = mapped_column()
+    chat_id: Mapped[str] = mapped_column()
+    agent: Mapped[str] = mapped_column()
     compact_version: Mapped[int] = mapped_column(server_default='0')
     summarized_through_turn_id: Mapped[UUID | None] = mapped_column(
         ForeignKey('turns.id', ondelete='SET NULL'),
@@ -40,7 +40,7 @@ class PartRecord(AppRecord):
     __tablename__ = 'parts'
 
     turn_id: Mapped[UUID] = mapped_column(ForeignKey('turns.id', ondelete='CASCADE'))
-    seq: Mapped[int]
-    role: Mapped[str]
-    kind: Mapped[str]
+    seq: Mapped[int] = mapped_column()
+    role: Mapped[str] = mapped_column()
+    kind: Mapped[str] = mapped_column()
     payload: Mapped[JsonValue] = mapped_column()

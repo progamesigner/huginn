@@ -19,7 +19,7 @@ class UserRecord(TimestampRecordMixin, AppRecord):
     )
 
     handle: Mapped[str] = mapped_column(unique=True)
-    display_name: Mapped[str]
+    display_name: Mapped[str] = mapped_column()
 
 
 class ExternalIdentityRecord(AppRecord):
@@ -30,9 +30,9 @@ class ExternalIdentityRecord(AppRecord):
     )
 
     user_id: Mapped[UUID] = mapped_column(ForeignKey('users.id', ondelete='CASCADE'))
-    provider: Mapped[str]
-    realm: Mapped[str]
-    external_user_id: Mapped[str]
+    provider: Mapped[str] = mapped_column()
+    realm: Mapped[str] = mapped_column()
+    external_user_id: Mapped[str] = mapped_column()
     profile: Mapped[JsonValue] = mapped_column()
     linked_at: Mapped[datetime] = mapped_column(server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
@@ -46,13 +46,13 @@ class IdentityAuditEventRecord(AppRecord):
         Index('ix_identity_audit_events_user_occurred', 'user_id', 'occurred_at'),
     )
 
-    event_type: Mapped[str]
+    event_type: Mapped[str] = mapped_column()
     user_id: Mapped[UUID | None] = mapped_column(
         ForeignKey('users.id', ondelete='SET NULL')
     )
-    external_identity_id: Mapped[UUID | None]
-    provider: Mapped[str]
-    realm: Mapped[str]
+    external_identity_id: Mapped[UUID | None] = mapped_column()
+    provider: Mapped[str] = mapped_column()
+    realm: Mapped[str] = mapped_column()
     occurred_at: Mapped[datetime] = mapped_column(server_default=func.now())
     metadata_: Mapped[JsonValue] = mapped_column('metadata')
 
@@ -69,11 +69,11 @@ class IdentityLinkInviteRecord(AppRecord):
     )
 
     user_id: Mapped[UUID] = mapped_column(ForeignKey('users.id', ondelete='CASCADE'))
-    provider: Mapped[str]
-    realm: Mapped[str]
-    token_digest: Mapped[bytes]
+    provider: Mapped[str] = mapped_column()
+    realm: Mapped[str] = mapped_column()
+    token_digest: Mapped[bytes] = mapped_column()
     expires_at: Mapped[datetime] = mapped_column(Timestamp())
     consumed_at: Mapped[datetime | None] = mapped_column(Timestamp())
     revoked_at: Mapped[datetime | None] = mapped_column(Timestamp())
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())
-    created_by: Mapped[str]
+    created_by: Mapped[str] = mapped_column()
