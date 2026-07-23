@@ -2,10 +2,11 @@ from collections.abc import Mapping, Sequence
 from typing import cast
 
 from pydantic import JsonValue
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from app.features.conversations.exceptions import NoTurnsToCompactError
 from app.features.conversations.types import Conversation, Part, Turn
 from lib.guid import GUIDContract
 
@@ -20,6 +21,8 @@ def _to_conversation(record: ConversationRecord) -> Conversation:
         agent=record.agent,
         created_at=record.created_at,
         updated_at=record.updated_at,
+        compact_version=record.compact_version,
+        summarized_through_turn_id=record.summarized_through_turn_id,
     )
 
 
@@ -116,3 +119,91 @@ class ConversationRepository:
         records = (await self.session.execute(query)).scalars().all()
 
         return tuple(_to_turn(record) for record in reversed(records))
+
+    async def load_turns_since_summary(
+        self,
+        conversation: Conversation,
+    ) -> tuple[Turn, ...]:
+        query = (
+            select(TurnRecord)
+            .where(
+                TurnRecord.conversation_id == conversation.id,
+                ~TurnRecord.parts.any(PartRecord.kind == 'summary'),
+            )
+            .order_by(TurnRecord.id.asc())
+            .options(selectinload(TurnRecord.parts))
+        )
+        if (boundary_id := conversation.summarized_through_turn_id) is not None:
+            query = query.where(TurnRecord.id > boundary_id)
+
+        records = (await self.session.execute(query)).scalars().all()
+
+        return tuple(_to_turn(record) for record in records)
+
+    async def load_current_summary(
+        self,
+        conversation: Conversation,
+    ) -> Mapping[str, JsonValue] | None:
+        query = (
+            select(PartRecord)
+            .join(TurnRecord, PartRecord.turn_id == TurnRecord.id)
+            .where(
+                TurnRecord.conversation_id == conversation.id,
+                PartRecord.kind == 'summary',
+            )
+            .order_by(PartRecord.id.desc())
+            .limit(1)
+        )
+        part = (await self.session.execute(query)).scalar_one_or_none()
+
+        return cast(Mapping[str, JsonValue], part.payload) if part is not None else None
+
+    async def apply_compaction(
+        self,
+        conversation: Conversation,
+        summary_payload: Mapping[str, JsonValue],
+        turns_folded: tuple[Turn, ...],
+        expected_version: int,
+    ) -> Conversation | None:
+        if not turns_folded:
+            raise NoTurnsToCompactError(
+                'apply_compaction requires at least one folded turn'
+            )
+
+        boundary = turns_folded[-1]
+        statement = (
+            update(ConversationRecord)
+            .where(
+                ConversationRecord.id == conversation.id,
+                ConversationRecord.compact_version == expected_version,
+            )
+            .values(
+                compact_version=ConversationRecord.compact_version + 1,
+                summarized_through_turn_id=boundary.id,
+            )
+            .returning(ConversationRecord)
+            .execution_options(synchronize_session=False)
+        )
+        record = (await self.session.execute(statement)).scalar_one_or_none()
+        if record is None:
+            return None  # CAS conflict: another compact already won; insert nothing
+
+        self.session.add(
+            TurnRecord(
+                id=self.guid.generate(),
+                conversation_id=conversation.id,
+                usage={},
+                parts=[
+                    PartRecord(
+                        id=self.guid.generate(),
+                        seq=0,
+                        role='assistant',
+                        kind='summary',
+                        payload=dict(summary_payload),
+                    ),
+                ],
+            )
+        )
+        await self.session.flush()
+
+        return _to_conversation(record)

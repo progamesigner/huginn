@@ -1,8 +1,11 @@
 from collections.abc import Mapping, Sequence
+from dataclasses import replace
+from typing import cast
 from uuid import UUID
 
 from pydantic import JsonValue
 
+from app.features.conversations.exceptions import NoTurnsToCompactError
 from app.features.conversations.types import Conversation, Part, Turn
 
 
@@ -10,11 +13,13 @@ class FakeConversationRepository:
     conversations: dict[tuple[str, str, str], Conversation]
     turns: dict[UUID, list[Turn]]
     counter: int
+    force_cas_conflict: bool
 
     def __init__(self) -> None:
         self.conversations = {}
         self.turns = {}
         self.counter = 0
+        self.force_cas_conflict = False
 
     def _next_id(self) -> UUID:
         self.counter += 1
@@ -55,6 +60,74 @@ class FakeConversationRepository:
         limit: int,
     ) -> tuple[Turn, ...]:
         return tuple(self.turns[conversation.id][-limit:])
+
+    async def load_turns_since_summary(
+        self,
+        conversation: Conversation,
+    ) -> tuple[Turn, ...]:
+        real_turns = [
+            turn
+            for turn in self.turns[conversation.id]
+            if not (turn.parts and turn.parts[0].kind == 'summary')
+        ]
+        boundary_id = conversation.summarized_through_turn_id
+        if boundary_id is not None:
+            real_turns = [turn for turn in real_turns if turn.id > boundary_id]
+
+        return tuple(sorted(real_turns, key=lambda turn: turn.id))
+
+    async def load_current_summary(
+        self,
+        conversation: Conversation,
+    ) -> Mapping[str, JsonValue] | None:
+        summary_turns = [
+            turn
+            for turn in self.turns[conversation.id]
+            if turn.parts and turn.parts[0].kind == 'summary'
+        ]
+        if not summary_turns:
+            return None
+
+        latest = max(summary_turns, key=lambda turn: turn.id)
+        return latest.parts[0].payload
+
+    async def apply_compaction(
+        self,
+        conversation: Conversation,
+        summary_payload: Mapping[str, JsonValue],
+        turns_folded: tuple[Turn, ...],
+        expected_version: int,
+    ) -> Conversation | None:
+        if not turns_folded:
+            raise NoTurnsToCompactError(
+                'apply_compaction requires at least one folded turn'
+            )
+
+        if self.force_cas_conflict or conversation.compact_version != expected_version:
+            return None
+
+        boundary = turns_folded[-1]
+        summary_turn = Turn(
+            id=self._next_id(),
+            parts=(
+                Part(
+                    role='assistant',
+                    kind='summary',
+                    payload=cast(Mapping[str, JsonValue], dict(summary_payload)),
+                ),
+            ),
+        )
+        self.turns[conversation.id].append(summary_turn)
+
+        updated = replace(
+            conversation,
+            compact_version=conversation.compact_version + 1,
+            summarized_through_turn_id=boundary.id,
+        )
+        key = (conversation.channel, conversation.chat_id, conversation.agent)
+        self.conversations[key] = updated
+
+        return updated
 
 
 async def test_get_or_create_is_idempotent_per_key() -> None:

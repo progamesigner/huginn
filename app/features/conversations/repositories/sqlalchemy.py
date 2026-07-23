@@ -15,6 +15,11 @@ class ConversationRecord(TimestampRecordMixin, AppRecord):
     channel: Mapped[str]
     chat_id: Mapped[str]
     agent: Mapped[str]
+    compact_version: Mapped[int] = mapped_column(server_default='0')
+    summarized_through_turn_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey('turns.id', ondelete='SET NULL'),
+        default=None,
+    )
 
 
 class TurnRecord(AppRecord):
