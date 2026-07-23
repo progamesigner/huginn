@@ -4,12 +4,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.features.conversations.repositories import ConversationRepository
 from app.features.conversations.types import Part
 from lib.guid import GUIDManager
+from lib.temporal import ClockManager
 
 pytestmark = pytest.mark.integration
 
 
 def _repository(session: AsyncSession) -> ConversationRepository:
-    return ConversationRepository(session, GUIDManager())
+    return ConversationRepository(session, GUIDManager(), ClockManager())
 
 
 async def test_get_or_create_persists_and_is_idempotent(session: AsyncSession) -> None:

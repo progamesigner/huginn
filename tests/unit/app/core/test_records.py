@@ -20,12 +20,15 @@ def test_app_record_defines_the_shared_primary_key() -> None:
     assert columns.id.primary_key
 
 
-def test_timestamp_mixin_adds_created_and_updated_columns() -> None:
+def test_timestamp_mixin_adds_app_controlled_columns() -> None:
     class TimestampedTestRecord(TimestampRecordMixin, AppRecord):
         __tablename__ = 'timestamped_test_records'
 
     columns = inspect(TimestampedTestRecord).columns
 
     assert set(columns.keys()) == {'id', 'created_at', 'updated_at'}
-    assert columns.created_at.server_default is not None
-    assert columns.updated_at.server_default is not None
+    assert columns.created_at.server_default is None
+    assert columns.updated_at.server_default is None
+    assert columns.updated_at.onupdate is None
+    assert not columns.created_at.nullable
+    assert not columns.updated_at.nullable

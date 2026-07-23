@@ -14,6 +14,7 @@ from app.features.identities.types import (
     User,
 )
 from lib.guid import GUIDContract
+from lib.temporal import ClockContract
 
 from .sqlalchemy import (
     ExternalIdentityRecord,
@@ -76,16 +77,27 @@ def _to_invite(
 
 
 class IdentityRepository:
-    def __init__(self, session: AsyncSession, guid: GUIDContract) -> None:
+    def __init__(
+        self,
+        session: AsyncSession,
+        guid: GUIDContract,
+        clock: ClockContract,
+    ) -> None:
         self.session = session
         self.guid = guid
+        self.clock = clock
 
     async def create_user(self, handle: str, display_name: str) -> User:
         normalized = handle.strip().lower()
         if not normalized:
             raise ValueError('handle must not be empty')
+        now = self.clock.now()
         record = UserRecord(
-            id=self.guid.generate(), handle=normalized, display_name=display_name
+            id=self.guid.generate(),
+            handle=normalized,
+            display_name=display_name,
+            created_at=now,
+            updated_at=now,
         )
         self.session.add(record)
         await self.session.flush()

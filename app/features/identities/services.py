@@ -1,9 +1,11 @@
-from collections.abc import Callable, Mapping
-from datetime import UTC, datetime, timedelta
+from collections.abc import Mapping
+from datetime import timedelta
 from uuid import UUID
 
 from pydantic import JsonValue
 from sqlalchemy.exc import IntegrityError
+
+from lib.temporal import ClockContract
 
 from .exceptions import InvalidIdentityLinkError
 from .repositories import IdentityRepository
@@ -23,7 +25,7 @@ class IdentityLinkingService:
         self,
         repository: IdentityRepository,
         tokens: IdentityTokenCodec,
-        clock: Callable[[], datetime] = lambda: datetime.now(UTC),
+        clock: ClockContract,
     ) -> None:
         self.repository = repository
         self.tokens = tokens
@@ -39,7 +41,7 @@ class IdentityLinkingService:
     ) -> IssuedIdentityLinkInvite:
         if ttl <= timedelta():
             raise ValueError('ttl must be positive')
-        now = self.clock()
+        now = self.clock.now()
         token, short_code, digest = self.tokens.issue()
         invite = await self.repository.issue_invite(
             user_id,
@@ -91,7 +93,7 @@ class IdentityLinkingService:
             raise InvalidIdentityLinkError()
         if existing is not None:
             if existing.user_id == invite.user_id:
-                await self.repository.consume_invite(invite.id, self.clock())
+                await self.repository.consume_invite(invite.id, self.clock.now())
                 return existing
             await self._audit_failure(provider, realm, 'identity_conflict')
             raise InvalidIdentityLinkError()
@@ -109,7 +111,7 @@ class IdentityLinkingService:
             await self._audit_failure(provider, realm, 'identity_conflict')
             raise InvalidIdentityLinkError() from None
 
-        await self.repository.consume_invite(invite.id, self.clock())
+        await self.repository.consume_invite(invite.id, self.clock.now())
         await self.repository.record_audit(
             'link_succeeded',
             provider,
@@ -128,7 +130,7 @@ class IdentityLinkingService:
             or invite.revoked_at is not None
         ):
             return False
-        await self.repository.revoke_invite(invite.id, self.clock())
+        await self.repository.revoke_invite(invite.id, self.clock.now())
         await self.repository.record_audit(
             'link_revoked',
             invite.provider,
@@ -159,7 +161,7 @@ class IdentityLinkingService:
             return 'realm_mismatch'
         if invite.revoked_at is not None:
             return 'revoked'
-        if invite.expires_at <= self.clock():
+        if invite.expires_at <= self.clock.now():
             return 'expired'
         return None
 

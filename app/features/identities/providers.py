@@ -3,6 +3,7 @@ from typing import override
 from app.core.providers.command import CommandProvider
 from app.core.providers.database import DatabaseProvider
 from app.core.providers.guid import GUIDProvider
+from app.core.providers.temporal import ClockProvider
 from app.core.settings import HuginnSettings
 from lib.command import CommandContract
 from lib.container import ContainerContract, ProviderContract
@@ -21,7 +22,7 @@ def _token_codec(container: ContainerContract) -> IdentityTokenCodec:
 
 
 class IdentitiesProvider(ProviderContract):
-    dependencies = (DatabaseProvider, GUIDProvider)
+    dependencies = (DatabaseProvider, GUIDProvider, ClockProvider)
 
     @override
     def __call__(self, container: ContainerContract) -> None:

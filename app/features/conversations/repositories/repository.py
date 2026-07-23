@@ -9,6 +9,7 @@ from sqlalchemy.orm import selectinload
 from app.features.conversations.exceptions import NoTurnsToCompactError
 from app.features.conversations.types import Conversation, Part, Turn
 from lib.guid import GUIDContract
+from lib.temporal import ClockContract
 
 from .sqlalchemy import ConversationRecord, PartRecord, TurnRecord
 
@@ -44,12 +45,19 @@ def _to_turn(record: TurnRecord) -> Turn:
 
 
 class ConversationRepository:
+    clock: ClockContract
     guid: GUIDContract
     session: AsyncSession
 
-    def __init__(self, session: AsyncSession, guid: GUIDContract) -> None:
+    def __init__(
+        self,
+        session: AsyncSession,
+        guid: GUIDContract,
+        clock: ClockContract,
+    ) -> None:
         self.guid = guid
         self.session = session
+        self.clock = clock
 
     async def get_or_create(
         self,
@@ -65,11 +73,14 @@ class ConversationRepository:
         record = (await self.session.execute(query)).scalar_one_or_none()
 
         if record is None:
+            now = self.clock.now()
             record = ConversationRecord(
                 id=self.guid.generate(),
                 channel=channel,
                 chat_id=chat_id,
                 agent=agent,
+                created_at=now,
+                updated_at=now,
             )
             self.session.add(record)
             await self.session.flush()
@@ -180,6 +191,7 @@ class ConversationRepository:
             .values(
                 compact_version=ConversationRecord.compact_version + 1,
                 summarized_through_turn_id=boundary.id,
+                updated_at=self.clock.now(),
             )
             .returning(ConversationRecord)
             .execution_options(synchronize_session=False)

@@ -20,6 +20,7 @@ from lib.llm import (
     TextChunk,
     TextSegment,
 )
+from lib.temporal import ClockManager
 from tests.unit.app.features.agents.test_agent_runner import FakeLLM
 
 pytestmark = pytest.mark.integration
@@ -41,7 +42,7 @@ class FakeLLMContract(LLMContract):
 
 
 def _repository(session: AsyncSession) -> ConversationRepository:
-    return ConversationRepository(session, GUIDManager())
+    return ConversationRepository(session, GUIDManager(), ClockManager())
 
 
 def _summary_chunks(text: str) -> list[CompletionChunk]:

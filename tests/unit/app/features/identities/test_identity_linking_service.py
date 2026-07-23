@@ -12,6 +12,7 @@ from app.features.identities.types import (
     ExternalIdentity,
     IdentityLinkInvite,
 )
+from tests.helpers.clock import FakeClock
 
 _NOW = datetime(2026, 1, 1, tzinfo=UTC)
 _SECRET = b'x' * 32
@@ -51,7 +52,7 @@ def stored_invite(**changes: object) -> IdentityLinkInvite:
 
 def service(repo: MagicMock) -> IdentityLinkingService:
     codec = IdentityTokenCodec(_SECRET, random_bytes=lambda _: bytes(range(16)))
-    return IdentityLinkingService(repo, codec, clock=lambda: _NOW)
+    return IdentityLinkingService(repo, codec, clock=FakeClock(now=_NOW))
 
 
 async def test_issue_invite_persists_only_digest_and_audits() -> None:

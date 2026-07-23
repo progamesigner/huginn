@@ -4,12 +4,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.features.identities.repositories import IdentityRepository
 from lib.guid import GUIDManager
+from lib.temporal import ClockManager
 
 pytestmark = pytest.mark.integration
 
 
 def repository(session: AsyncSession) -> IdentityRepository:
-    return IdentityRepository(session, GUIDManager())
+    return IdentityRepository(session, GUIDManager(), ClockManager())
 
 
 async def test_user_handle_is_normalized_and_globally_unique(

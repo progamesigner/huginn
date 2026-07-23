@@ -17,6 +17,7 @@ from app.features.identities.repositories.sqlalchemy import (
 from app.features.identities.services import IdentityLinkingService
 from app.features.identities.tokens import IdentityTokenCodec
 from lib.guid import GUIDManager
+from lib.temporal import ClockManager
 
 pytestmark = pytest.mark.integration
 
@@ -25,13 +26,14 @@ _SECRET = b'x' * 32
 
 def service(session: AsyncSession) -> IdentityLinkingService:
     return IdentityLinkingService(
-        IdentityRepository(session, GUIDManager()),
+        IdentityRepository(session, GUIDManager(), ClockManager()),
         IdentityTokenCodec(_SECRET),
+        ClockManager(),
     )
 
 
 async def test_invite_stores_only_keyed_digest(session: AsyncSession) -> None:
-    repository = IdentityRepository(session, GUIDManager())
+    repository = IdentityRepository(session, GUIDManager(), ClockManager())
     user = await repository.create_user(f'user-{uuid4().hex}', 'Example User')
     linking = service(session)
 
@@ -67,7 +69,7 @@ async def test_concurrent_completion_creates_one_link_and_success_event(
 
     try:
         async with sessions() as setup:
-            repository = IdentityRepository(setup, GUIDManager())
+            repository = IdentityRepository(setup, GUIDManager(), ClockManager())
             user = await repository.create_user(handle, 'Example User')
             linking = service(setup)
             invite = await linking.issue_invite(
@@ -129,9 +131,9 @@ async def test_concurrent_completion_creates_one_link_and_success_event(
 
 
 async def test_invite_cannot_be_consumed_and_revoked(session: AsyncSession) -> None:
-    repository = IdentityRepository(session, GUIDManager())
+    repository = IdentityRepository(session, GUIDManager(), ClockManager())
     user = await repository.create_user(f'user-{uuid4().hex}', 'Example User')
-    now = service(session).clock()
+    now = service(session).clock.now()
     invite = await repository.issue_invite(
         user.id,
         'telegram',
