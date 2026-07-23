@@ -22,6 +22,12 @@ mcp_servers:
       value_from:
         env: MEMORY_MCP_TOKEN
 
+skills:
+  server: memory
+  inject:
+    agent: default
+    user: example
+
 agents:
   scout:
     description: Research agent — answers questions with web search and recall.
@@ -43,6 +49,8 @@ agents:
       inject:
         agent: default
         user: example
+    skills:
+      enabled: true
 
   concierge:
     description: Fallback agent for chats with no specific binding.

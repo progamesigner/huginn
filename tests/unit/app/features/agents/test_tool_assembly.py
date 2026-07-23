@@ -1,19 +1,24 @@
 from collections.abc import Mapping
+from datetime import timedelta
 from pathlib import Path
 from typing import Annotated, override
 
 import pytest
 from pydantic import Field, JsonValue
 
-from app.features.agents.config import AgentConfig, MCPRef, ToolRef
+from app.features.agents.config import AgentConfig, MCPRef, SkillsConfig, ToolRef
 from app.features.agents.exceptions import AgentError
 from app.features.agents.services import build_tool_set, load_instructions
+from app.features.skills.repositories import SkillRepository
+from app.features.skills.sources.contracts import SkillSource
+from app.features.skills.types import Skill, SkillMeta
 from app.features.tools.binding import ConfiguredTool
 from app.features.tools.config import ToolConfig
 from app.features.tools.exceptions import DuplicateToolError
 from app.features.tools.registry import ToolRegistry
 from app.features.tools.types import ToolOutput, ToolParams, TypedTool
 from lib.mcp import MCPClientContract, MCPToolInfo, UnknownMCPServerError
+from tests.helpers.clock import FakeClock
 
 
 class EchoParams(ToolParams):
@@ -64,9 +69,74 @@ def _registry() -> ToolRegistry:
 
 
 def _agent(
-    *, tools: tuple[ToolRef, ...] = (), mcp: tuple[MCPRef, ...] = ()
+    *,
+    tools: tuple[ToolRef, ...] = (),
+    mcp: tuple[MCPRef, ...] = (),
+    skills: SkillsConfig | None = None,
 ) -> AgentConfig:
-    return AgentConfig(description='x', instructions='y', tools=tools, mcp=mcp)
+    return AgentConfig(
+        description='x',
+        instructions='y',
+        tools=tools,
+        mcp=mcp,
+        skills=skills or SkillsConfig(),
+    )
+
+
+class FakeSkillSource(SkillSource):
+    @override
+    async def list(self) -> tuple[SkillMeta, ...]:
+        return (
+            SkillMeta(
+                name='triage', description='triage incidents', path='s/triage.md'
+            ),
+            SkillMeta(name='report', description='write a report', path='s/report.md'),
+        )
+
+    @override
+    async def load(self, path: str) -> Skill:
+        return Skill(meta=await self._meta(path), body='body')
+
+    async def _meta(self, path: str) -> SkillMeta:
+        return next(meta for meta in await self.list() if meta.path == path)
+
+
+def _skills() -> SkillRepository:
+    return SkillRepository(FakeSkillSource(), FakeClock(), ttl=timedelta(minutes=15))
+
+
+async def test_build_tool_set_adds_skill_tool_when_enabled() -> None:
+    agent = _agent(skills=SkillsConfig(enabled=True))
+
+    tools = await build_tool_set(_registry(), {}, FakeClient({}), agent, _skills())
+
+    assert 'skill' in tools.tools
+
+
+async def test_build_tool_set_omits_skill_tool_when_disabled() -> None:
+    agent = _agent(skills=SkillsConfig(enabled=False))
+
+    tools = await build_tool_set(_registry(), {}, FakeClient({}), agent, _skills())
+
+    assert 'skill' not in tools.tools
+
+
+async def test_build_tool_set_omits_skill_tool_without_a_repository() -> None:
+    agent = _agent(skills=SkillsConfig(enabled=True))
+
+    tools = await build_tool_set(_registry(), {}, FakeClient({}), agent)
+
+    assert 'skill' not in tools.tools
+
+
+async def test_build_tool_set_narrows_skills_to_the_allowlist() -> None:
+    agent = _agent(skills=SkillsConfig(enabled=True, allow=('triage',)))
+
+    tools = await build_tool_set(_registry(), {}, FakeClient({}), agent, _skills())
+
+    description = tools.tools['skill'].description
+    assert 'triage' in description
+    assert 'report' not in description
 
 
 async def test_build_tool_set_combines_native_and_mcp_tools() -> None:

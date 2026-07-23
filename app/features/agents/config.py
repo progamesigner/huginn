@@ -37,6 +37,11 @@ class MCPRef(ConfigValue):
     inject: Annotated[dict[str, str], Field()] = Field(default_factory=dict)
 
 
+class SkillsConfig(ConfigValue):
+    enabled: Annotated[bool, Field()] = False
+    allow: Annotated[tuple[str, ...], Field()] = ()
+
+
 class AgentConfig(ConfigValue):
     description: Annotated[str, Field()]
     model: Annotated[str | None, Field()] = None
@@ -44,6 +49,7 @@ class AgentConfig(ConfigValue):
     instructions_file: Annotated[str | None, Field()] = None
     tools: Annotated[tuple[ToolRef, ...], Field()] = ()
     mcp: Annotated[tuple[MCPRef, ...], Field()] = ()
+    skills: Annotated[SkillsConfig, Field()] = Field(default_factory=SkillsConfig)
 
 
 class ChannelRouterConfig(ConfigValue):

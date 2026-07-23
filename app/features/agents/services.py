@@ -8,6 +8,8 @@ from uuid import uuid4
 
 from structlog.contextvars import bound_contextvars
 
+from app.features.skills.repositories import SkillRepository
+from app.features.skills.tools import build_agent_skills
 from app.features.tools.binding import build_bound_tool
 from app.features.tools.config import ToolConfig
 from app.features.tools.mcp.bridge import MCPTool, build_mcp_tools
@@ -243,6 +245,7 @@ async def build_tool_set(
     tool_configs: Mapping[str, ToolConfig],
     client: MCPClientContract,
     agent: AgentConfig,
+    skills: SkillRepository | None = None,
 ) -> ToolSet:
     tools = ToolSet()
     for ref in agent.tools:
@@ -251,6 +254,9 @@ async def build_tool_set(
 
     for tool in await collect_mcp_tools(client, agent.mcp):
         tools.add(tool.name, tool)
+
+    if agent.skills.enabled and skills is not None:
+        tools.add('skill', await build_agent_skills(skills, agent.skills.allow))
 
     return tools
 
