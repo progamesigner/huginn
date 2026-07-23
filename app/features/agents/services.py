@@ -1,6 +1,5 @@
 import asyncio
 import logging
-import time
 from collections.abc import AsyncIterator, Callable, Iterator, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
@@ -27,6 +26,7 @@ from lib.llm import (
     ToolResultSegment,
 )
 from lib.mcp import MCPClientContract, UnknownMCPServerError
+from lib.temporal import ClockContract
 
 from .config import AgentConfig, MCPRef
 from .exceptions import AgentError, TurnTimeout
@@ -98,8 +98,9 @@ async def _execute(
     tools: ToolSet,
     call: ToolCallSegment,
     tool_timeout: float,
+    clock: ClockContract,
 ) -> tuple[ToolResultSegment, ToolExecution]:
-    started = time.monotonic()
+    timer = clock.timer()
     try:
         async with asyncio.timeout(tool_timeout):
             result = await tools.execute(call)
@@ -113,7 +114,7 @@ async def _execute(
 
     record = ToolExecution(
         name=call.name,
-        duration=time.monotonic() - started,
+        duration=timer.elapsed().total_seconds(),
         ok=not result.error,
     )
     logger.info(
@@ -129,8 +130,9 @@ async def _execute_calls(
     tools: ToolSet,
     calls: tuple[ToolCallSegment, ...],
     tool_timeout: float,
+    clock: ClockContract,
 ) -> tuple[tuple[ToolResultSegment, ...], Step]:
-    tasks = (_execute(tools, call, tool_timeout) for call in calls)
+    tasks = (_execute(tools, call, tool_timeout, clock) for call in calls)
     results, records = cast(
         tuple[tuple[ToolResultSegment, ...], tuple[ToolExecution, ...]],
         zip(*await asyncio.gather(*tasks), strict=True),
@@ -172,10 +174,12 @@ async def _consume(
 class AgentRunner:
     llm: LLMClient
     tools: ToolSet
+    clock: ClockContract
 
-    def __init__(self, llm: LLMClient, tools: ToolSet) -> None:
+    def __init__(self, llm: LLMClient, tools: ToolSet, clock: ClockContract) -> None:
         self.llm = llm
         self.tools = tools
+        self.clock = clock
 
     async def run(self, turn: TurnInput, on_text: Callable[[str], None]) -> TurnOutput:
         with bound_contextvars(turn_id=uuid4().hex):
@@ -216,6 +220,7 @@ class AgentRunner:
                         self.tools,
                         tool_calls,
                         turn.tool_timeout,
+                        self.clock,
                     )
                     steps.append(step)
                     history.append(_assistant_message(text, tool_calls))

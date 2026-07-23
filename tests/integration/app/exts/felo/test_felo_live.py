@@ -12,6 +12,7 @@ from app.features.tools.websearch.tool import WebSearchTool
 from lib.http import HTTPClientManager
 from lib.llm.adapters.openai import OpenAIAdapter
 from lib.llm.client import ProviderConfig
+from lib.temporal import ClockManager
 
 pytestmark = pytest.mark.integration
 
@@ -81,7 +82,7 @@ async def test_agent_loop_with_websearch_live() -> None:
     )
 
     fragments = []
-    output = await AgentRunner(llm, tools).run(turn, fragments.append)
+    output = await AgentRunner(llm, tools, ClockManager()).run(turn, fragments.append)
 
     executions = [record for step in output.steps for record in step.tools]
 

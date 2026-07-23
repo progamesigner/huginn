@@ -1,6 +1,7 @@
 import asyncio
 import time
 from collections.abc import AsyncIterator, Sequence
+from datetime import timedelta
 from typing import Annotated, override
 
 import pytest
@@ -20,6 +21,8 @@ from lib.llm import (
     ToolCallChunk,
     ToolResultSegment,
 )
+from lib.temporal import ClockManager
+from tests.helpers.clock import FakeClock
 
 
 class FakeLLM:
@@ -90,6 +93,24 @@ class ProbeTool(TypedTool[ProbeParams]):
         return 'probed'
 
 
+class AdvancingTool(TypedTool[ProbeParams]):
+    name = 'advance'
+    description = 'Advance the injected clock while executing'
+    params = ProbeParams
+
+    clock: FakeClock
+    step: timedelta
+
+    def __init__(self, clock: FakeClock, step: timedelta) -> None:
+        self.clock = clock
+        self.step = step
+
+    @override
+    async def run(self, params: ProbeParams) -> ToolOutput:
+        self.clock.advance(self.step)
+        return 'advanced'
+
+
 def make_toolset() -> ToolSet:
     tools = ToolSet()
     tools.add('echo', EchoTool())
@@ -133,7 +154,7 @@ async def test_run_returns_text_immediately_when_no_tool_calls() -> None:
             ],
         ]
     )
-    runner = AgentRunner(llm, make_toolset())
+    runner = AgentRunner(llm, make_toolset(), ClockManager())
     fragments = []
 
     output = await runner.run(make_turn(), fragments.append)
@@ -156,7 +177,7 @@ async def test_run_executes_single_tool_call_then_finishes() -> None:
             [TextChunk(text='done'), FinishChunk(reason='stop')],
         ]
     )
-    runner = AgentRunner(llm, make_toolset())
+    runner = AgentRunner(llm, make_toolset(), ClockManager())
 
     output = await runner.run(make_turn(), lambda _: None)
 
@@ -190,7 +211,7 @@ async def test_run_executes_multiple_tool_calls_in_one_turn() -> None:
             [TextChunk(text='done'), FinishChunk(reason='stop')],
         ]
     )
-    runner = AgentRunner(llm, make_toolset())
+    runner = AgentRunner(llm, make_toolset(), ClockManager())
 
     output = await runner.run(make_turn(), lambda _: None)
 
@@ -223,7 +244,7 @@ async def test_run_executes_tool_calls_concurrently() -> None:
             [TextChunk(text='done'), FinishChunk(reason='stop')],
         ]
     )
-    runner = AgentRunner(llm, make_toolset())
+    runner = AgentRunner(llm, make_toolset(), ClockManager())
 
     started = time.monotonic()
     await runner.run(make_turn(), lambda _: None)
@@ -256,7 +277,7 @@ async def test_run_iterates_across_multiple_turns_until_no_tool_calls() -> None:
             [TextChunk(text='done'), FinishChunk(reason='stop')],
         ]
     )
-    runner = AgentRunner(llm, make_toolset())
+    runner = AgentRunner(llm, make_toolset(), ClockManager())
 
     output = await runner.run(make_turn(), lambda _: None)
 
@@ -276,7 +297,7 @@ async def test_run_marks_incomplete_when_max_iterations_exhausted(
         ]
 
     llm = FakeLLM([always_calls_tool(), always_calls_tool()])
-    runner = AgentRunner(llm, make_toolset())
+    runner = AgentRunner(llm, make_toolset(), ClockManager())
 
     with caplog.at_level('WARNING'):
         output = await runner.run(make_turn(max_iterations=2), lambda _: None)
@@ -302,7 +323,7 @@ async def test_run_reports_tool_timeout_as_error_and_continues(
             [TextChunk(text='done'), FinishChunk(reason='stop')],
         ]
     )
-    runner = AgentRunner(llm, make_toolset())
+    runner = AgentRunner(llm, make_toolset(), ClockManager())
 
     with caplog.at_level('WARNING'):
         output = await runner.run(make_turn(tool_timeout=0.05), lambda _: None)
@@ -333,7 +354,7 @@ async def test_run_raises_turn_timeout_when_whole_turn_exceeds_budget(
             ],
         ]
     )
-    runner = AgentRunner(llm, make_toolset())
+    runner = AgentRunner(llm, make_toolset(), ClockManager())
 
     with caplog.at_level('WARNING'), pytest.raises(TurnTimeout):
         await runner.run(make_turn(turn_timeout=0.05), lambda _: None)
@@ -367,7 +388,7 @@ async def test_run_records_steps_for_each_iteration(
             [TextChunk(text='done'), FinishChunk(reason='stop')],
         ]
     )
-    runner = AgentRunner(llm, make_toolset())
+    runner = AgentRunner(llm, make_toolset(), ClockManager())
 
     with caplog.at_level('INFO'):
         output = await runner.run(make_turn(), lambda _: None)
@@ -397,13 +418,35 @@ async def test_run_records_failed_tool_execution_in_steps() -> None:
             [TextChunk(text='done'), FinishChunk(reason='stop')],
         ]
     )
-    runner = AgentRunner(llm, make_toolset())
+    runner = AgentRunner(llm, make_toolset(), ClockManager())
 
     output = await runner.run(make_turn(tool_timeout=0.05), lambda _: None)
 
     execution = output.steps[0].tools[0]
     assert execution.name == 'sleep'
     assert execution.ok is False
+
+
+async def test_tool_duration_is_measured_by_the_injected_clock() -> None:
+    clock = FakeClock()
+    tools = ToolSet()
+    tools.add('advance', AdvancingTool(clock, timedelta(seconds=2)))
+    llm = FakeLLM(
+        [
+            [
+                ToolCallChunk(index=0, id='call_1', name='advance', arguments='{}'),
+                FinishChunk(reason='tool_calls'),
+            ],
+            [TextChunk(text='done'), FinishChunk(reason='stop')],
+        ]
+    )
+    runner = AgentRunner(llm, tools, clock)
+
+    output = await runner.run(make_turn(), lambda _: None)
+
+    execution = output.steps[0].tools[0]
+    assert execution.name == 'advance'
+    assert execution.duration == 2.0
 
 
 def probe_response() -> list[CompletionChunk]:
@@ -420,7 +463,7 @@ async def test_run_binds_turn_id_during_tool_execution() -> None:
     probe = ProbeTool()
     tools = ToolSet()
     tools.add('probe', probe)
-    runner = AgentRunner(llm, tools)
+    runner = AgentRunner(llm, tools, ClockManager())
 
     await runner.run(make_turn(), lambda _: None)
 
@@ -440,7 +483,7 @@ async def test_run_generates_unique_turn_id_per_turn() -> None:
     probe = ProbeTool()
     tools = ToolSet()
     tools.add('probe', probe)
-    runner = AgentRunner(llm, tools)
+    runner = AgentRunner(llm, tools, ClockManager())
 
     await runner.run(make_turn(), lambda _: None)
     first = probe.seen['turn_id']
