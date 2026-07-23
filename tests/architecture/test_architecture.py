@@ -16,6 +16,8 @@ CROSS_FEATURE_SURFACE: dict[tuple[str, str], frozenset[str]] = {
             'registry',
         }
     ),
+    ('agents', 'skills'): frozenset({'repositories', 'tools'}),
+    ('skills', 'tools'): frozenset({'types'}),
 }
 FEATURES_PACKAGE = 'app.features'
 EXT_SLICE_NAMES = frozenset({'client', 'payloads', 'exceptions'})
