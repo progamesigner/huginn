@@ -2,7 +2,7 @@ from collections.abc import AsyncIterator, Callable
 from types import SimpleNamespace
 from typing import cast
 
-from anthropic import AsyncAnthropic
+from anthropic import AsyncAnthropic, omit
 from anthropic.types import (
     InputJSONDelta,
     MessageDeltaUsage,
@@ -23,8 +23,10 @@ from pydantic import SecretStr
 from lib.http import HTTPClientManager
 from lib.llm import (
     CompletionRequest,
+    Effort,
     FinishChunk,
     Message,
+    OutputSchema,
     TextChunk,
     TextSegment,
     ThinkingChunk,
@@ -252,6 +254,16 @@ def test_decode_event_maps_stop_reason_to_finish_chunk() -> None:
     assert list(decode_event(event)) == [FinishChunk(reason='tool_calls')]
 
 
+def test_decode_event_maps_refusal_stop_reason_to_error_finish_chunk() -> None:
+    event = RawMessageDeltaEvent(
+        type='message_delta',
+        delta=Delta(stop_reason='refusal'),
+        usage=MessageDeltaUsage(output_tokens=1),
+    )
+
+    assert list(decode_event(event)) == [FinishChunk(reason='error')]
+
+
 def test_decode_event_skips_message_delta_without_stop_reason() -> None:
     event = RawMessageDeltaEvent(
         type='message_delta',
@@ -280,11 +292,17 @@ def _provider() -> ProviderConfig:
     )
 
 
-def _request(max_completion_tokens: int | None = None) -> CompletionRequest:
+def _request(
+    max_completion_tokens: int | None = None,
+    effort: Effort = 'none',
+    output_schema: OutputSchema | None = None,
+) -> CompletionRequest:
     return CompletionRequest(
         model='claude-opus-4-8',
         messages=(Message(role='user', segments=(TextSegment(text='hi'),)),),
         max_completion_tokens=max_completion_tokens,
+        effort=effort,
+        output_schema=output_schema,
     )
 
 
@@ -315,7 +333,9 @@ async def test_stream_forwards_max_completion_tokens_as_max_tokens() -> None:
 
     await _drain(
         AnthropicAdapter(
-            _provider(), HTTPClientManager(), client_factory=_fake_client(recorded)
+            _provider(),
+            HTTPClientManager(),
+            client_factory=_fake_client(recorded),
         ),
         _request(max_completion_tokens=64),
     )
@@ -337,3 +357,57 @@ async def test_stream_falls_back_to_instance_max_tokens_when_unset() -> None:
     )
 
     assert recorded['max_tokens'] == 4096
+
+
+async def test_stream_omits_output_config_when_no_effort_and_no_schema() -> None:
+    recorded: dict[str, object] = {}
+
+    await _drain(
+        AnthropicAdapter(
+            _provider(),
+            HTTPClientManager(),
+            client_factory=_fake_client(recorded),
+        ),
+        _request(),
+    )
+
+    assert recorded['output_config'] is omit
+
+
+async def test_stream_sets_format_independent_of_effort() -> None:
+    recorded: dict[str, object] = {}
+    output_schema = OutputSchema(name='summary', json_schema={'type': 'object'})
+
+    await _drain(
+        AnthropicAdapter(
+            _provider(),
+            HTTPClientManager(),
+            client_factory=_fake_client(recorded),
+        ),
+        _request(effort='none', output_schema=output_schema),
+    )
+
+    assert recorded['output_config'] == {
+        'format': {'type': 'json_schema', 'schema': {'type': 'object'}}
+    }
+    assert 'effort' not in cast(dict[str, object], recorded['output_config'])
+    assert recorded['thinking'] is omit
+
+
+async def test_stream_sets_both_effort_and_format_when_both_requested() -> None:
+    recorded: dict[str, object] = {}
+    output_schema = OutputSchema(name='summary', json_schema={'type': 'object'})
+
+    await _drain(
+        AnthropicAdapter(
+            _provider(),
+            HTTPClientManager(),
+            client_factory=_fake_client(recorded),
+        ),
+        _request(effort='high', output_schema=output_schema),
+    )
+
+    assert recorded['output_config'] == {
+        'effort': 'high',
+        'format': {'type': 'json_schema', 'schema': {'type': 'object'}},
+    }

@@ -1,4 +1,5 @@
-from typing import Annotated, Literal
+from collections.abc import Mapping
+from typing import Annotated, Literal, cast
 
 from pydantic import BaseModel, ConfigDict, Field, JsonValue
 
@@ -62,9 +63,25 @@ class FinishChunk(LLMValue):
 type CompletionChunk = TextChunk | ToolCallChunk | ThinkingChunk | FinishChunk
 
 
+class OutputSchema(LLMValue):
+    name: Annotated[str, Field(pattern=r'^[A-Za-z0-9_-]{1,64}$')]
+    json_schema: Annotated[Mapping[str, JsonValue], Field()]
+
+    @classmethod
+    def from_model(cls, model: type[BaseModel]) -> OutputSchema:
+        schema = model.model_json_schema()
+        name = cast(str, schema.pop('title', model.__name__))[:64]
+        if 'properties' in schema:
+            # NOTE: OpenAI's strict structured-output mode requires every
+            #       top-level property to appear in `required`
+            schema['required'] = list(cast(dict[str, object], schema['properties']))
+        return cls(name=name, json_schema=schema)
+
+
 class CompletionRequest(LLMValue):
     model: Annotated[str, Field()]
     messages: Annotated[tuple[Message, ...], Field()]
     tools: Annotated[tuple[JsonValue, ...], Field()] = ()
     effort: Annotated[Effort, Field()] = 'none'
     max_completion_tokens: Annotated[int | None, Field()] = None
+    output_schema: Annotated[OutputSchema | None, Field()] = None

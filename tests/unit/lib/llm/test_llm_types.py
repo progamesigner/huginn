@@ -1,11 +1,12 @@
 import pytest
-from pydantic import ValidationError
+from pydantic import BaseModel, ValidationError, create_model
 
 from lib.llm import (
     CompletionChunk,
     CompletionRequest,
     FinishChunk,
     Message,
+    OutputSchema,
     Segment,
     TextChunk,
     TextSegment,
@@ -127,3 +128,42 @@ def test_completion_request_defaults_to_no_tools_and_no_effort() -> None:
     assert request.tools == ()
     assert request.effort == 'none'
     assert request.max_completion_tokens is None
+    assert request.output_schema is None
+
+
+def test_output_schema_rejects_name_outside_openai_charset() -> None:
+    with pytest.raises(ValidationError):
+        OutputSchema(name='has space', json_schema={'type': 'object'})
+
+    with pytest.raises(ValidationError):
+        OutputSchema(name='a' * 65, json_schema={'type': 'object'})
+
+
+def test_output_schema_from_model_derives_name_from_title() -> None:
+    class SummaryOutput(BaseModel):
+        summary: str
+
+    output_schema = OutputSchema.from_model(SummaryOutput)
+
+    assert output_schema.name == 'SummaryOutput'
+    assert output_schema.json_schema['type'] == 'object'
+
+
+def test_output_schema_from_model_truncates_long_class_names_to_64_chars() -> None:
+    model = create_model('A' * 100, summary=(str, ...))
+
+    output_schema = OutputSchema.from_model(model)
+
+    assert output_schema.name == 'A' * 64
+
+
+def test_output_schema_from_model_marks_all_properties_required_even_with_defaults() -> (
+    None
+):
+    class LocalSummaryOutput(BaseModel):
+        summary: str
+        key_facts: tuple[str, ...] = ()
+
+    output_schema = OutputSchema.from_model(LocalSummaryOutput)
+
+    assert output_schema.json_schema['required'] == ['summary', 'key_facts']

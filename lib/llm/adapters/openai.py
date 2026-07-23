@@ -14,6 +14,8 @@ from openai.types.chat import (
     ChatCompletionUserMessageParam,
 )
 from openai.types.chat.chat_completion_message_function_tool_call_param import Function
+from openai.types.shared_params import ResponseFormatJSONSchema
+from openai.types.shared_params.response_format_json_schema import JSONSchema
 from pydantic import JsonValue
 
 from lib.http import HTTPClientContract
@@ -147,6 +149,20 @@ class OpenAIAdapter:
         self,
         request: CompletionRequest,
     ) -> AsyncIterator[CompletionChunk]:
+        response_format = omit
+        if request.output_schema is not None:
+            response_format = ResponseFormatJSONSchema(
+                type='json_schema',
+                json_schema=JSONSchema(
+                    name=request.output_schema.name,
+                    schema=cast(
+                        dict[str, object],
+                        dict(request.output_schema.json_schema),
+                    ),
+                    strict=True,
+                ),
+            )
+
         async with self.http.connect() as http_client:
             client = self.client_factory(
                 api_key=self.provider.api_key.get_secret_value(),
@@ -159,6 +175,7 @@ class OpenAIAdapter:
                 tools=build_tools(request.tools) if request.tools else omit,
                 reasoning_effort=request.effort if request.effort != 'none' else omit,
                 max_completion_tokens=request.max_completion_tokens or omit,
+                response_format=response_format,
                 stream=True,
             )
 

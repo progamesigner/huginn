@@ -6,6 +6,7 @@ from anthropic import AsyncAnthropic, omit
 from anthropic.types import (
     CacheControlEphemeralParam,
     InputJSONDelta,
+    JSONOutputFormatParam,
     MessageParam,
     OutputConfigParam,
     RawContentBlockDeltaEvent,
@@ -172,10 +173,25 @@ class AnthropicAdapter:
         request: CompletionRequest,
     ) -> AsyncIterator[CompletionChunk]:
         thinking = omit
-        output_config = omit
+        effort = None
         if request.effort != 'none':
             thinking = ThinkingConfigAdaptiveParam(type='adaptive')
-            output_config = OutputConfigParam(effort=request.effort)
+            effort = request.effort
+
+        output_format = None
+        if request.output_schema is not None:
+            output_format = JSONOutputFormatParam(
+                type='json_schema',
+                schema=cast(dict[str, object], dict(request.output_schema.json_schema)),
+            )
+
+        output_config = omit
+        if effort is not None and output_format is not None:
+            output_config = OutputConfigParam(effort=effort, format=output_format)
+        elif effort is not None:
+            output_config = OutputConfigParam(effort=effort)
+        elif output_format is not None:
+            output_config = OutputConfigParam(format=output_format)
 
         async with self.http.connect() as http_client:
             client = self.client_factory(

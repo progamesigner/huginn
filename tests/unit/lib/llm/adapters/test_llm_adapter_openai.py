@@ -17,6 +17,7 @@ from lib.llm import (
     CompletionRequest,
     FinishChunk,
     Message,
+    OutputSchema,
     TextChunk,
     TextSegment,
     ThinkingSegment,
@@ -210,11 +211,15 @@ def _provider() -> ProviderConfig:
     )
 
 
-def _request(max_completion_tokens: int | None = None) -> CompletionRequest:
+def _request(
+    max_completion_tokens: int | None = None,
+    output_schema: OutputSchema | None = None,
+) -> CompletionRequest:
     return CompletionRequest(
         model='gpt-5',
         messages=(Message(role='user', segments=(TextSegment(text='hi'),)),),
         max_completion_tokens=max_completion_tokens,
+        output_schema=output_schema,
     )
 
 
@@ -246,7 +251,9 @@ async def test_stream_forwards_max_completion_tokens() -> None:
 
     await _drain(
         OpenAIAdapter(
-            _provider(), HTTPClientManager(), client_factory=_fake_client(recorded)
+            _provider(),
+            HTTPClientManager(),
+            client_factory=_fake_client(recorded),
         ),
         _request(max_completion_tokens=64),
     )
@@ -259,9 +266,53 @@ async def test_stream_omits_max_completion_tokens_when_unset() -> None:
 
     await _drain(
         OpenAIAdapter(
-            _provider(), HTTPClientManager(), client_factory=_fake_client(recorded)
+            _provider(),
+            HTTPClientManager(),
+            client_factory=_fake_client(recorded),
         ),
         _request(),
     )
 
     assert recorded['max_completion_tokens'] is omit
+
+
+async def test_stream_omits_response_format_when_no_schema() -> None:
+    recorded: dict[str, object] = {}
+
+    await _drain(
+        OpenAIAdapter(
+            _provider(),
+            HTTPClientManager(),
+            client_factory=_fake_client(recorded),
+        ),
+        _request(),
+    )
+
+    assert recorded['response_format'] is omit
+
+
+async def test_stream_sets_response_format_json_schema_with_name_and_schema_and_strict() -> (
+    None
+):
+    recorded: dict[str, object] = {}
+    output_schema = OutputSchema(
+        name='summary_output', json_schema={'type': 'object', 'properties': {}}
+    )
+
+    await _drain(
+        OpenAIAdapter(
+            _provider(),
+            HTTPClientManager(),
+            client_factory=_fake_client(recorded),
+        ),
+        _request(output_schema=output_schema),
+    )
+
+    assert recorded['response_format'] == {
+        'type': 'json_schema',
+        'json_schema': {
+            'name': 'summary_output',
+            'schema': {'type': 'object', 'properties': {}},
+            'strict': True,
+        },
+    }
