@@ -1,12 +1,13 @@
-import logging
 from abc import ABC, abstractmethod
 from typing import override
 
+from app.exts.telegram.client import TelegramClient
 from app.exts.telegram.types import Update
+from lib.http import HTTPClientContract
 
 from .config import TelegramChannelConfig
 
-logger = logging.getLogger(__name__)
+_ACK_EMOJI = '👀'
 
 
 class TelegramUpdateHandler(ABC):
@@ -19,7 +20,12 @@ class TelegramUpdateHandler(ABC):
     ) -> None: ...
 
 
-class LoggingUpdateHandler(TelegramUpdateHandler):
+class ReactionUpdateHandler(TelegramUpdateHandler):
+    http: HTTPClientContract
+
+    def __init__(self, http: HTTPClientContract) -> None:
+        self.http = http
+
     @override
     async def handle(
         self,
@@ -27,8 +33,13 @@ class LoggingUpdateHandler(TelegramUpdateHandler):
         channel: TelegramChannelConfig,
         update: Update,
     ) -> None:
-        logger.info(
-            'Processing telegram update %s for channel %s',
-            update.update_id,
-            name,
+        message = update.message
+        if message is None:
+            return None
+
+        client = TelegramClient(http=self.http, bot_token=channel.token)
+        await client.set_message_reaction(
+            message.chat.id,
+            message.message_id,
+            _ACK_EMOJI,
         )
