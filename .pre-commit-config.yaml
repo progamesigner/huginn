@@ -7,20 +7,31 @@ repos:
     - --fix
   - id: ruff-format
 
-- repo: https://github.com/ComPWA/taplo-pre-commit
-  rev: v0.9.3
+- repo: local
   hooks:
   - id: taplo-format
+    name: taplo-format
+    entry: taplo format
+    language: node
+    additional_dependencies:
+    - '@taplo/cli@0.7.0'
+    types:
+    - toml
     args:
     - --option
     - array_auto_collapse=false
     - --option
     - "indent_string=    "
   - id: taplo-lint
+    name: taplo-lint
+    entry: taplo lint
+    language: node
+    additional_dependencies:
+    - '@taplo/cli@0.7.0'
+    files: ^pyproject\.toml$
     args:
     - --schema
     - https://json.schemastore.org/pyproject.json
-    files: ^pyproject\.toml$
 
 - repo: https://github.com/google/yamlfmt
   rev: v0.21.0
