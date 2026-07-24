@@ -13,11 +13,13 @@ def test_channels_support_multiple_named_telegram_instances() -> None:
             'support_bot': TelegramChannelConfig(
                 kind='telegram',
                 token=SecretStr('support-token'),
+                secret_token=SecretStr('support-secret'),
                 agent='support',
             ),
             'research_bot': TelegramChannelConfig(
                 kind='telegram',
                 token=SecretStr('research-token'),
+                secret_token=SecretStr('research-secret'),
                 agent='research',
             ),
         }

@@ -2,9 +2,17 @@ from collections.abc import Iterator, Mapping
 from dataclasses import replace
 from functools import reduce
 from operator import or_
-from typing import Annotated, Any
+from typing import Annotated, Any, cast
 
-from pydantic import BaseModel, Discriminator, Field, RootModel, Tag, create_model
+from pydantic import (
+    BaseModel,
+    Discriminator,
+    Field,
+    RootModel,
+    SecretStr,
+    Tag,
+    create_model,
+)
 
 from app.core.config.registry import HuginnConfig, SectionSpec
 from app.core.config.schema import ConfigValue
@@ -14,7 +22,7 @@ from app.features.agents.exceptions import (
     UnknownAgentReferenceError,
 )
 
-from .exceptions import UnknownChannelKindError
+from .exceptions import DuplicateChannelSecretError, UnknownChannelKindError
 from .registry import ChannelRegistry
 
 
@@ -85,6 +93,7 @@ def _validate_agent_reference(
 
 def _validate_channels(config: HuginnConfig, registry: ChannelRegistry) -> None:
     agents = config.section(AGENTS).root
+    secrets = {}
 
     for name, channel in config.section(CHANNELS).root.items():
         base = f'channels.{name}'
@@ -92,6 +101,15 @@ def _validate_channels(config: HuginnConfig, registry: ChannelRegistry) -> None:
             registry.get(channel.kind)
         except UnknownChannelKindError as error:
             raise UnknownChannelKindError(f'{base}.kind: {error}') from error
+
+        if (
+            secret := cast(SecretStr | None, getattr(channel, 'secret_token', None))
+        ) is not None:
+            owner = secrets.setdefault(secret.get_secret_value(), name)
+            if owner != name:
+                raise DuplicateChannelSecretError(
+                    f'{base}.secret_token: duplicates channels.{owner}'
+                )
 
         if channel.agent is not None:
             _validate_agent_reference(agents, f'{base}.agent', channel.agent)

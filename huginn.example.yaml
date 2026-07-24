@@ -59,7 +59,10 @@ agents:
       research questions; answer simple questions yourself.
 
 channels:
-  telegram:
+  support_bot:
+    kind: telegram
+    token: ${TELEGRAM_BOT_TOKEN}
+    secret_token: ${TELEGRAM_WEBHOOK_SECRET}
     bindings:
       '000000000': scout
     router:

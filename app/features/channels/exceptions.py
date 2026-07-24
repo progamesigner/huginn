@@ -7,3 +7,7 @@ class DuplicateChannelKindError(ConfigError):
 
 class UnknownChannelKindError(ConfigError):
     pass
+
+
+class DuplicateChannelSecretError(ConfigError):
+    pass

@@ -45,6 +45,7 @@ from app.features.channels.config import (
     _validate_channels,
 )
 from app.features.channels.config import build_sections as build_channel_sections
+from app.features.channels.exceptions import DuplicateChannelSecretError
 from app.features.channels.registry import ChannelRegistry
 from app.features.channels.telegram.config import TelegramChannelConfig
 from app.features.tools.config import TOOLS, ToolConfig, ToolsConfig, _validate_tools
@@ -128,7 +129,11 @@ def websearch_config() -> WebSearchToolConfig:
 
 
 def telegram_channel(**overrides: object) -> TelegramChannelConfig:
-    fields = {'kind': 'telegram', 'token': SecretStr('telegram-token')}
+    fields = {
+        'kind': 'telegram',
+        'token': SecretStr('telegram-token'),
+        'secret_token': SecretStr('telegram-secret'),
+    }
     return TelegramChannelConfig.model_validate(fields | overrides)
 
 
@@ -338,6 +343,7 @@ def test_load_config_resolves_env_and_value_from_then_validates(
         '  support_bot:\n'
         '    kind: telegram\n'
         '    token: ${TELEGRAM_BOT_TOKEN}\n'
+        '    secret_token: ${TELEGRAM_WEBHOOK_SECRET}\n'
         "    bindings: {'12345': scout}\n"
         '    router: {fallback: scout}\n'
     )
@@ -350,6 +356,7 @@ def test_load_config_resolves_env_and_value_from_then_validates(
             'MEMORY_MCP_TOKEN': 'secret-token',
             'AGENT_MODEL': 'claude-sonnet-5',
             'TELEGRAM_BOT_TOKEN': 'telegram-token',
+            'TELEGRAM_WEBHOOK_SECRET': 'telegram-secret',
         },
     )
 
@@ -616,4 +623,21 @@ def test_validate_channels_rejects_unknown_router_fallback() -> None:
     )
 
     with pytest.raises(UnknownAgentReferenceError, match='fallback'):
+        _validate_channels(config, build_channel_registry())
+
+
+def test_validate_channels_rejects_duplicate_secret_token() -> None:
+    config = build_app_config(
+        agents={'scout': build_agent()},
+        channels=ChannelsConfig(
+            {
+                'support_bot': telegram_channel(agent='scout'),
+                'research_bot': telegram_channel(agent='scout'),
+            }
+        ),
+    )
+
+    with pytest.raises(
+        DuplicateChannelSecretError, match=r'research_bot\.secret_token'
+    ):
         _validate_channels(config, build_channel_registry())
