@@ -21,18 +21,13 @@ from app.core.config.loader import (
 from app.core.config.registry import HuginnConfig, SectionRegistry, SectionSpec
 from app.features.agents.config import (
     AGENTS,
-    CHANNELS,
     DEFAULTS,
     AgentConfig,
     AgentsConfig,
-    ChannelConfig,
-    ChannelRouterConfig,
-    ChannelsConfig,
     DefaultsConfig,
     MCPRef,
     ToolRef,
     _validate_agents,
-    _validate_channels,
     resolve_model,
 )
 from app.features.agents.config import build_sections as build_agent_sections
@@ -43,6 +38,15 @@ from app.features.agents.exceptions import (
     UnknownMCPServerReferenceError,
     UnknownToolReferenceError,
 )
+from app.features.channels.config import (
+    CHANNELS,
+    ChannelRouterConfig,
+    ChannelsConfig,
+    _validate_channels,
+)
+from app.features.channels.config import build_sections as build_channel_sections
+from app.features.channels.registry import ChannelRegistry
+from app.features.channels.telegram.config import TelegramChannelConfig
 from app.features.tools.config import TOOLS, ToolConfig, ToolsConfig, _validate_tools
 from app.features.tools.config import build_sections as build_tool_sections
 from app.features.tools.exceptions import UnknownToolKindError
@@ -92,12 +96,20 @@ def build_tool_registry() -> ToolRegistry:
     return registry
 
 
+def build_channel_registry() -> ChannelRegistry:
+    registry = ChannelRegistry()
+    registry.register('telegram', TelegramChannelConfig)
+    return registry
+
+
 def build_section_registry(tools: ToolRegistry | None = None) -> SectionRegistry:
     registry = SectionRegistry()
     tool_registry = tools or build_tool_registry()
     for spec in build_tool_sections(tool_registry):
         registry.register(spec)
     for spec in build_agent_sections(tool_registry):
+        registry.register(spec)
+    for spec in build_channel_sections(build_channel_registry()):
         registry.register(spec)
     registry.register(MCP_SERVERS)
     return registry
@@ -115,6 +127,11 @@ def websearch_config() -> WebSearchToolConfig:
     return WebSearchToolConfig(kind='websearch', api_key=SecretStr('felo-key'))
 
 
+def telegram_channel(**overrides: object) -> TelegramChannelConfig:
+    fields = {'kind': 'telegram', 'token': SecretStr('telegram-token')}
+    return TelegramChannelConfig.model_validate(fields | overrides)
+
+
 def build_app_config(
     agents: dict[str, AgentConfig] | None = None,
     tools: dict[str, WebSearchToolConfig] | None = None,
@@ -127,7 +144,7 @@ def build_app_config(
             'agents': AgentsConfig(agents or {}),
             'tools': ToolsConfig(tools or {}),
             'mcp_servers': MCPServersConfig(mcp_servers or {}),
-            'channels': channels or ChannelsConfig(),
+            'channels': channels or ChannelsConfig({}),
             'defaults': defaults or DefaultsConfig(model='test-model'),
         }
     )
@@ -290,7 +307,7 @@ def test_load_config_defaults_optional_sections(tmp_path: Path) -> None:
     assert config.section(DEFAULTS).model is None
     assert config.section(TOOLS).root == {}
     assert config.section(MCP_SERVERS).root == {}
-    assert config.section(CHANNELS).telegram is None
+    assert config.section(CHANNELS).root == {}
 
 
 def test_load_config_resolves_env_and_value_from_then_validates(
@@ -318,7 +335,9 @@ def test_load_config_resolves_env_and_value_from_then_validates(
         '    tools: [{name: websearch, params: {max_results: 5}}]\n'
         '    mcp: [{server: memory, allow: [recall_memory_notes]}]\n'
         'channels:\n'
-        '  telegram:\n'
+        '  support_bot:\n'
+        '    kind: telegram\n'
+        '    token: ${TELEGRAM_BOT_TOKEN}\n'
         "    bindings: {'12345': scout}\n"
         '    router: {fallback: scout}\n'
     )
@@ -330,6 +349,7 @@ def test_load_config_resolves_env_and_value_from_then_validates(
             'FELO_API_KEY': 'felo-secret',
             'MEMORY_MCP_TOKEN': 'secret-token',
             'AGENT_MODEL': 'claude-sonnet-5',
+            'TELEGRAM_BOT_TOKEN': 'telegram-token',
         },
     )
 
@@ -343,8 +363,7 @@ def test_load_config_resolves_env_and_value_from_then_validates(
     assert config.section(DEFAULTS).model == 'claude-sonnet-5'
     assert websearch.api_key.get_secret_value() == 'felo-secret'
     assert agents['scout'].instructions == 'You speak for claude-sonnet-5.'
-    assert channels.telegram is not None
-    assert channels.telegram.bindings['12345'] == 'scout'
+    assert channels.root['support_bot'].bindings['12345'] == 'scout'
 
 
 def test_new_tool_kind_parses_and_schemas_without_touching_config_module(
@@ -464,16 +483,18 @@ def test_validators_accept_a_fully_consistent_config() -> None:
             ),
         },
         channels=ChannelsConfig(
-            telegram=ChannelConfig(
-                bindings={'12345': 'scout'},
-                router=ChannelRouterConfig(fallback='scout'),
-            ),
+            {
+                'support_bot': telegram_channel(
+                    bindings={'12345': 'scout'},
+                    router=ChannelRouterConfig(fallback='scout'),
+                )
+            }
         ),
     )
 
     _validate_tools(config, build_tool_registry())
     _validate_agents(config, build_tool_registry())
-    _validate_channels(config)
+    _validate_channels(config, build_channel_registry())
 
 
 def test_validate_tools_rejects_unregistered_kind() -> None:
@@ -557,32 +578,42 @@ def test_validate_channels_requires_an_effective_router_model() -> None:
     config = build_app_config(
         agents={'scout': build_agent()},
         channels=ChannelsConfig(
-            telegram=ChannelConfig(router=ChannelRouterConfig(fallback='scout')),
+            {
+                'support_bot': telegram_channel(
+                    router=ChannelRouterConfig(fallback='scout')
+                )
+            }
         ),
         defaults=DefaultsConfig(),
     )
 
-    with pytest.raises(MissingModelError, match=r'channels\.telegram\.router\.model'):
-        _validate_channels(config)
+    with pytest.raises(MissingModelError, match=r'channels.support_bot\.router\.model'):
+        _validate_channels(config, build_channel_registry())
 
 
 def test_validate_channels_rejects_unknown_binding_agent() -> None:
     config = build_app_config(
         agents={'scout': build_agent()},
-        channels=ChannelsConfig(telegram=ChannelConfig(bindings={'42': 'ghost'})),
+        channels=ChannelsConfig(
+            {'support_bot': telegram_channel(bindings={'42': 'ghost'})}
+        ),
     )
 
     with pytest.raises(UnknownAgentReferenceError, match='bindings'):
-        _validate_channels(config)
+        _validate_channels(config, build_channel_registry())
 
 
 def test_validate_channels_rejects_unknown_router_fallback() -> None:
     config = build_app_config(
         agents={'scout': build_agent()},
         channels=ChannelsConfig(
-            telegram=ChannelConfig(router=ChannelRouterConfig(fallback='ghost')),
+            {
+                'support_bot': telegram_channel(
+                    router=ChannelRouterConfig(fallback='ghost')
+                )
+            }
         ),
     )
 
     with pytest.raises(UnknownAgentReferenceError, match='fallback'):
-        _validate_channels(config)
+        _validate_channels(config, build_channel_registry())

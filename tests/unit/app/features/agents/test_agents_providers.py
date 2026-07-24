@@ -8,6 +8,7 @@ from app.core.providers.config import ConfigProvider
 from app.features.agents.config import AGENTS
 from app.features.agents.exceptions import InvalidToolOverlayError
 from app.features.agents.providers import AgentsConfigProvider
+from app.features.channels.providers import ChannelProvider
 from app.features.tools.providers import (
     ToolProvider,
     ToolRegistryProvider,
@@ -78,11 +79,11 @@ def test_tools_config_provider_contributes_tools_section() -> None:
 
 
 def test_agents_config_provider_contributes_all_sections() -> None:
-    app = App().build(AgentsConfigProvider())
+    app = App().build(AgentsConfigProvider(), ChannelProvider())
 
     keys = {spec.key for spec in app.resolve(SectionRegistry)}
 
-    assert keys == {'agents', 'defaults', 'mcp_servers', 'channels', 'tools'}
+    assert keys == {'agents', 'defaults', 'mcp_servers', 'tools', 'channels'}
 
 
 def test_agents_config_provider_accepts_valid_tool_overlay(tmp_path: Path) -> None:

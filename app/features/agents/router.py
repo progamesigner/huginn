@@ -2,6 +2,7 @@ import logging
 import re
 from collections.abc import AsyncIterator, Mapping
 
+from app.features.channels.config import ChannelConfig, ChannelRouterConfig
 from lib.llm import (
     CompletionChunk,
     CompletionRequest,
@@ -11,7 +12,7 @@ from lib.llm import (
     TextSegment,
 )
 
-from .config import AgentConfig, ChannelConfig, ChannelRouterConfig, resolve_model
+from .config import AgentConfig, resolve_model
 from .exceptions import UnroutableError
 
 logger = logging.getLogger(__name__)

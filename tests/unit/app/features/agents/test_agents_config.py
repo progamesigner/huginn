@@ -4,9 +4,6 @@ from pydantic import ValidationError
 from app.features.agents.config import (
     AgentConfig,
     AgentsConfig,
-    ChannelConfig,
-    ChannelRouterConfig,
-    ChannelsConfig,
     DefaultsConfig,
     MCPRef,
     ToolRef,
@@ -91,20 +88,3 @@ def test_mcp_ref_defaults_to_no_allowlist_or_injected_params() -> None:
 
     assert ref.allow == ()
     assert ref.inject == {}
-
-
-def test_channel_router_config_requires_fallback() -> None:
-    with pytest.raises(ValidationError, match='fallback'):
-        ChannelRouterConfig.model_validate({})
-
-
-def test_channels_config_rejects_unknown_channel_name() -> None:
-    with pytest.raises(ValidationError):
-        ChannelsConfig.model_validate({'discord': {}})
-
-
-def test_channel_config_defaults_to_no_bindings_or_router() -> None:
-    channel = ChannelConfig()
-
-    assert channel.bindings == {}
-    assert channel.router is None

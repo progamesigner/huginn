@@ -33,7 +33,9 @@ mcp_servers:
     transport: http
     url: https://memory.test
 channels:
-  telegram:
+  support_bot:
+    kind: telegram
+    token: telegram-token
     bindings:
       '42': scout
 """

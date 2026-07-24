@@ -3,9 +3,10 @@ from typing import override
 
 import pytest
 
-from app.features.agents.config import AgentConfig, ChannelConfig, ChannelRouterConfig
+from app.features.agents.config import AgentConfig
 from app.features.agents.exceptions import UnroutableError
 from app.features.agents.router import Router
+from app.features.channels.config import ChannelConfig, ChannelRouterConfig
 from lib.llm import (
     CompletionChunk,
     CompletionRequest,
@@ -77,7 +78,7 @@ def _saying(text: str) -> FakeClient:
 async def test_resolve_returns_bound_agent_without_calling_the_llm() -> None:
     agents = _agents()
     llm = FakeLLM(_saying('scout'))
-    channel = ChannelConfig(bindings={'123': 'scout'}, router=_router())
+    channel = ChannelConfig(kind='test', bindings={'123': 'scout'}, router=_router())
 
     agent = await Router(agents, llm, 'default-model').resolve(channel, '123', 'hello')
 
@@ -87,7 +88,7 @@ async def test_resolve_returns_bound_agent_without_calling_the_llm() -> None:
 
 async def test_resolve_uses_router_llm_choice_when_valid() -> None:
     agents = _agents()
-    channel = ChannelConfig(router=_router())
+    channel = ChannelConfig(kind='test', router=_router())
 
     agent = await Router(agents, FakeLLM(_saying('scout')), 'm').resolve(
         channel, '999', 'research this'
@@ -98,7 +99,7 @@ async def test_resolve_uses_router_llm_choice_when_valid() -> None:
 
 async def test_resolve_parses_choice_from_a_decorated_reply() -> None:
     agents = _agents()
-    channel = ChannelConfig(router=_router())
+    channel = ChannelConfig(kind='test', router=_router())
 
     agent = await Router(agents, FakeLLM(_saying('I choose scout.')), 'm').resolve(
         channel, '999', 'hi'
@@ -109,7 +110,7 @@ async def test_resolve_parses_choice_from_a_decorated_reply() -> None:
 
 async def test_resolve_falls_back_when_llm_picks_unknown_agent() -> None:
     agents = _agents()
-    channel = ChannelConfig(router=_router())
+    channel = ChannelConfig(kind='test', router=_router())
 
     agent = await Router(agents, FakeLLM(_saying('banana')), 'm').resolve(
         channel, '999', 'hi'
@@ -120,7 +121,7 @@ async def test_resolve_falls_back_when_llm_picks_unknown_agent() -> None:
 
 async def test_resolve_falls_back_when_reply_is_ambiguous() -> None:
     agents = _agents()
-    channel = ChannelConfig(router=_router())
+    channel = ChannelConfig(kind='test', router=_router())
 
     agent = await Router(agents, FakeLLM(_saying('scout or concierge')), 'm').resolve(
         channel, '999', 'hi'
@@ -132,7 +133,7 @@ async def test_resolve_falls_back_when_reply_is_ambiguous() -> None:
 async def test_resolve_falls_back_when_llm_call_errors() -> None:
     agents = _agents()
     client = FakeClient(error=TimeoutError('slow'))
-    channel = ChannelConfig(router=_router())
+    channel = ChannelConfig(kind='test', router=_router())
 
     agent = await Router(agents, FakeLLM(client), 'm').resolve(channel, '999', 'hi')
 
@@ -141,7 +142,7 @@ async def test_resolve_falls_back_when_llm_call_errors() -> None:
 
 async def test_resolve_falls_back_when_router_model_has_no_provider() -> None:
     agents = _agents()
-    channel = ChannelConfig(router=_router())
+    channel = ChannelConfig(kind='test', router=_router())
 
     agent = await Router(agents, FakeLLM(None), 'm').resolve(channel, '999', 'hi')
 
@@ -150,7 +151,7 @@ async def test_resolve_falls_back_when_router_model_has_no_provider() -> None:
 
 async def test_resolve_uses_router_model_for_selection() -> None:
     client = _saying('scout')
-    channel = ChannelConfig(router=_router(model='router-model'))
+    channel = ChannelConfig(kind='test', router=_router(model='router-model'))
 
     await Router(_agents(), FakeLLM(client), 'default-model').resolve(
         channel, '999', 'hi'
@@ -161,7 +162,7 @@ async def test_resolve_uses_router_model_for_selection() -> None:
 
 async def test_resolve_falls_back_to_default_model_for_selection() -> None:
     client = _saying('scout')
-    channel = ChannelConfig(router=_router())
+    channel = ChannelConfig(kind='test', router=_router())
 
     await Router(_agents(), FakeLLM(client), 'default-model').resolve(
         channel, '999', 'hi'
@@ -172,7 +173,7 @@ async def test_resolve_falls_back_to_default_model_for_selection() -> None:
 
 async def test_resolve_raises_when_unbound_and_channel_has_no_router() -> None:
     agents = _agents()
-    channel = ChannelConfig(bindings={'123': 'scout'})
+    channel = ChannelConfig(kind='test', bindings={'123': 'scout'})
 
     with pytest.raises(UnroutableError, match='999'):
         await Router(agents, FakeLLM()).resolve(channel, '999', 'hello')
