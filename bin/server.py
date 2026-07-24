@@ -8,12 +8,13 @@ from uvicorn import run
 from app.core.application import App
 from app.core.providers.router import RouterProvider
 from app.core.providers.settings import SettingsProvider
+from app.features.channels.telegram.providers import TelegramWebhookEndpointProvider
 from app.features.probes.providers import ProbesEndpointProvider
 from app.providers.bootstrap import BootstrapProvider
 from app.providers.features import FeaturesProvider
 from lib.router import RouterContract
 
-ENDPOINTS = (ProbesEndpointProvider(),)
+ENDPOINTS = (ProbesEndpointProvider(), TelegramWebhookEndpointProvider())
 
 
 class ServerOptions(BaseSettings):
