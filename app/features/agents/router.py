@@ -72,6 +72,14 @@ class Router:
             logger.info('Routed chat %s to agent %r via binding', chat_id, name)
             return self.agents[name]
 
+        if channel.agent is not None:
+            logger.info(
+                'Routed chat %s to agent %r via channel default',
+                chat_id,
+                channel.agent,
+            )
+            return self.agents[channel.agent]
+
         if channel.router is None:
             raise UnroutableError(
                 f'chat {chat_id!r} has no binding and the channel defines no router'
