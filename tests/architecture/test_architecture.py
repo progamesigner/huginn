@@ -20,7 +20,7 @@ CROSS_FEATURE_SURFACE: dict[tuple[str, str], frozenset[str]] = {
     ('skills', 'tools'): frozenset({'types'}),
 }
 FEATURES_PACKAGE = 'app.features'
-EXT_SLICE_NAMES = frozenset({'client', 'payloads', 'exceptions'})
+EXT_SLICE_NAMES = frozenset({'client', 'types', 'exceptions'})
 BANNED_MODULE_NAMES = frozenset({'models', 'utils'})
 
 
