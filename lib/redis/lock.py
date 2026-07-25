@@ -4,21 +4,13 @@ import secrets
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from datetime import timedelta
-from pathlib import Path
 
 from .contracts import RedisContract
 from .exceptions import RedisError
+from .scripts import EXTEND, RELEASE
 
 logger = logging.getLogger(__name__)
 
-
-def _lua(name: str) -> str:
-    resources = Path(__file__).parent / 'resources'
-    return (resources / f'{name}.lua').read_text(encoding='utf-8')
-
-
-_EXTEND_LUA = _lua('extend')
-_RELEASE_LUA = _lua('release')
 _RENEWALS_PER_LEASE = 3
 
 
@@ -48,14 +40,17 @@ class RedisLock:
 
     async def acquire(self) -> bool:
         async with self.redis.connect(self.instance) as client:
-            held = await client.set(self.key, self.token, nx=True, px=self._lease())
+            held = await client.set(self.key, self.token, nx=True, px=self.lease())
             return bool(held)
 
     async def extend(self) -> bool:
         async with self.redis.connect(self.instance) as client:
-            script = client.register_script(_EXTEND_LUA)
-            extended = await script(keys=[self.key], args=[self.token, self._lease()])
+            script = client.register_script(EXTEND)
+            extended = await script(keys=[self.key], args=[self.token, self.lease()])
             return bool(extended)
+
+    def lease(self) -> int:
+        return max(round(self.ttl / timedelta(milliseconds=1)), 1)
 
     @asynccontextmanager
     async def renew(self) -> AsyncIterator[None]:
@@ -68,12 +63,9 @@ class RedisLock:
 
     async def release(self) -> bool:
         async with self.redis.connect(self.instance) as client:
-            script = client.register_script(_RELEASE_LUA)
+            script = client.register_script(RELEASE)
             released = await script(keys=[self.key], args=[self.token])
             return bool(released)
-
-    def _lease(self) -> int:
-        return max(round(self.ttl / timedelta(milliseconds=1)), 1)
 
     async def _watch(self) -> None:
         interval = self.ttl.total_seconds() / _RENEWALS_PER_LEASE
