@@ -103,12 +103,6 @@ async def test_lifespan_runs_container_through_probes() -> None:
     assert response.status_code == 200
 
 
-@pytest.fixture(autouse=True)
-def clean_server_env(monkeypatch: pytest.MonkeyPatch) -> None:
-    for name in ('HUGINN_SERVER_HOST', 'HUGINN_SERVER_PORT', 'HUGINN_SERVER_RELOAD'):
-        monkeypatch.delenv(name, raising=False)
-
-
 def test_server_options_defaults() -> None:
     options = ServerOptions()
 

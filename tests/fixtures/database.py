@@ -25,11 +25,7 @@ def database_url() -> Iterator[str]:
     try:
         container = PostgresContainer(_IMAGE, driver='asyncpg')
         with container:
-            spun = container.get_connection_url()
-            # NOTE: env.py resolves its dsn from settings, so expose the container there
-            with pytest.MonkeyPatch.context() as patch:
-                patch.setenv('HUGINN_DATABASE_URL', spun)
-                yield spun
+            yield container.get_connection_url()
     except Exception as error:
         pytest.skip(
             f'Docker unavailable; set HUGINN_DATABASE_URL to run db tests ({error})'
@@ -38,8 +34,11 @@ def database_url() -> Iterator[str]:
 
 @pytest.fixture(scope='session')
 def _migrated(database_url: str) -> None:
-    # NOTE: bring the shared test database to head once (idempotent)
-    command.upgrade(Config(toml_file='pyproject.toml'), 'head')
+    # NOTE: env.py resolves its dsn from settings, so expose the database there
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setenv('HUGINN_DATABASE_URL', database_url)
+        # NOTE: bring the shared test database to head once (idempotent)
+        command.upgrade(Config(toml_file='pyproject.toml'), 'head')
 
 
 @pytest.fixture
