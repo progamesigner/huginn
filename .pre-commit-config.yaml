@@ -7,8 +7,28 @@ repos:
     - --fix
   - id: ruff-format
 
+- repo: https://github.com/google/yamlfmt
+  rev: v0.21.0
+  hooks:
+  - id: yamlfmt
+    args:
+    - -formatter
+    - force_array_style=block,indentless_arrays=true,retain_line_breaks_single=true
+
 - repo: local
   hooks:
+  - id: emmylua-codeformat
+    name: emmylua-codeformat
+    entry: tools/pre-commit/emmylua-codeformat.sh
+    language: script
+    types:
+    - lua
+    pass_filenames: false
+    args:
+    - format
+    - -ow
+    - -w
+    - lib/redis/resources
   - id: taplo-format
     name: taplo-format
     entry: taplo format
@@ -32,11 +52,3 @@ repos:
     args:
     - --schema
     - https://json.schemastore.org/pyproject.json
-
-- repo: https://github.com/google/yamlfmt
-  rev: v0.21.0
-  hooks:
-  - id: yamlfmt
-    args:
-    - -formatter
-    - force_array_style=block,indentless_arrays=true,retain_line_breaks_single=true
