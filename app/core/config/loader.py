@@ -53,7 +53,7 @@ def _resolve_value_from(
             return environment[name]
         case {'file': str(file_path), **rest} if not rest:
             try:
-                return Path(file_path).read_text().strip()
+                return Path(file_path).read_text(encoding='utf-8').strip()
             except OSError as error:
                 raise MissingConfigFileError(
                     f'{path}: file {file_path!r} does not exist'
@@ -96,7 +96,7 @@ def _resolve_references(
 
 def _read_yaml(path: Path) -> JsonValue:
     try:
-        text = path.read_text()
+        text = path.read_text(encoding='utf-8')
     except OSError as error:
         raise MissingConfigFileError(
             f'config file {str(path)!r} does not exist'
