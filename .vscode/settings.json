@@ -1,0 +1,8 @@
+{
+  "evenBetterToml.formatter.arrayAutoCollapse": false,
+  "ruff.configuration": {
+    "format": {
+      "quote-style": "single"
+    }
+  }
+}

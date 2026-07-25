@@ -1,0 +1,11 @@
+{
+  "recommendations": [
+    "astral-sh.ty",
+    "elagil.pre-commit-helper",
+    "GitHub.vscode-github-actions",
+    "kennylong.kubernetes-yaml-formatter",
+    "samuelcolvin.jinjahtml",
+    "sumneko.lua",
+    "tamasfe.even-better-toml"
+  ]
+}
