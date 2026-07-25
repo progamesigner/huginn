@@ -214,7 +214,9 @@ async def test_concurrent_compact_yields_exactly_one_winner(database_url: str) -
     try:
         setup_repository = _repository(session_setup)
         conversation = await setup_repository.get_or_create(
-            'telegram', 'compact-race', 'scout'
+            'telegram',
+            'compact-race',
+            'scout',
         )
         turns = tuple(
             [
@@ -239,10 +241,14 @@ async def test_concurrent_compact_yields_exactly_one_winner(database_url: str) -
         repository_a = _repository(session_a)
         repository_b = _repository(session_b)
         conversation_a = await repository_a.get_or_create(
-            'telegram', 'compact-race', 'scout'
+            'telegram',
+            'compact-race',
+            'scout',
         )
         conversation_b = await repository_b.get_or_create(
-            'telegram', 'compact-race', 'scout'
+            'telegram',
+            'compact-race',
+            'scout',
         )
         assert conversation_a.compact_version == 0
         assert conversation_b.compact_version == 0
@@ -254,7 +260,10 @@ async def test_concurrent_compact_yields_exactly_one_winner(database_url: str) -
             session: AsyncSession,
         ) -> bool:
             result = await service.compact(
-                conversation, None, turns_to_fold, 'test-model'
+                conversation,
+                None,
+                turns_to_fold,
+                'test-model',
             )
             # NOTE: commit inside the racing coroutine itself, not after gather() —
             # the loser's UPDATE blocks on the winner's row lock at the database
@@ -290,7 +299,9 @@ async def test_concurrent_compact_yields_exactly_one_winner(database_url: str) -
     try:
         repository_verify = _repository(session_verify)
         final = await repository_verify.get_or_create(
-            'telegram', 'compact-race', 'scout'
+            'telegram',
+            'compact-race',
+            'scout',
         )
         assert final.compact_version == 1
 
