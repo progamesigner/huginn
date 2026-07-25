@@ -17,3 +17,6 @@ class MCPClientContract(ABC):
 
     @abstractmethod
     async def list_tools(self, server: str) -> tuple[MCPToolInfo, ...]: ...
+
+    @abstractmethod
+    def unavailable(self) -> tuple[str, ...]: ...

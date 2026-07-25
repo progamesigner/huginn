@@ -27,6 +27,10 @@ class FakeClient(MCPClientContract):
     async def list_tools(self, server: str) -> tuple[MCPToolInfo, ...]:
         return ()
 
+    @override
+    def unavailable(self) -> tuple[str, ...]:
+        return ()
+
 
 def _info(name: str, schema: JsonValue | None = None) -> MCPToolInfo:
     return MCPToolInfo(

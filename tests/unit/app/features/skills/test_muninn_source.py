@@ -52,6 +52,10 @@ class FakeMCP(MCPClientContract):
     async def list_tools(self, server: str) -> tuple[MCPToolInfo, ...]:
         return ()
 
+    @override
+    def unavailable(self) -> tuple[str, ...]:
+        return ()
+
 
 def source() -> tuple[MuninnSkillSource, FakeMCP]:
     client = FakeMCP()

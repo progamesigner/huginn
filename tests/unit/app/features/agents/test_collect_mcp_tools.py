@@ -30,6 +30,10 @@ class FakeClient(MCPClientContract):
     ) -> str:
         return 'called'
 
+    @override
+    def unavailable(self) -> tuple[str, ...]:
+        return ()
+
 
 def _info(name: str) -> MCPToolInfo:
     return MCPToolInfo(name=name, description='', input_schema={'type': 'object'})

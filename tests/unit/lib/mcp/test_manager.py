@@ -83,7 +83,7 @@ async def test_unreachable_server_degrades_without_raising() -> None:
     await manager.start()
     try:
         assert manager.connections == {}
-        assert manager.unavailable == ['memory']
+        assert manager.unavailable() == ('memory',)
         with pytest.raises(UnknownMCPServerError):
             await manager.list_tools('memory')
     finally:
@@ -100,7 +100,7 @@ async def test_degraded_start_logs_the_underlying_error(
     with caplog.at_level('WARNING', logger='lib.mcp.manager'):
         await manager.start()
     try:
-        assert manager.unavailable == ['memory']
+        assert manager.unavailable() == ('memory',)
         assert any(
             'server responded with 404' in message for message in caplog.messages
         )

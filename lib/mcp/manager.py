@@ -119,8 +119,8 @@ class _Connection:
 class MCPManager(MCPClientContract):
     connections: dict[str, _Connection]
     connector: Connector
+    degraded: list[str]
     servers: tuple[MCPServer, ...]
-    unavailable: list[str]
 
     def __init__(
         self,
@@ -129,8 +129,8 @@ class MCPManager(MCPClientContract):
     ) -> None:
         self.connections = {}
         self.connector = connector
+        self.degraded = []
         self.servers = tuple(servers)
-        self.unavailable = []
 
     async def dispose(self) -> None:
         await asyncio.gather(
@@ -154,6 +154,10 @@ class MCPManager(MCPClientContract):
     async def list_tools(self, server: str) -> tuple[MCPToolInfo, ...]:
         return await self._connection(server).list_tools()
 
+    @override
+    def unavailable(self) -> tuple[str, ...]:
+        return tuple(self.degraded)
+
     async def _connect(self, server: MCPServer) -> None:
         connection = _Connection(server, self.connector)
         try:
@@ -165,7 +169,7 @@ class MCPManager(MCPClientContract):
                 server.name,
                 error,
             )
-            self.unavailable.append(server.name)
+            self.degraded.append(server.name)
             return
 
         self.connections[server.name] = connection

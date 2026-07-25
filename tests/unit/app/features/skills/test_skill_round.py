@@ -45,6 +45,10 @@ class NoMCP(MCPClientContract):
     async def list_tools(self, server: str) -> tuple[MCPToolInfo, ...]:
         return ()
 
+    @override
+    def unavailable(self) -> tuple[str, ...]:
+        return ()
+
 
 async def test_agent_loads_a_skill_through_the_tool_loop() -> None:
     repository = SkillRepository(FakeSource(), FakeClock(), ttl=timedelta(minutes=15))
