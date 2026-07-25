@@ -5,10 +5,10 @@ import pytest
 from typer.testing import CliRunner, Result
 
 from app.core.application import App
+from app.core.providers.bootstrap import BootstrapProvider
 from app.core.providers.settings import SettingsProvider
 from app.core.settings import HuginnSettings
-from app.providers.bootstrap import BootstrapProvider
-from app.providers.features import FeaturesProvider
+from app.features.providers import FeaturesProvider
 from bin.cli import COMMANDS
 from lib.command import CommandContract
 from tests.helpers.settings import make_settings

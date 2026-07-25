@@ -7,14 +7,14 @@ from starlette.types import ASGIApp
 
 from app.core.application import App
 from app.core.config.registry import SectionRegistry
+from app.core.providers.bootstrap import BootstrapProvider
 from app.core.providers.logging import LoggingProvider
 from app.core.providers.router import RouterProvider
 from app.core.providers.settings import SettingsProvider
 from app.core.settings import HuginnSettings
 from app.features.probes.providers import ProbesEndpointProvider
+from app.features.providers import FeaturesProvider
 from app.features.tools.registry import ToolRegistry
-from app.providers.bootstrap import BootstrapProvider
-from app.providers.features import FeaturesProvider
 from bin.server import ServerOptions, build, create
 from lib.router import RouterContract, RouterManager
 from tests.helpers.settings import make_settings
