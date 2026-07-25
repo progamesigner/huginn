@@ -1,6 +1,10 @@
 from typing import Annotated
 
+from sqlalchemy import text
+
 from app.core.dependencies import Provide
+from lib.database import DatabaseContract
+from lib.mcp import MCPClientContract
 from lib.redis import RedisContract
 from lib.router import Depends, Router
 
@@ -14,8 +18,18 @@ async def healthz() -> dict[str, str]:
 
 @router.get('/readyz')
 async def readyz(
+    database: Annotated[DatabaseContract, Depends(Provide(DatabaseContract))],
+    mcp: Annotated[MCPClientContract, Depends(Provide(MCPClientContract))],
     redis: Annotated[RedisContract, Depends(Provide(RedisContract))],
 ) -> dict[str, str]:
+    async with database.session() as session:
+        await session.execute(text('SELECT 1'))
+
     async with redis.connect() as client:
         await client.ping()
-    return {'status': 'ok'}
+
+    unavailable = mcp.unavailable()
+    return {
+        'status': 'ok',
+        'mcp': f'unavailable: {", ".join(unavailable)}' if unavailable else 'ok',
+    }
