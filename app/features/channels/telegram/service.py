@@ -8,6 +8,7 @@ from app.exts.telegram.types import Update
 from app.features.channels.config import CHANNELS
 from lib.redis import RedisContract
 
+from .actor import TelegramChatActor
 from .config import TelegramChannelConfig
 from .exceptions import InvalidWebhookSecretError
 from .handlers import TelegramUpdateHandler
@@ -19,22 +20,25 @@ _DEDUPE_TTL = 6 * 60 * 60
 
 
 class TelegramWebhookService:
-    config: HuginnConfig
-    redis: RedisContract
-    handler: TelegramUpdateHandler
+    actor: TelegramChatActor
     background: BackgroundTasks
+    config: HuginnConfig
+    handler: TelegramUpdateHandler
+    redis: RedisContract
 
     def __init__(
         self,
         config: HuginnConfig,
         redis: RedisContract,
         handler: TelegramUpdateHandler,
+        actor: TelegramChatActor,
         background: BackgroundTasks,
     ) -> None:
-        self.config = config
-        self.redis = redis
-        self.handler = handler
+        self.actor = actor
         self.background = background
+        self.config = config
+        self.handler = handler
+        self.redis = redis
 
     async def ingest(self, secret: str | None, body: bytes) -> None:
         name, channel = self._resolve(secret)
@@ -56,7 +60,17 @@ class TelegramWebhookService:
             logger.info('Skipping duplicate update %s for %s', update.update_id, name)
             return None
 
-        self.background.spawn(self.handler.handle(name, channel, update))
+        self.background.spawn(self._process(name, channel, update, body))
+
+    async def _process(
+        self,
+        name: str,
+        channel: TelegramChannelConfig,
+        update: Update,
+        body: bytes,
+    ) -> None:
+        await self.handler.handle(name, channel, update)
+        await self.actor.handle(name, channel, update, body)
 
     async def _reserve(self, name: str, update_id: int) -> bool:
         key = f'telegram:{name}:{update_id}'

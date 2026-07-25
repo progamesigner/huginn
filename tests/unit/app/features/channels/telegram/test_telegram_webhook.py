@@ -11,6 +11,7 @@ from pydantic import SecretStr
 from app.core.config.registry import HuginnConfig
 from app.exts.telegram.types import Update
 from app.features.channels.config import ChannelsConfig
+from app.features.channels.telegram.actor import TelegramChatActor
 from app.features.channels.telegram.config import TelegramChannelConfig
 from app.features.channels.telegram.handlers import TelegramUpdateHandler
 from bin.server import build
@@ -92,6 +93,13 @@ def make_redis(store: set[str], *, fail: bool = False) -> MagicMock:
     return redis
 
 
+def make_actor() -> MagicMock:
+    # NOTE: this file exercises ack/dedupe only; the actor gets its own test suite
+    actor = MagicMock(spec=TelegramChatActor)
+    actor.handle = AsyncMock(return_value=None)
+    return actor
+
+
 @asynccontextmanager
 async def webhook_client(
     config: HuginnConfig,
@@ -104,6 +112,7 @@ async def webhook_client(
         application.use(MCPClientContract, MagicMock(spec=MCPClientContract)),
         application.use(RedisContract, redis),
         application.use(TelegramUpdateHandler, handler),
+        application.use(TelegramChatActor, make_actor()),
     ):
         app = application.resolve(RouterContract).app
         assert isinstance(app, FastAPI)
