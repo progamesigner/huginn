@@ -12,6 +12,7 @@ from app.core.providers.settings import SettingsProvider
 from app.features.channels.telegram.providers import TelegramWebhookEndpointProvider
 from app.features.probes.providers import ProbesEndpointProvider
 from app.features.providers import FeaturesProvider
+from app.features.tools.providers import MCPProvider
 from lib.router import RouterContract
 
 ENDPOINTS = (ProbesEndpointProvider(), TelegramWebhookEndpointProvider())
@@ -30,6 +31,7 @@ def build() -> App:
         SettingsProvider(),
         BootstrapProvider(),
         FeaturesProvider(),
+        MCPProvider(),
         RouterProvider(excludes=frozenset({'/healthz', '/readyz'})),
         *ENDPOINTS,
     )

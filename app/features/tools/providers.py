@@ -1,5 +1,6 @@
 from typing import override
 
+from app.core.config.exceptions import MissingConfigFileError
 from app.core.config.registry import HuginnConfig, SectionRegistry
 from app.core.providers.config import ConfigProvider
 from app.core.providers.http import HTTPClientProvider
@@ -61,11 +62,17 @@ class MCPProvider(ProviderContract):
         )
 
     def _build(self, container: ContainerContract) -> MCPManager:
-        servers = build_servers(container.resolve(HuginnConfig).section(MCP_SERVERS))
         connector = self.connector or streamable_http_connector(
             container.resolve(HTTPClientContract)
         )
-        return MCPManager(servers, connector)
+
+        try:
+            config = container.resolve(HuginnConfig)
+        except MissingConfigFileError:
+            # NOTE: no config file at all means no servers; a malformed one still fails
+            return MCPManager([], connector)
+
+        return MCPManager(build_servers(config.section(MCP_SERVERS)), connector)
 
 
 class ToolRegistryProvider(ProviderContract):

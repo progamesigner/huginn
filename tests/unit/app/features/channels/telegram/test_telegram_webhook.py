@@ -14,6 +14,7 @@ from app.features.channels.config import ChannelsConfig
 from app.features.channels.telegram.config import TelegramChannelConfig
 from app.features.channels.telegram.handlers import TelegramUpdateHandler
 from bin.server import build
+from lib.mcp import MCPClientContract
 from lib.redis import RedisContract
 from lib.router import RouterContract
 
@@ -100,6 +101,7 @@ async def webhook_client(
     application = build()
     with (
         application.use(HuginnConfig, config),
+        application.use(MCPClientContract, MagicMock(spec=MCPClientContract)),
         application.use(RedisContract, redis),
         application.use(TelegramUpdateHandler, handler),
     ):

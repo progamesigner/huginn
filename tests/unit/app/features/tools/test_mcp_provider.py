@@ -3,6 +3,7 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from pathlib import Path
 
+import pytest
 from mcp import ClientSession
 from mcp.server.fastmcp import FastMCP
 from mcp.shared.memory import create_connected_server_and_client_session
@@ -11,7 +12,7 @@ from app.core.application import App
 from app.core.providers.config import ConfigProvider
 from app.features.tools.mcp.config import MCPServersConfig
 from app.features.tools.providers import MCPProvider, build_servers
-from lib.mcp import MCPClientContract, MCPServer
+from lib.mcp import MCPClientContract, MCPServer, UnknownMCPServerError
 
 _CONFIG = """
 mcp_servers:
@@ -74,3 +75,17 @@ async def test_provider_connects_configured_servers(tmp_path: Path) -> None:
         tools = await client.list_tools('memory')
 
     assert {tool.name for tool in tools} == {'echo'}
+
+
+async def test_provider_serves_no_servers_without_a_config_file(tmp_path: Path) -> None:
+    container = App().build(
+        ConfigProvider(path=tmp_path / 'does-not-exist.yaml'),
+        MCPProvider(connector=_memory_connector),
+    )
+
+    async with container:
+        client = container.resolve(MCPClientContract)
+
+        assert client.unavailable() == ()
+        with pytest.raises(UnknownMCPServerError):
+            await client.list_tools('memory')
