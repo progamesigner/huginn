@@ -1,10 +1,11 @@
 from abc import ABC, abstractmethod
-from collections.abc import Callable, Sequence
+from collections.abc import Awaitable, Callable, Sequence
 
 from .config import AgentConfig
 from .types import Tool
 
 type NamedTool = tuple[str, Tool]
+type TextSink = Callable[[str], Awaitable[None]]
 type ToolSourceFactory = Callable[[], ToolSource]
 
 

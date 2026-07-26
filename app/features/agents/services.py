@@ -1,6 +1,6 @@
 import asyncio
 import logging
-from collections.abc import AsyncIterator, Callable, Iterator, Sequence
+from collections.abc import AsyncIterator, Iterator, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import cast
@@ -24,7 +24,7 @@ from lib.llm import (
 from lib.temporal import ClockContract
 
 from .config import AgentConfig
-from .contracts import ToolSource
+from .contracts import TextSink, ToolSource
 from .exceptions import AgentError, TurnTimeoutError
 from .types import ToolSet
 
@@ -139,7 +139,7 @@ async def _execute_calls(
 
 async def _consume(
     stream: AsyncIterator[CompletionChunk],
-    on_text: Callable[[str], None],
+    on_text: TextSink,
 ) -> tuple[str, tuple[ToolCallSegment, ...]]:
     fragments = []
     calls = {}
@@ -148,7 +148,7 @@ async def _consume(
         match chunk:
             case TextChunk(text=fragment):
                 fragments.append(fragment)
-                on_text(fragment)
+                await on_text(fragment)
             case ToolCallChunk(index=index, id=id_, name=name, arguments=arguments):
                 builder = calls.setdefault(index, ToolCallBuilder())
                 if id_ is not None:
@@ -178,15 +178,11 @@ class AgentRunner:
         self.tools = tools
         self.clock = clock
 
-    async def run(self, turn: TurnInput, on_text: Callable[[str], None]) -> TurnOutput:
+    async def run(self, turn: TurnInput, on_text: TextSink) -> TurnOutput:
         with bound_contextvars(turn_id=uuid4().hex):
             return await self._process(turn, on_text)
 
-    async def _process(
-        self,
-        turn: TurnInput,
-        on_text: Callable[[str], None],
-    ) -> TurnOutput:
+    async def _process(self, turn: TurnInput, on_text: TextSink) -> TurnOutput:
         history = list(_build_messages(turn))
         steps = []
         text = ''

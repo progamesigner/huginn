@@ -144,6 +144,10 @@ def tool_result(message: Message) -> ToolResultSegment:
     return segment
 
 
+async def discard(fragment: str) -> None:
+    pass
+
+
 async def test_run_returns_text_immediately_when_no_tool_calls() -> None:
     llm = FakeLLM(
         [
@@ -157,7 +161,10 @@ async def test_run_returns_text_immediately_when_no_tool_calls() -> None:
     runner = AgentRunner(llm, make_toolset(), ClockManager())
     fragments = []
 
-    output = await runner.run(make_turn(), fragments.append)
+    async def collect(fragment: str) -> None:
+        fragments.append(fragment)
+
+    output = await runner.run(make_turn(), collect)
 
     assert output.text == 'Hello'
     assert output.completed is True
@@ -179,7 +186,7 @@ async def test_run_executes_single_tool_call_then_finishes() -> None:
     )
     runner = AgentRunner(llm, make_toolset(), ClockManager())
 
-    output = await runner.run(make_turn(), lambda _: None)
+    output = await runner.run(make_turn(), discard)
 
     assert output.text == 'done'
     assert output.completed is True
@@ -213,7 +220,7 @@ async def test_run_executes_multiple_tool_calls_in_one_turn() -> None:
     )
     runner = AgentRunner(llm, make_toolset(), ClockManager())
 
-    output = await runner.run(make_turn(), lambda _: None)
+    output = await runner.run(make_turn(), discard)
 
     assert output.text == 'done'
     results = [tool_result(message) for message in llm.requests[1].messages[-2:]]
@@ -247,7 +254,7 @@ async def test_run_executes_tool_calls_concurrently() -> None:
     runner = AgentRunner(llm, make_toolset(), ClockManager())
 
     started = time.monotonic()
-    await runner.run(make_turn(), lambda _: None)
+    await runner.run(make_turn(), discard)
     elapsed = time.monotonic() - started
 
     assert elapsed < 0.18
@@ -279,7 +286,7 @@ async def test_run_iterates_across_multiple_turns_until_no_tool_calls() -> None:
     )
     runner = AgentRunner(llm, make_toolset(), ClockManager())
 
-    output = await runner.run(make_turn(), lambda _: None)
+    output = await runner.run(make_turn(), discard)
 
     assert output.text == 'done'
     assert output.completed is True
@@ -300,7 +307,7 @@ async def test_run_marks_incomplete_when_max_iterations_exhausted(
     runner = AgentRunner(llm, make_toolset(), ClockManager())
 
     with caplog.at_level('WARNING'):
-        output = await runner.run(make_turn(max_iterations=2), lambda _: None)
+        output = await runner.run(make_turn(max_iterations=2), discard)
 
     assert output.completed is False
     assert any('max_iterations' in record.message for record in caplog.records)
@@ -326,7 +333,7 @@ async def test_run_reports_tool_timeout_as_error_and_continues(
     runner = AgentRunner(llm, make_toolset(), ClockManager())
 
     with caplog.at_level('WARNING'):
-        output = await runner.run(make_turn(tool_timeout=0.05), lambda _: None)
+        output = await runner.run(make_turn(tool_timeout=0.05), discard)
 
     assert output.text == 'done'
     assert output.completed is True
@@ -357,7 +364,7 @@ async def test_run_raises_turn_timeout_when_whole_turn_exceeds_budget(
     runner = AgentRunner(llm, make_toolset(), ClockManager())
 
     with caplog.at_level('WARNING'), pytest.raises(TurnTimeoutError):
-        await runner.run(make_turn(turn_timeout=0.05), lambda _: None)
+        await runner.run(make_turn(turn_timeout=0.05), discard)
 
     assert any('turn_timeout' in record.message for record in caplog.records)
 
@@ -391,7 +398,7 @@ async def test_run_records_steps_for_each_iteration(
     runner = AgentRunner(llm, make_toolset(), ClockManager())
 
     with caplog.at_level('INFO'):
-        output = await runner.run(make_turn(), lambda _: None)
+        output = await runner.run(make_turn(), discard)
 
     executions = [tool for step in output.steps for tool in step.tools]
     assert len(output.steps) == 3
@@ -420,7 +427,7 @@ async def test_run_records_failed_tool_execution_in_steps() -> None:
     )
     runner = AgentRunner(llm, make_toolset(), ClockManager())
 
-    output = await runner.run(make_turn(tool_timeout=0.05), lambda _: None)
+    output = await runner.run(make_turn(tool_timeout=0.05), discard)
 
     execution = output.steps[0].tools[0]
     assert execution.name == 'sleep'
@@ -442,7 +449,7 @@ async def test_tool_duration_is_measured_by_the_injected_clock() -> None:
     )
     runner = AgentRunner(llm, tools, clock)
 
-    output = await runner.run(make_turn(), lambda _: None)
+    output = await runner.run(make_turn(), discard)
 
     execution = output.steps[0].tools[0]
     assert execution.name == 'advance'
@@ -465,7 +472,7 @@ async def test_run_binds_turn_id_during_tool_execution() -> None:
     tools.add('probe', probe)
     runner = AgentRunner(llm, tools, ClockManager())
 
-    await runner.run(make_turn(), lambda _: None)
+    await runner.run(make_turn(), discard)
 
     assert probe.seen.get('turn_id')
     assert 'turn_id' not in get_contextvars()
@@ -485,8 +492,8 @@ async def test_run_generates_unique_turn_id_per_turn() -> None:
     tools.add('probe', probe)
     runner = AgentRunner(llm, tools, ClockManager())
 
-    await runner.run(make_turn(), lambda _: None)
+    await runner.run(make_turn(), discard)
     first = probe.seen['turn_id']
-    await runner.run(make_turn(), lambda _: None)
+    await runner.run(make_turn(), discard)
 
     assert probe.seen['turn_id'] != first

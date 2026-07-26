@@ -82,7 +82,11 @@ async def test_agent_loop_with_websearch_live() -> None:
     )
 
     fragments = []
-    output = await AgentRunner(llm, tools, ClockManager()).run(turn, fragments.append)
+
+    async def collect(fragment: str) -> None:
+        fragments.append(fragment)
+
+    output = await AgentRunner(llm, tools, ClockManager()).run(turn, collect)
 
     executions = [record for step in output.steps for record in step.tools]
 
