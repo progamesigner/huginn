@@ -29,7 +29,9 @@ class ExternalIdentityRecord(AppRecord):
         Index('ix_external_identities_user_provider', 'user_id', 'provider'),
     )
 
-    user_id: Mapped[UUID] = mapped_column(ForeignKey('users.id', ondelete='CASCADE'))
+    user_id: Mapped[UUID] = mapped_column(
+        ForeignKey(UserRecord.id, ondelete='CASCADE'),
+    )
     provider: Mapped[str] = mapped_column()
     realm: Mapped[str] = mapped_column()
     external_user_id: Mapped[str] = mapped_column()
@@ -49,7 +51,7 @@ class IdentityAuditEventRecord(AppRecord):
 
     event_type: Mapped[str] = mapped_column()
     user_id: Mapped[UUID | None] = mapped_column(
-        ForeignKey('users.id', ondelete='SET NULL'),
+        ForeignKey(UserRecord.id, ondelete='SET NULL'),
     )
     external_identity_id: Mapped[UUID | None] = mapped_column()
     provider: Mapped[str] = mapped_column()
@@ -69,7 +71,9 @@ class IdentityLinkInviteRecord(AppRecord):
         Index('ix_identity_link_invites_user_created', 'user_id', 'created_at'),
     )
 
-    user_id: Mapped[UUID] = mapped_column(ForeignKey('users.id', ondelete='CASCADE'))
+    user_id: Mapped[UUID] = mapped_column(
+        ForeignKey(UserRecord.id, ondelete='CASCADE'),
+    )
     provider: Mapped[str] = mapped_column()
     realm: Mapped[str] = mapped_column()
     token_digest: Mapped[bytes] = mapped_column()

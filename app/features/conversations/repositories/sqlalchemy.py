@@ -2,7 +2,7 @@ from datetime import datetime
 from uuid import UUID
 
 from pydantic import JsonValue
-from sqlalchemy import ForeignKey, UniqueConstraint, func
+from sqlalchemy import ForeignKey, ForeignKeyConstraint, UniqueConstraint, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.records import AppRecord, TimestampRecordMixin
@@ -16,22 +16,17 @@ class ConversationRecord(TimestampRecordMixin, AppRecord):
     chat_id: Mapped[str] = mapped_column()
     agent: Mapped[str] = mapped_column()
     compact_version: Mapped[int] = mapped_column(server_default='0')
-    summarized_through_turn_id: Mapped[UUID | None] = mapped_column(
-        ForeignKey('turns.id', ondelete='SET NULL'),
-        default=None,
-    )
+    summarized_through_turn_id: Mapped[UUID | None] = mapped_column(default=None)
 
 
 class TurnRecord(AppRecord):
     __tablename__ = 'turns'
 
-    conversation_id: Mapped[UUID] = mapped_column(
-        ForeignKey('conversations.id', ondelete='CASCADE'),
-    )
+    conversation_id: Mapped[UUID] = mapped_column()
     usage: Mapped[JsonValue] = mapped_column()
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())
     parts: Mapped[list[PartRecord]] = relationship(
-        order_by='PartRecord.seq',
+        order_by=lambda: PartRecord.seq,
         cascade='all, delete-orphan',
     )
 
@@ -39,8 +34,27 @@ class TurnRecord(AppRecord):
 class PartRecord(AppRecord):
     __tablename__ = 'parts'
 
-    turn_id: Mapped[UUID] = mapped_column(ForeignKey('turns.id', ondelete='CASCADE'))
+    turn_id: Mapped[UUID] = mapped_column(
+        ForeignKey(TurnRecord.id, ondelete='CASCADE'),
+    )
     seq: Mapped[int] = mapped_column()
     role: Mapped[str] = mapped_column()
     kind: Mapped[str] = mapped_column()
     payload: Mapped[JsonValue] = mapped_column()
+
+
+ConversationRecord.__table__.append_constraint(
+    ForeignKeyConstraint(
+        [ConversationRecord.summarized_through_turn_id],
+        [TurnRecord.id],
+        ondelete='SET NULL',
+    ),
+)
+
+TurnRecord.__table__.append_constraint(
+    ForeignKeyConstraint(
+        [TurnRecord.conversation_id],
+        [ConversationRecord.id],
+        ondelete='CASCADE',
+    ),
+)
