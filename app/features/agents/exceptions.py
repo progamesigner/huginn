@@ -5,7 +5,7 @@ class AgentError(Exception):
     pass
 
 
-class TurnTimeout(AgentError):
+class TurnTimeoutError(AgentError):
     pass
 
 

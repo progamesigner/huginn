@@ -8,7 +8,7 @@ import pytest
 from pydantic import Field, JsonValue
 from structlog.contextvars import get_contextvars
 
-from app.features.agents.exceptions import TurnTimeout
+from app.features.agents.exceptions import TurnTimeoutError
 from app.features.agents.services import AgentRunner, TurnInput
 from app.features.tools.registry import ToolSet
 from app.features.tools.types import ToolOutput, ToolParams, TypedTool
@@ -357,7 +357,7 @@ async def test_run_raises_turn_timeout_when_whole_turn_exceeds_budget(
     )
     runner = AgentRunner(llm, make_toolset(), ClockManager())
 
-    with caplog.at_level('WARNING'), pytest.raises(TurnTimeout):
+    with caplog.at_level('WARNING'), pytest.raises(TurnTimeoutError):
         await runner.run(make_turn(turn_timeout=0.05), lambda _: None)
 
     assert any('turn_timeout' in record.message for record in caplog.records)

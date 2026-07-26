@@ -54,11 +54,11 @@ class TelegramWebhookService:
             update = Update.model_validate_json(body)
         except ValidationError as error:
             logger.error('Discarding unparseable telegram update: %s', error)
-            return None
+            return
 
         if not await self._reserve(name, update.update_id):
             logger.info('Skipping duplicate update %s for %s', update.update_id, name)
-            return None
+            return
 
         self.background.spawn(self._process(name, channel, update, body))
 

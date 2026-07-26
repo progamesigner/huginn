@@ -162,9 +162,11 @@ def test_cross_feature_imports_stay_within_approved_surface() -> None:
 
         feature = relative.parts[0]
         package = _package_of(path, root)
-        for target in _import_targets(path.read_text(), package):
-            if message := _cross_feature_violation(feature, target):
-                violations.append(f'{relative}: {message}')
+        violations.extend(
+            f'{relative}: {message}'
+            for target in _import_targets(path.read_text(), package)
+            if (message := _cross_feature_violation(feature, target))
+        )
 
     assert not violations, 'cross-feature import violations:\n' + '\n'.join(violations)
 

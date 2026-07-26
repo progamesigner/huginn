@@ -4,8 +4,7 @@ from uuid import UUID
 
 from pydantic import JsonValue
 from sqlalchemy import JSON, DateTime, Dialect, LargeBinary, TypeDecorator
-from sqlalchemy.dialects.postgresql import JSONB
-from sqlalchemy.dialects.postgresql import UUID as PgUUID
+from sqlalchemy.dialects import postgresql
 from sqlalchemy.types import TypeEngine
 
 
@@ -18,7 +17,7 @@ class GUID(TypeDecorator[UUID]):
     @override
     def load_dialect_impl(self, dialect: Dialect) -> TypeEngine[Any]:
         if self._is_native_dialect(dialect):
-            return dialect.type_descriptor(PgUUID(as_uuid=True))
+            return dialect.type_descriptor(postgresql.UUID(as_uuid=True))
 
         return dialect.type_descriptor(LargeBinary(16))
 
@@ -64,7 +63,7 @@ class Json(TypeDecorator[JsonValue]):
     @override
     def load_dialect_impl(self, dialect: Dialect) -> TypeEngine[Any]:
         if self._is_native_dialect(dialect):
-            return dialect.type_descriptor(JSONB())
+            return dialect.type_descriptor(postgresql.JSONB())
 
         return dialect.type_descriptor(JSON())
 

@@ -44,14 +44,14 @@ class TelegramChatActor:
     ) -> None:
         message = update.message
         if message is None:
-            return None
+            return
 
         chat_id = message.chat.id
         lock = RedisLock(self.redis, self._key(name, chat_id, 'lock'), ttl=self.ttl)
         mailbox = RedisMailbox(lock, self._key(name, chat_id, 'mailbox'))
 
         if not await mailbox.claim(body):
-            return None
+            return
 
         async with lock.renew():
             batch: tuple[bytes, ...] = (body,)

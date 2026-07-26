@@ -31,7 +31,7 @@ from lib.mcp import MCPClientContract, UnknownMCPServerError
 from lib.temporal import ClockContract
 
 from .config import AgentConfig, MCPRef
-from .exceptions import AgentError, TurnTimeout
+from .exceptions import AgentError, TurnTimeoutError
 
 logger = logging.getLogger(__name__)
 
@@ -229,7 +229,7 @@ class AgentRunner:
                     history.extend(_tool_result_messages(results))
         except TimeoutError as error:
             logger.warning('Turn exceeded turn_timeout=%.1fs', turn.turn_timeout)
-            raise TurnTimeout(
+            raise TurnTimeoutError(
                 f'turn exceeded turn_timeout={turn.turn_timeout}s',
             ) from error
 

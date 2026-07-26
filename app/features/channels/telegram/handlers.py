@@ -35,7 +35,7 @@ class ReactionUpdateHandler(TelegramUpdateHandler):
     ) -> None:
         message = update.message
         if message is None:
-            return None
+            return
 
         client = TelegramClient(http=self.http, bot_token=channel.token)
         await client.set_message_reaction(

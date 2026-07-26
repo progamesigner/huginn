@@ -192,6 +192,7 @@ async def test_compact_abandons_on_cas_conflict_without_retrying_the_llm() -> No
     ],
 )
 def test_should_compact_combined_trigger_table(
+    *,
     turn_count: int,
     payload_size: int,
     keep_turns: int,
