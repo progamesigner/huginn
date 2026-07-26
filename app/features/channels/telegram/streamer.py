@@ -2,13 +2,10 @@ import logging
 from datetime import timedelta
 
 from app.exts.telegram.client import TelegramClient
+from app.exts.telegram.types import MESSAGE
 from lib.temporal import ClockContract, Timer
 
 logger = logging.getLogger(__name__)
-
-# NOTE: telegram throttles edits at roughly one per second; 1.1s is the safety margin
-_EDIT_INTERVAL = timedelta(seconds=1.1)
-_MESSAGE_LIMIT = 4096
 
 
 def _split(text: str, limit: int) -> tuple[str, str]:
@@ -39,8 +36,8 @@ class TelegramStreamer:
         chat_id: int,
         clock: ClockContract,
         *,
-        interval: timedelta = _EDIT_INTERVAL,
-        limit: int = _MESSAGE_LIMIT,
+        interval: timedelta = MESSAGE.edit_interval,
+        limit: int = MESSAGE.length_limit,
     ) -> None:
         self.client = client
         self.chat_id = chat_id

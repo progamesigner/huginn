@@ -1,3 +1,5 @@
+from dataclasses import dataclass
+from datetime import timedelta
 from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, JsonValue
@@ -5,6 +7,27 @@ from pydantic import BaseModel, ConfigDict, Field, JsonValue
 
 class TelegramValue(BaseModel):
     model_config = ConfigDict(extra='ignore', frozen=True)
+
+
+@dataclass(frozen=True)
+class WebhookSpec:
+    ack_status: int
+    reject_status: int
+    signature_header: str
+
+
+@dataclass(frozen=True)
+class MessageSpec:
+    edit_interval: timedelta
+    length_limit: int
+
+
+WEBHOOK = WebhookSpec(
+    ack_status=200,
+    reject_status=403,
+    signature_header='X-Telegram-Bot-Api-Secret-Token',
+)
+MESSAGE = MessageSpec(length_limit=4096, edit_interval=timedelta(seconds=1.1))
 
 
 class User(TelegramValue):
