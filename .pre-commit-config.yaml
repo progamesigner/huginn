@@ -52,3 +52,16 @@ repos:
     args:
     - --schema
     - https://json.schemastore.org/pyproject.json
+  - id: ty
+    name: ty
+    entry: uv run ty check
+    language: system
+    types:
+    - python
+    pass_filenames: false
+  - id: uv-lock
+    name: uv-lock
+    entry: uv lock --check
+    language: system
+    files: ^(pyproject\.toml|uv\.lock)$
+    pass_filenames: false
