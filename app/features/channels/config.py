@@ -21,6 +21,7 @@ from app.features.agents.exceptions import (
     MissingModelError,
     UnknownAgentReferenceError,
 )
+from app.features.agents.types import RoutingPolicy, SelectionPolicy
 
 from .exceptions import DuplicateChannelSecretError, UnknownChannelKindError
 from .registry import ChannelRegistry
@@ -40,10 +41,6 @@ class ChannelConfig(ConfigValue):
 
 class ChannelConfigList(RootModel[dict[str, ChannelConfig]]):
     pass
-
-
-def _tagged(kind: str, model: Any) -> Any:
-    return Annotated[model, Tag(kind)]
 
 
 def _channel_config_element(configs: dict[str, type[BaseModel]]) -> Any:
@@ -80,6 +77,25 @@ def _describe_channels(config: HuginnConfig) -> list[str]:
         f'{name} ({channel.kind})' for name, channel in sorted(channels.items())
     )
     return [f'channels: {entries}']
+
+
+def _routing_policy(channel: ChannelConfig) -> RoutingPolicy:
+    return RoutingPolicy(
+        bindings=channel.bindings,
+        agent=channel.agent,
+        selection=(
+            None
+            if channel.router is None
+            else SelectionPolicy(
+                fallback=channel.router.fallback,
+                model=channel.router.model,
+            )
+        ),
+    )
+
+
+def _tagged(kind: str, model: Any) -> Any:
+    return Annotated[model, Tag(kind)]
 
 
 def _validate_agent_reference(

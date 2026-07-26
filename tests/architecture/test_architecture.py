@@ -22,8 +22,6 @@ DECLARED_EXCEPTIONS: dict[tuple[str, str], frozenset[str]] = {
     ('agents', 'tools'): frozenset({'binding', 'mcp', 'registry'}),
     # DEBT: agents builds the skill tool itself instead of being handed one
     ('agents', 'skills'): frozenset({'repositories', 'tools'}),
-    # DEBT: Router takes a ChannelConfig; agents should define its own routing input
-    ('agents', 'channels'): frozenset({'config'}),
 }
 FEATURES_PACKAGE = 'app.features'
 EXT_SLICE_NAMES = frozenset({'client', 'types', 'exceptions'})

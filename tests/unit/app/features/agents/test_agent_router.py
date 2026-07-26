@@ -6,7 +6,7 @@ import pytest
 from app.features.agents.config import AgentConfig
 from app.features.agents.exceptions import UnroutableError
 from app.features.agents.router import Router
-from app.features.channels.config import ChannelConfig, ChannelRouterConfig
+from app.features.agents.types import RoutingPolicy, SelectionPolicy
 from lib.llm import (
     CompletionChunk,
     CompletionRequest,
@@ -68,8 +68,8 @@ def _agents() -> dict[str, AgentConfig]:
     }
 
 
-def _router(model: str | None = None) -> ChannelRouterConfig:
-    return ChannelRouterConfig(fallback='concierge', model=model)
+def _selection(model: str | None = None) -> SelectionPolicy:
+    return SelectionPolicy(fallback='concierge', model=model)
 
 
 def _saying(text: str) -> FakeClient:
@@ -79,9 +79,9 @@ def _saying(text: str) -> FakeClient:
 async def test_resolve_returns_bound_agent_without_calling_the_llm() -> None:
     agents = _agents()
     llm = FakeLLM(_saying('scout'))
-    channel = ChannelConfig(kind='test', bindings={'123': 'scout'}, router=_router())
+    policy = RoutingPolicy(bindings={'123': 'scout'}, selection=_selection())
 
-    agent = await Router(agents, llm, 'default-model').resolve(channel, '123', 'hello')
+    agent = await Router(agents, llm, 'default-model').resolve(policy, '123', 'hello')
 
     assert agent is agents['scout']
     assert llm.calls == 0
@@ -89,10 +89,10 @@ async def test_resolve_returns_bound_agent_without_calling_the_llm() -> None:
 
 async def test_resolve_uses_router_llm_choice_when_valid() -> None:
     agents = _agents()
-    channel = ChannelConfig(kind='test', router=_router())
+    policy = RoutingPolicy(selection=_selection())
 
     agent = await Router(agents, FakeLLM(_saying('scout')), 'm').resolve(
-        channel,
+        policy,
         '999',
         'research this',
     )
@@ -102,10 +102,10 @@ async def test_resolve_uses_router_llm_choice_when_valid() -> None:
 
 async def test_resolve_parses_choice_from_a_decorated_reply() -> None:
     agents = _agents()
-    channel = ChannelConfig(kind='test', router=_router())
+    policy = RoutingPolicy(selection=_selection())
 
     agent = await Router(agents, FakeLLM(_saying('I choose scout.')), 'm').resolve(
-        channel,
+        policy,
         '999',
         'hi',
     )
@@ -115,10 +115,10 @@ async def test_resolve_parses_choice_from_a_decorated_reply() -> None:
 
 async def test_resolve_falls_back_when_llm_picks_unknown_agent() -> None:
     agents = _agents()
-    channel = ChannelConfig(kind='test', router=_router())
+    policy = RoutingPolicy(selection=_selection())
 
     agent = await Router(agents, FakeLLM(_saying('banana')), 'm').resolve(
-        channel,
+        policy,
         '999',
         'hi',
     )
@@ -128,10 +128,10 @@ async def test_resolve_falls_back_when_llm_picks_unknown_agent() -> None:
 
 async def test_resolve_falls_back_when_reply_is_ambiguous() -> None:
     agents = _agents()
-    channel = ChannelConfig(kind='test', router=_router())
+    policy = RoutingPolicy(selection=_selection())
 
     agent = await Router(agents, FakeLLM(_saying('scout or concierge')), 'm').resolve(
-        channel,
+        policy,
         '999',
         'hi',
     )
@@ -142,28 +142,28 @@ async def test_resolve_falls_back_when_reply_is_ambiguous() -> None:
 async def test_resolve_falls_back_when_llm_call_errors() -> None:
     agents = _agents()
     client = FakeClient(error=TimeoutError('slow'))
-    channel = ChannelConfig(kind='test', router=_router())
+    policy = RoutingPolicy(selection=_selection())
 
-    agent = await Router(agents, FakeLLM(client), 'm').resolve(channel, '999', 'hi')
+    agent = await Router(agents, FakeLLM(client), 'm').resolve(policy, '999', 'hi')
 
     assert agent is agents['concierge']
 
 
 async def test_resolve_falls_back_when_router_model_has_no_provider() -> None:
     agents = _agents()
-    channel = ChannelConfig(kind='test', router=_router())
+    policy = RoutingPolicy(selection=_selection())
 
-    agent = await Router(agents, FakeLLM(None), 'm').resolve(channel, '999', 'hi')
+    agent = await Router(agents, FakeLLM(None), 'm').resolve(policy, '999', 'hi')
 
     assert agent is agents['concierge']
 
 
 async def test_resolve_uses_router_model_for_selection() -> None:
     client = _saying('scout')
-    channel = ChannelConfig(kind='test', router=_router(model='router-model'))
+    policy = RoutingPolicy(selection=_selection(model='router-model'))
 
     await Router(_agents(), FakeLLM(client), 'default-model').resolve(
-        channel,
+        policy,
         '999',
         'hi',
     )
@@ -173,10 +173,10 @@ async def test_resolve_uses_router_model_for_selection() -> None:
 
 async def test_resolve_falls_back_to_default_model_for_selection() -> None:
     client = _saying('scout')
-    channel = ChannelConfig(kind='test', router=_router())
+    policy = RoutingPolicy(selection=_selection())
 
     await Router(_agents(), FakeLLM(client), 'default-model').resolve(
-        channel,
+        policy,
         '999',
         'hi',
     )
@@ -184,9 +184,9 @@ async def test_resolve_falls_back_to_default_model_for_selection() -> None:
     assert client.requests[0].model == 'default-model'
 
 
-async def test_resolve_raises_when_unbound_and_channel_has_no_router() -> None:
+async def test_resolve_raises_when_unbound_and_no_selection_policy() -> None:
     agents = _agents()
-    channel = ChannelConfig(kind='test', bindings={'123': 'scout'})
+    policy = RoutingPolicy(bindings={'123': 'scout'})
 
     with pytest.raises(UnroutableError, match='999'):
-        await Router(agents, FakeLLM()).resolve(channel, '999', 'hello')
+        await Router(agents, FakeLLM()).resolve(policy, '999', 'hello')

@@ -2,7 +2,6 @@ import logging
 import re
 from collections.abc import AsyncIterator, Mapping
 
-from app.features.channels.config import ChannelConfig, ChannelRouterConfig
 from lib.llm import (
     CompletionChunk,
     CompletionRequest,
@@ -14,6 +13,7 @@ from lib.llm import (
 
 from .config import AgentConfig, resolve_model
 from .exceptions import UnroutableError
+from .types import RoutingPolicy, SelectionPolicy
 
 logger = logging.getLogger(__name__)
 
@@ -64,36 +64,36 @@ class Router:
 
     async def resolve(
         self,
-        channel: ChannelConfig,
+        policy: RoutingPolicy,
         chat_id: str,
         message: str,
     ) -> AgentConfig:
-        if (name := channel.bindings.get(chat_id)) is not None:
+        if (name := policy.bindings.get(chat_id)) is not None:
             logger.info('Routed chat %s to agent %r via binding', chat_id, name)
             return self.agents[name]
 
-        if channel.agent is not None:
+        if policy.agent is not None:
             logger.info(
                 'Routed chat %s to agent %r via channel default',
                 chat_id,
-                channel.agent,
+                policy.agent,
             )
-            return self.agents[channel.agent]
+            return self.agents[policy.agent]
 
-        if channel.router is None:
+        if (selection := policy.selection) is None:
             raise UnroutableError(
                 f'chat {chat_id!r} has no binding and the channel defines no router',
             )
 
-        return self.agents[await self._select(channel.router, chat_id, message)]
+        return self.agents[await self._select(selection, chat_id, message)]
 
     async def _select(
         self,
-        router: ChannelRouterConfig,
+        selection: SelectionPolicy,
         chat_id: str,
         message: str,
     ) -> str:
-        choice = await self._ask(router, message)
+        choice = await self._ask(selection, message)
         if choice is not None:
             logger.info('Router LLM chose agent %r for chat %s', choice, chat_id)
             return choice
@@ -101,12 +101,12 @@ class Router:
         logger.info(
             'Router did not select a valid agent for chat %s; using fallback %r',
             chat_id,
-            router.fallback,
+            selection.fallback,
         )
-        return router.fallback
+        return selection.fallback
 
-    async def _ask(self, router: ChannelRouterConfig, message: str) -> str | None:
-        model = resolve_model(router.model, self.default_model)
+    async def _ask(self, selection: SelectionPolicy, message: str) -> str | None:
+        model = resolve_model(selection.model, self.default_model)
         client = self.llm.client_for(model)
         if client is None:
             logger.warning('Router model %r has no provider; using fallback', model)
