@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 
 from app.features.conversations.compaction import CompactionService, SummaryOutput
 from app.features.conversations.repositories import ConversationRepository
-from app.features.conversations.repositories.sqlalchemy import ConversationRecord
+from app.features.conversations.schemas.sqlalchemy import ConversationRecord
 from app.features.conversations.types import Conversation, Part, Turn
 from lib.guid import GUIDManager
 from lib.llm import (

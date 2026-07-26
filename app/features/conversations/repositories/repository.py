@@ -7,11 +7,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.features.conversations.exceptions import NoTurnsToCompactError
+from app.features.conversations.schemas.sqlalchemy import (
+    ConversationRecord,
+    PartRecord,
+    TurnRecord,
+)
 from app.features.conversations.types import Conversation, Part, Turn
 from lib.guid import GUIDContract
 from lib.temporal import ClockContract
-
-from .sqlalchemy import ConversationRecord, PartRecord, TurnRecord
 
 
 def _to_conversation(record: ConversationRecord) -> Conversation:
