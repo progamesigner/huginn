@@ -3,7 +3,7 @@ from typing import override
 
 from pydantic import JsonValue
 
-from app.features.tools.mcp.bridge import MCPTool, build_mcp_tools, namespaced
+from app.features.mcp.bridge import MCPTool, build_mcp_tools, namespaced
 from lib.mcp import MCPClientContract, MCPToolInfo
 
 

@@ -1,13 +1,16 @@
 from typing import override
 
-from app.core.config.registry import SectionRegistry
+from app.core.config.registry import HuginnConfig, SectionRegistry
 from app.core.providers.config import ConfigProvider
 from app.core.providers.http import HTTPClientProvider
+from app.features.agents.contracts import ToolSourceRegistry
+from app.features.agents.providers import AgentProvider
 from lib.container import ContainerContract, ProviderContract
 from lib.http import HTTPClientContract
 
 from .config import build_sections
 from .registry import ToolRegistry
+from .sources import ConfiguredToolSource
 from .websearch.config import WebSearchToolConfig
 from .websearch.repositories import WebSearchRepository
 from .websearch.tool import WebSearchTool, build_websearch
@@ -20,7 +23,7 @@ class ToolRegistryProvider(ProviderContract):
 
 
 class ToolsConfigProvider(ProviderContract):
-    dependencies = (ConfigProvider, ToolRegistryProvider)
+    dependencies = (AgentProvider, ConfigProvider, ToolRegistryProvider)
 
     @override
     def __call__(self, container: ContainerContract) -> None:
@@ -30,7 +33,7 @@ class ToolsConfigProvider(ProviderContract):
 
 
 class ToolProvider(ProviderContract):
-    dependencies = (HTTPClientProvider, ToolRegistryProvider)
+    dependencies = (HTTPClientProvider, ToolRegistryProvider, ToolsConfigProvider)
 
     @override
     def __call__(self, container: ContainerContract) -> None:
@@ -43,4 +46,11 @@ class ToolProvider(ProviderContract):
             WebSearchTool,
             WebSearchToolConfig,
             builder=lambda config: build_websearch(repository, config),
+        )
+
+        container.resolve(ToolSourceRegistry).register(
+            lambda: ConfiguredToolSource(
+                container.resolve(HuginnConfig),
+                registry,
+            ),
         )

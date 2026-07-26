@@ -3,8 +3,8 @@ from typing import Annotated, override
 
 from pydantic import BaseModel, Field, SecretStr
 
+from app.features.agents.types import ToolOutput, ToolParams, TypedTool
 from app.features.tools.exceptions import ToolError
-from app.features.tools.types import ToolOutput, ToolParams, TypedTool
 
 from .config import WebSearchToolConfig
 from .repositories import WebSearchRepository, WebSearchResult

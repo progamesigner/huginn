@@ -35,9 +35,8 @@ from app.features.agents.exceptions import (
     AmbiguousInstructionsError,
     MissingModelError,
     UnknownAgentReferenceError,
-    UnknownMCPServerReferenceError,
-    UnknownToolReferenceError,
 )
+from app.features.agents.types import ToolOutput, ToolParams, TypedTool
 from app.features.channels.config import (
     CHANNELS,
     ChannelConfigList,
@@ -52,12 +51,22 @@ from app.features.mcp.config import (
     MCP_SERVERS,
     MCPServerConfig,
     MCPServerConfigList,
+    _validate_agent_mcp_refs,
 )
-from app.features.tools.config import TOOLS, ToolConfig, ToolConfigList, _validate_tools
+from app.features.mcp.exceptions import UnknownMCPServerReferenceError
+from app.features.tools.config import (
+    TOOLS,
+    ToolConfig,
+    ToolConfigList,
+    _validate_agent_tool_refs,
+    _validate_tools,
+)
 from app.features.tools.config import build_sections as build_tool_sections
-from app.features.tools.exceptions import UnknownToolKindError
+from app.features.tools.exceptions import (
+    UnknownToolKindError,
+    UnknownToolReferenceError,
+)
 from app.features.tools.registry import ToolRegistry
-from app.features.tools.types import ToolOutput, ToolParams, TypedTool
 from app.features.tools.websearch.config import WebSearchToolConfig
 
 
@@ -112,7 +121,7 @@ def build_section_registry(tools: ToolRegistry | None = None) -> SectionRegistry
     tool_registry = tools or build_tool_registry()
     for spec in build_tool_sections(tool_registry):
         registry.register(spec)
-    for spec in build_agent_sections(tool_registry):
+    for spec in build_agent_sections():
         registry.register(spec)
     for spec in build_channel_sections(build_channel_registry()):
         registry.register(spec)
@@ -508,7 +517,7 @@ def test_validators_accept_a_fully_consistent_config() -> None:
     )
 
     _validate_tools(config, build_tool_registry())
-    _validate_agents(config, build_tool_registry())
+    _validate_agents(config)
     _validate_channels(config, build_channel_registry())
 
 
@@ -519,7 +528,7 @@ def test_validate_tools_rejects_unregistered_kind() -> None:
         _validate_tools(config, ToolRegistry())
 
 
-def test_validate_agents_rejects_unknown_tool_reference() -> None:
+def test_tools_section_rejects_unknown_tool_reference() -> None:
     config = build_app_config(
         agents={'scout': build_agent(tools=(ToolRef(name='nonexistent'),))},
         tools={'websearch': websearch_config()},
@@ -529,10 +538,10 @@ def test_validate_agents_rejects_unknown_tool_reference() -> None:
         UnknownToolReferenceError,
         match=r'agents\.scout\.tools\[0\]\.name',
     ):
-        _validate_agents(config, build_tool_registry())
+        _validate_agent_tool_refs(config, build_tool_registry())
 
 
-def test_validate_agents_rejects_unknown_mcp_server() -> None:
+def test_mcp_section_rejects_unknown_mcp_server() -> None:
     config = build_app_config(
         agents={'scout': build_agent(mcp=(MCPRef(server='ghost'),))},
     )
@@ -541,7 +550,7 @@ def test_validate_agents_rejects_unknown_mcp_server() -> None:
         UnknownMCPServerReferenceError,
         match=r'agents\.scout\.mcp\[0\]\.server',
     ):
-        _validate_agents(config, build_tool_registry())
+        _validate_agent_mcp_refs(config)
 
 
 def test_validate_agents_requires_exactly_one_instruction_source() -> None:
@@ -549,16 +558,10 @@ def test_validate_agents_requires_exactly_one_instruction_source() -> None:
     neither = build_agent(instructions=None)
 
     with pytest.raises(AmbiguousInstructionsError, match=r'agents\.scout'):
-        _validate_agents(
-            build_app_config(agents={'scout': both}),
-            build_tool_registry(),
-        )
+        _validate_agents(build_app_config(agents={'scout': both}))
 
     with pytest.raises(AmbiguousInstructionsError, match=r'agents\.scout'):
-        _validate_agents(
-            build_app_config(agents={'scout': neither}),
-            build_tool_registry(),
-        )
+        _validate_agents(build_app_config(agents={'scout': neither}))
 
 
 def test_resolve_model_prefers_explicit_over_default() -> None:
@@ -581,7 +584,7 @@ def test_validate_agents_requires_an_effective_model() -> None:
     )
 
     with pytest.raises(MissingModelError, match=r'agents\.scout\.model'):
-        _validate_agents(config, build_tool_registry())
+        _validate_agents(config)
 
 
 def test_validate_agents_accepts_agent_model_without_defaults() -> None:
@@ -590,7 +593,7 @@ def test_validate_agents_accepts_agent_model_without_defaults() -> None:
         defaults=DefaultsConfig(),
     )
 
-    _validate_agents(config, build_tool_registry())
+    _validate_agents(config)
 
 
 def test_validate_channels_requires_an_effective_router_model() -> None:

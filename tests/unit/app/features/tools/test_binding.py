@@ -2,10 +2,10 @@ from typing import Annotated, Any, cast, override
 
 from pydantic import Field
 
-from app.features.tools.binding import ConfiguredTool, build_bound_tool, check_overlay
+from app.features.agents.types import Tool, ToolOutput, ToolParams, ToolSet, TypedTool
+from app.features.tools.binding import ConfiguredTool, build_bound_tool
 from app.features.tools.config import ToolConfig
-from app.features.tools.registry import ToolRegistry, ToolSet
-from app.features.tools.types import Tool, ToolOutput, ToolParams, TypedTool
+from app.features.tools.registry import ToolRegistry
 
 
 class SearchParams(ToolParams):
@@ -138,44 +138,3 @@ def test_same_kind_instances_are_distinguishable_in_a_tool_set() -> None:
     }
 
     assert named == {'search': 'Basic', 'supersearch': 'Deep'}
-
-
-def test_check_overlay_accepts_valid_params_and_inject() -> None:
-    assert (
-        check_overlay(_registry(), 'search', {'max_results': 3}, {'query': 'x'}) is None
-    )
-
-
-def test_check_overlay_rejects_unknown_param_key() -> None:
-    problem = check_overlay(_registry(), 'search', {'bogus': 1}, {})
-
-    assert problem is not None
-    assert 'bogus' in problem
-
-
-def test_check_overlay_rejects_unknown_inject_key() -> None:
-    problem = check_overlay(_registry(), 'search', {}, {'bogus': 1})
-
-    assert problem is not None
-    assert 'bogus' in problem
-
-
-def test_check_overlay_rejects_overlapping_keys() -> None:
-    problem = check_overlay(_registry(), 'search', {'query': 'a'}, {'query': 'b'})
-
-    assert problem is not None
-    assert 'query' in problem
-
-
-def test_check_overlay_rejects_wrong_value_type() -> None:
-    problem = check_overlay(_registry(), 'search', {'max_results': 'lots'}, {})
-
-    assert problem is not None
-    assert 'max_results' in problem
-
-
-def test_check_overlay_rejects_constraint_violation() -> None:
-    problem = check_overlay(_registry(), 'search', {'max_results': 99}, {})
-
-    assert problem is not None
-    assert 'max_results' in problem

@@ -2,19 +2,19 @@ from typing import override
 
 from app.core.config.registry import SectionRegistry
 from app.core.providers.config import ConfigProvider
-from app.features.mcp.providers import MCPConfigProvider
-from app.features.tools.providers import ToolsConfigProvider
-from app.features.tools.registry import ToolRegistry
 from lib.container import ContainerContract, ProviderContract
 
 from .config import build_sections
+from .contracts import ToolSourceRegistry
 
 
 class AgentProvider(ProviderContract):
-    dependencies = (ConfigProvider, ToolsConfigProvider, MCPConfigProvider)
+    dependencies = (ConfigProvider,)
 
     @override
     def __call__(self, container: ContainerContract) -> None:
+        container.bind(ToolSourceRegistry, instance=ToolSourceRegistry())
+
         sections = container.resolve(SectionRegistry)
-        for spec in build_sections(container.resolve(ToolRegistry)):
+        for spec in build_sections():
             sections.register(spec)

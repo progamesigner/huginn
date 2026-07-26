@@ -15,6 +15,14 @@ from app.features.mcp.providers import MCPProvider, _build_servers
 from lib.mcp import MCPClientContract, MCPServer, UnknownMCPServerError
 
 _CONFIG = """
+defaults:
+  model: gpt-5-mini
+
+agents:
+  scout:
+    description: Research agent
+    instructions: You are scout.
+
 mcp_servers:
   memory:
     transport: http

@@ -6,18 +6,8 @@ from pydantic import BaseModel, Field, JsonValue, RootModel
 
 from app.core.config.registry import HuginnConfig, SectionSpec
 from app.core.config.schema import ConfigValue
-from app.features.mcp.config import MCP_SERVERS
-from app.features.tools.binding import check_overlay
-from app.features.tools.config import TOOLS
-from app.features.tools.registry import ToolRegistry
 
-from .exceptions import (
-    AmbiguousInstructionsError,
-    InvalidToolOverlayError,
-    MissingModelError,
-    UnknownMCPServerReferenceError,
-    UnknownToolReferenceError,
-)
+from .exceptions import AmbiguousInstructionsError, MissingModelError
 
 
 class DefaultsConfig(ConfigValue):
@@ -70,9 +60,7 @@ def _describe_agents(config: HuginnConfig) -> list[str]:
     return lines
 
 
-def _validate_agents(config: HuginnConfig, registry: ToolRegistry) -> None:
-    mcp_servers = config.section(MCP_SERVERS).root
-    tools = config.section(TOOLS).root
+def _validate_agents(config: HuginnConfig) -> None:
     default_model = config.section(DEFAULTS).model
 
     for agent_name, agent in config.section(AGENTS).root.items():
@@ -88,35 +76,9 @@ def _validate_agents(config: HuginnConfig, registry: ToolRegistry) -> None:
         except MissingModelError as error:
             raise MissingModelError(f'{base}.model: {error}') from error
 
-        for index, tool in enumerate(agent.tools):
-            if tool.name not in tools:
-                available = ', '.join(sorted(tools)) or 'none'
-                raise UnknownToolReferenceError(
-                    f'{base}.tools[{index}].name: unknown tool {tool.name!r}; '
-                    f'available: {available}',
-                )
 
-            problem = check_overlay(
-                registry,
-                tools[tool.name].kind,
-                tool.params,
-                tool.inject,
-            )
-            if problem is not None:
-                raise InvalidToolOverlayError(f'{base}.tools[{index}]: {problem}')
-
-        for index, mcp in enumerate(agent.mcp):
-            if mcp.server not in mcp_servers:
-                available = ', '.join(sorted(mcp_servers)) or 'none'
-                raise UnknownMCPServerReferenceError(
-                    f'{base}.mcp[{index}].server: unknown mcp server {mcp.server!r}; '
-                    f'available: {available}',
-                )
-
-
-def build_sections(registry: ToolRegistry) -> Iterator[SectionSpec[BaseModel]]:
-    # NOTE: the validator needs the runtime registry to check tool overlays
-    yield replace(AGENTS, validate=lambda config: _validate_agents(config, registry))
+def build_sections() -> Iterator[SectionSpec[BaseModel]]:
+    yield replace(AGENTS, validate=_validate_agents)
     yield DEFAULTS
 
 

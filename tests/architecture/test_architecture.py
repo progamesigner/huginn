@@ -10,19 +10,14 @@ from app.core import exceptions
 # lower tier, which keeps the feature graph a DAG however many features get added; a
 # feature absent from this list may not cross the feature boundary at all.
 FEATURE_TIERS: tuple[frozenset[str], ...] = (
-    frozenset({'channels', 'skills'}),
+    frozenset({'channels', 'skills', 'tools'}),
+    frozenset({'mcp'}),
     frozenset({'agents'}),
-    frozenset({'mcp', 'tools'}),
 )
 # A feature's public face: what it declares and how it is wired, never how it works.
+# There is no exception list; a feature that needs more than this needs a contract on
+# the other side.
 SHARED_SLICES = frozenset({'config', 'contracts', 'exceptions', 'providers', 'types'})
-# Reaching past that, or against the tier order. Every entry states why.
-DECLARED_EXCEPTIONS: dict[tuple[str, str], frozenset[str]] = {
-    # DEBT: agents drives the tool machinery instead of asking for tools
-    ('agents', 'tools'): frozenset({'binding', 'mcp', 'registry'}),
-    # DEBT: agents builds the skill tool itself instead of being handed one
-    ('agents', 'skills'): frozenset({'repositories', 'tools'}),
-}
 FEATURES_PACKAGE = 'app.features'
 EXT_SLICE_NAMES = frozenset({'client', 'types', 'exceptions'})
 BANNED_MODULE_NAMES = frozenset({'models', 'utils'})
@@ -77,9 +72,6 @@ def _cross_feature_violation(feature: str, target: str) -> str | None:
         return f'{target}: cross-feature import must name a submodule, not the package root'
 
     slice_ = rest.split('.')[0]
-    if slice_ in DECLARED_EXCEPTIONS.get((feature, imported), frozenset()):
-        return None
-
     mine, theirs = _tier_of(feature), _tier_of(imported)
     if mine is None or theirs is None:
         return f'{target}: {feature} and {imported} must both appear in FEATURE_TIERS'
@@ -93,7 +85,7 @@ def _cross_feature_violation(feature: str, target: str) -> str | None:
     if slice_ not in SHARED_SLICES:
         return (
             f'{target}: {imported}.{slice_} is an implementation slice;'
-            f' import one of {sorted(SHARED_SLICES)} or declare an exception'
+            f' import one of {sorted(SHARED_SLICES)} instead'
         )
 
     return None
@@ -199,23 +191,28 @@ def test_cross_feature_imports_respect_the_feature_tiers() -> None:
 def test_cross_feature_tier_check_allows_the_public_face_downward() -> None:
     assert _cross_feature_violation('agents', 'app.features.agents.config') is None
     assert _cross_feature_violation('agents', 'lib.llm') is None
-    assert _cross_feature_violation('agents', 'app.features.tools.config') is None
-    assert _cross_feature_violation('agents', 'app.features.tools.registry') is None
     assert _cross_feature_violation('channels', 'app.features.agents.config') is None
-    assert _cross_feature_violation('skills', 'app.features.tools.types') is None
+    assert _cross_feature_violation('skills', 'app.features.agents.contracts') is None
+    assert _cross_feature_violation('tools', 'app.features.agents.types') is None
+    assert _cross_feature_violation('mcp', 'app.features.agents.providers') is None
+    assert _cross_feature_violation('skills', 'app.features.mcp.providers') is None
 
 
 def test_cross_feature_tier_check_flags_violations() -> None:
     # the package root hides which slice is really being used
-    assert _cross_feature_violation('agents', 'app.features.tools') is not None
-    # sideways: two features in the same tier must not know each other
-    assert _cross_feature_violation('channels', 'app.features.skills.types') is not None
-    # downward but too deep: websearch is an implementation slice, not vocabulary
+    assert _cross_feature_violation('tools', 'app.features.agents') is not None
+    # upward: every capability sits above agents, so agents must not reach back up
+    assert _cross_feature_violation('agents', 'app.features.tools.registry') is not None
     assert (
-        _cross_feature_violation('agents', 'app.features.tools.websearch') is not None
+        _cross_feature_violation('agents', 'app.features.skills.repositories')
+        is not None
     )
+    # sideways: two adapters in the same tier must not know each other
+    assert _cross_feature_violation('channels', 'app.features.skills.types') is not None
+    # downward but too deep: services is an implementation slice, not vocabulary
+    assert _cross_feature_violation('tools', 'app.features.agents.services') is not None
     # unplaced features are denied outright
-    assert _cross_feature_violation('probes', 'app.features.tools.registry') is not None
+    assert _cross_feature_violation('probes', 'app.features.agents.types') is not None
 
 
 def test_feature_and_ext_files_avoid_banned_names() -> None:

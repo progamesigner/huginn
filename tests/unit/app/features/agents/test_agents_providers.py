@@ -6,9 +6,9 @@ from app.core.application import App
 from app.core.config.registry import HuginnConfig, SectionRegistry
 from app.core.providers.config import ConfigProvider
 from app.features.agents.config import AGENTS
-from app.features.agents.exceptions import InvalidToolOverlayError
 from app.features.agents.providers import AgentProvider
 from app.features.channels.providers import ChannelProvider
+from app.features.tools.exceptions import InvalidToolOverlayError
 from app.features.tools.providers import (
     ToolProvider,
     ToolRegistryProvider,
@@ -70,20 +70,20 @@ def test_tool_provider_registers_websearch_kind() -> None:
     assert 'websearch' in app.resolve(ToolRegistry).tools
 
 
-def test_tools_config_provider_contributes_tools_section() -> None:
+def test_tools_config_provider_contributes_tools_on_top_of_agents() -> None:
     app = App().build(ToolsConfigProvider())
 
     keys = {spec.key for spec in app.resolve(SectionRegistry)}
 
-    assert keys == {'tools'}
+    assert keys == {'agents', 'defaults', 'tools'}
 
 
-def test_agents_config_provider_contributes_all_sections() -> None:
+def test_agent_provider_contributes_only_its_own_sections() -> None:
     app = App().build(AgentProvider(), ChannelProvider())
 
     keys = {spec.key for spec in app.resolve(SectionRegistry)}
 
-    assert keys == {'agents', 'defaults', 'mcp_servers', 'tools', 'channels'}
+    assert keys == {'agents', 'channels', 'defaults'}
 
 
 def test_agents_config_provider_accepts_valid_tool_overlay(tmp_path: Path) -> None:

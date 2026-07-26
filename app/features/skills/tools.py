@@ -1,16 +1,31 @@
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from typing import Annotated, override
 
 from pydantic import Field
 
-from app.features.tools.types import ToolOutput, ToolParams, TypedTool
+from app.features.agents.config import AgentConfig
+from app.features.agents.contracts import NamedTool, ToolSource
+from app.features.agents.types import ToolOutput, ToolParams, TypedTool
 
 from .repositories import SkillRepository
 from .types import SkillMeta
 
 
-class SkillParams(ToolParams):
-    name: Annotated[str, Field(description='The name of the skill to load')]
+def _build_skill_tool(
+    repository: SkillRepository,
+    inventory: tuple[SkillMeta, ...],
+) -> SkillTool:
+    return SkillTool(repository, inventory)
+
+
+async def _build_agent_skills(
+    repository: SkillRepository,
+    allow: Sequence[str],
+) -> SkillTool:
+    inventory = await repository.inventory()
+    # NOTE: an empty allowlist offers every skill; a non-empty one narrows
+    selected = tuple(meta for meta in inventory if not allow or meta.name in allow)
+    return _build_skill_tool(repository, selected)
 
 
 def _describe(inventory: tuple[SkillMeta, ...]) -> str:
@@ -25,6 +40,10 @@ def _describe(inventory: tuple[SkillMeta, ...]) -> str:
         f'  <skill name={meta.name!r}>{meta.description}</skill>' for meta in inventory
     )
     return f'{intro}\n<skills>\n{entries}\n</skills>'
+
+
+class SkillParams(ToolParams):
+    name: Annotated[str, Field(description='The name of the skill to load')]
 
 
 class SkillTool(TypedTool[SkillParams]):
@@ -56,18 +75,16 @@ class SkillTool(TypedTool[SkillParams]):
         return skill.body
 
 
-def _build_skill_tool(
-    repository: SkillRepository,
-    inventory: tuple[SkillMeta, ...],
-) -> SkillTool:
-    return SkillTool(repository, inventory)
+class SkillToolSource(ToolSource):
+    repository: Callable[[], SkillRepository]
 
+    def __init__(self, repository: Callable[[], SkillRepository]) -> None:
+        self.repository = repository
 
-async def _build_agent_skills(
-    repository: SkillRepository,
-    allow: Sequence[str],
-) -> SkillTool:
-    inventory = await repository.inventory()
-    # NOTE: an empty allowlist offers every skill; a non-empty one narrows
-    selected = tuple(meta for meta in inventory if not allow or meta.name in allow)
-    return _build_skill_tool(repository, selected)
+    @override
+    async def collect(self, agent: AgentConfig) -> Sequence[NamedTool]:
+        if not agent.skills.enabled:
+            return ()
+
+        tool = await _build_agent_skills(self.repository(), agent.skills.allow)
+        return ((tool.name, tool),)

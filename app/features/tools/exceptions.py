@@ -13,5 +13,13 @@ class UnknownToolError(ToolError):
     pass
 
 
+class InvalidToolOverlayError(ConfigError):
+    pass
+
+
 class UnknownToolKindError(ConfigError):
+    pass
+
+
+class UnknownToolReferenceError(ConfigError):
     pass

@@ -1,19 +1,14 @@
-import logging
-from collections.abc import Callable, Mapping
+from collections.abc import Callable
 
-from pydantic import BaseModel, JsonValue, ValidationError
+from pydantic import BaseModel
 
-from lib.llm import ToolCallSegment, ToolResultSegment
+from app.features.agents.types import Tool
 
 from .exceptions import DuplicateToolError, UnknownToolError
-from .types import Tool
-
-logger = logging.getLogger(__name__)
 
 type ToolBuilder = Callable[[BaseModel], Tool]
 type Builders = dict[str, ToolBuilder]
 type Configs = dict[str, type[BaseModel]]
-type Instances = dict[str, Tool]
 type Tools = dict[str, type[Tool]]
 
 
@@ -59,57 +54,3 @@ class ToolRegistry:
     def params_model(self, kind: str) -> type[BaseModel] | None:
         tool = self.tools.get(kind)
         return getattr(tool, 'params', None) if tool is not None else None
-
-
-class ToolSet:
-    tools: Instances
-
-    def __init__(self, tools: Mapping[str, Tool] | None = None) -> None:
-        self.tools = dict(tools or {})
-
-    def add(self, name: str, tool: Tool) -> None:
-        if name in self.tools:
-            raise DuplicateToolError(f'tool {name!r} is already in the set')
-
-        self.tools[name] = tool
-
-    def schemas(self) -> tuple[JsonValue, ...]:
-        return tuple(
-            {
-                'type': 'function',
-                'function': {
-                    'name': name,
-                    'description': tool.description,
-                    'parameters': tool.schema(),
-                },
-            }
-            for name, tool in self.tools.items()
-        )
-
-    async def execute(self, call: ToolCallSegment) -> ToolResultSegment:
-        if call.name not in self.tools:
-            available = ', '.join(sorted(self.tools)) or 'none'
-            return ToolResultSegment(
-                tool_call_id=call.id,
-                content=f'unknown tool {call.name!r}; available: {available}',
-                error=True,
-            )
-
-        tool = self.tools[call.name]
-        try:
-            output = await tool.invoke(call.arguments)
-        except ValidationError as error:
-            return ToolResultSegment(
-                tool_call_id=call.id,
-                content=str(error),
-                error=True,
-            )
-        except Exception:
-            logger.exception('Tool %s raised while executing', call.name)
-            return ToolResultSegment(
-                tool_call_id=call.id,
-                content=f'tool {call.name!r} failed',
-                error=True,
-            )
-
-        return ToolResultSegment(tool_call_id=call.id, content=output, error=False)

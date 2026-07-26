@@ -3,8 +3,8 @@ from typing import override
 
 from pydantic import JsonValue
 
-from app.features.agents.config import MCPRef
-from app.features.agents.services import collect_mcp_tools
+from app.features.agents.config import AgentConfig, MCPRef
+from app.features.mcp.sources import MCPToolSource
 from lib.mcp import MCPClientContract, MCPToolInfo, UnknownMCPServerError
 
 
@@ -39,22 +39,26 @@ def _info(name: str) -> MCPToolInfo:
     return MCPToolInfo(name=name, description='', input_schema={'type': 'object'})
 
 
+def _agent(*refs: MCPRef) -> AgentConfig:
+    return AgentConfig(description='x', instructions='y', mcp=refs)
+
+
 async def test_collect_namespaces_and_applies_allowlist() -> None:
     client = FakeClient({'memory': (_info('recall'), _info('forget'))})
-    refs = [MCPRef(server='memory', allow=('recall',), inject={'user': 'swag'})]
+    agent = _agent(MCPRef(server='memory', allow=('recall',), inject={'user': 'swag'}))
 
-    tools = await collect_mcp_tools(client, refs)
+    named = await MCPToolSource(client).collect(agent)
 
-    assert [tool.name for tool in tools] == ['mcp__memory__recall']
+    assert [name for name, _ in named] == ['mcp__memory__recall']
 
 
 async def test_collect_skips_unavailable_servers() -> None:
     client = FakeClient({'memory': (_info('recall'),)})
-    refs = [
+    agent = _agent(
         MCPRef(server='stock', allow=('quote',)),
         MCPRef(server='memory', allow=('recall',)),
-    ]
+    )
 
-    tools = await collect_mcp_tools(client, refs)
+    named = await MCPToolSource(client).collect(agent)
 
-    assert [tool.name for tool in tools] == ['mcp__memory__recall']
+    assert [name for name, _ in named] == ['mcp__memory__recall']

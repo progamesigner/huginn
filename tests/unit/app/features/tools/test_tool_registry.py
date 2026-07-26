@@ -3,9 +3,10 @@ from typing import Annotated, override
 import pytest
 from pydantic import BaseModel, Field
 
+from app.features.agents.exceptions import DuplicateToolNameError
+from app.features.agents.types import ToolOutput, ToolParams, ToolSet, TypedTool
 from app.features.tools.exceptions import DuplicateToolError, UnknownToolError
-from app.features.tools.registry import ToolRegistry, ToolSet
-from app.features.tools.types import ToolOutput, ToolParams, TypedTool
+from app.features.tools.registry import ToolRegistry
 
 
 class GreetParams(ToolParams):
@@ -99,7 +100,7 @@ def test_toolset_add_rejects_duplicate_name() -> None:
     tools = ToolSet()
     tools.add('greet', GreetTool())
 
-    with pytest.raises(DuplicateToolError, match='greet'):
+    with pytest.raises(DuplicateToolNameError, match='greet'):
         tools.add('greet', GreetTool())
 
 

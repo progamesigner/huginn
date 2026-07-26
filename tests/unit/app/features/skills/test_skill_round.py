@@ -8,9 +8,8 @@ from app.features.agents.config import AgentConfig, SkillsConfig
 from app.features.agents.services import AgentRunner, TurnInput, build_tool_set
 from app.features.skills.repositories import SkillRepository
 from app.features.skills.sources.contracts import SkillSource
+from app.features.skills.tools import SkillToolSource
 from app.features.skills.types import Skill, SkillMeta
-from app.features.tools.config import ToolConfig
-from app.features.tools.registry import ToolRegistry
 from lib.llm import FinishChunk, TextChunk, ToolCallChunk, ToolResultSegment
 from lib.mcp import MCPClientContract, MCPToolInfo
 from lib.temporal import ClockManager
@@ -57,8 +56,7 @@ async def test_agent_loads_a_skill_through_the_tool_loop() -> None:
         instructions='y',
         skills=SkillsConfig(enabled=True),
     )
-    configs: Mapping[str, ToolConfig] = {}
-    tools = await build_tool_set(ToolRegistry(), configs, NoMCP(), agent, repository)
+    tools = await build_tool_set((SkillToolSource(lambda: repository),), agent)
     llm = FakeLLM(
         [
             [

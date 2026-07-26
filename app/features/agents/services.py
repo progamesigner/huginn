@@ -1,6 +1,6 @@
 import asyncio
 import logging
-from collections.abc import AsyncIterator, Callable, Iterator, Mapping, Sequence
+from collections.abc import AsyncIterator, Callable, Iterator, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import cast
@@ -8,12 +8,6 @@ from uuid import uuid4
 
 from structlog.contextvars import bound_contextvars
 
-from app.features.skills.repositories import SkillRepository
-from app.features.skills.tools import _build_agent_skills
-from app.features.tools.binding import build_bound_tool
-from app.features.tools.config import ToolConfig
-from app.features.tools.mcp.bridge import MCPTool, build_mcp_tools
-from app.features.tools.registry import ToolRegistry, ToolSet
 from lib.llm import (
     CompletionChunk,
     CompletionRequest,
@@ -27,11 +21,12 @@ from lib.llm import (
     ToolCallSegment,
     ToolResultSegment,
 )
-from lib.mcp import MCPClientContract, UnknownMCPServerError
 from lib.temporal import ClockContract
 
-from .config import AgentConfig, MCPRef
+from .config import AgentConfig
+from .contracts import ToolSource
 from .exceptions import AgentError, TurnTimeoutError
+from .types import ToolSet
 
 logger = logging.getLogger(__name__)
 
@@ -241,51 +236,15 @@ class AgentRunner:
 
 
 async def build_tool_set(
-    registry: ToolRegistry,
-    tool_configs: Mapping[str, ToolConfig],
-    client: MCPClientContract,
+    sources: Sequence[ToolSource],
     agent: AgentConfig,
-    skills: SkillRepository | None = None,
 ) -> ToolSet:
     tools = ToolSet()
-    for ref in agent.tools:
-        config = tool_configs[ref.name]
-        tools.add(ref.name, build_bound_tool(registry, config, ref.params, ref.inject))
-
-    for tool in await collect_mcp_tools(client, agent.mcp):
-        tools.add(tool.name, tool)
-
-    if agent.skills.enabled and skills is not None:
-        tools.add('skill', await _build_agent_skills(skills, agent.skills.allow))
+    for source in sources:
+        for name, tool in await source.collect(agent):
+            tools.add(name, tool)
 
     return tools
-
-
-async def collect_mcp_tools(
-    client: MCPClientContract,
-    refs: Sequence[MCPRef],
-) -> list[MCPTool]:
-    collected: list[MCPTool] = []
-    for ref in refs:
-        try:
-            infos = await client.list_tools(ref.server)
-        except UnknownMCPServerError:
-            logger.warning(
-                'agent references mcp server %r which is unavailable; skipping',
-                ref.server,
-            )
-            continue
-
-        tools = build_mcp_tools(client, ref.server, infos, ref.allow, ref.inject)
-        if not tools:
-            logger.warning(
-                'mcp server %r contributed no tools for this agent (allow=%s)',
-                ref.server,
-                list(ref.allow),
-            )
-        collected.extend(tools)
-
-    return collected
 
 
 def load_instructions(agent: AgentConfig) -> str:

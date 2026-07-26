@@ -6,7 +6,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from app.exts.felo.client import FeloClient
 from app.features.agents.services import AgentRunner, TurnInput
-from app.features.tools.registry import ToolSet
+from app.features.agents.types import ToolSet
 from app.features.tools.websearch.repositories import WebSearchRepository
 from app.features.tools.websearch.tool import WebSearchTool
 from lib.http import HTTPClientManager

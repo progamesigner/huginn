@@ -5,6 +5,10 @@ class AgentError(Exception):
     pass
 
 
+class DuplicateToolNameError(AgentError):
+    pass
+
+
 class TurnTimeoutError(AgentError):
     pass
 
@@ -18,18 +22,6 @@ class AmbiguousInstructionsError(ConfigError):
 
 
 class UnknownAgentReferenceError(ConfigError):
-    pass
-
-
-class UnknownMCPServerReferenceError(ConfigError):
-    pass
-
-
-class UnknownToolReferenceError(ConfigError):
-    pass
-
-
-class InvalidToolOverlayError(ConfigError):
     pass
 
 

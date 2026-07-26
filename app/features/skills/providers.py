@@ -3,6 +3,8 @@ from typing import override
 from app.core.config.registry import HuginnConfig, SectionRegistry
 from app.core.providers.config import ConfigProvider
 from app.core.providers.temporal import ClockProvider
+from app.features.agents.contracts import ToolSourceRegistry
+from app.features.agents.providers import AgentProvider
 from app.features.mcp.providers import MCPProvider
 from lib.container import ContainerContract, ProviderContract
 from lib.mcp import MCPClientContract
@@ -12,6 +14,7 @@ from .config import SKILLS
 from .exceptions import SkillsNotConfiguredError
 from .repositories import SkillRepository
 from .sources.muninn import MuninnSkillSource
+from .tools import SkillToolSource
 
 
 def _repository(container: ContainerContract) -> SkillRepository:
@@ -29,7 +32,7 @@ def _repository(container: ContainerContract) -> SkillRepository:
 
 
 class SkillsConfigProvider(ProviderContract):
-    dependencies = (ConfigProvider,)
+    dependencies = (AgentProvider, ConfigProvider)
 
     @override
     def __call__(self, container: ContainerContract) -> None:
@@ -42,3 +45,6 @@ class SkillsProvider(ProviderContract):
     @override
     def __call__(self, container: ContainerContract) -> None:
         container.bind(SkillRepository, factory=_repository, shared=True)
+        container.resolve(ToolSourceRegistry).register(
+            lambda: SkillToolSource(lambda: container.resolve(SkillRepository)),
+        )

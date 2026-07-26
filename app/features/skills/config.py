@@ -4,6 +4,9 @@ from pydantic import Field
 
 from app.core.config.registry import HuginnConfig, SectionSpec
 from app.core.config.schema import ConfigValue
+from app.features.agents.config import AGENTS
+
+from .exceptions import SkillsNotConfiguredError
 
 _DEFAULT_GLOB = 'Agents/skills/**/SKILL.md'
 
@@ -21,4 +24,21 @@ def _describe_skills(config: HuginnConfig) -> list[str]:
     return [f'skills: server={skills.server} glob={skills.glob}']
 
 
-SKILLS = SectionSpec('skills', SkillsSourceConfig, describe=_describe_skills)
+def _validate_agent_skill_refs(config: HuginnConfig) -> None:
+    if config.section(SKILLS).server is not None:
+        return
+
+    for agent_name, agent in config.section(AGENTS).root.items():
+        if agent.skills.enabled:
+            raise SkillsNotConfiguredError(
+                f'agents.{agent_name}.skills.enabled is set'
+                f' but skills.server is not configured',
+            )
+
+
+SKILLS = SectionSpec(
+    'skills',
+    SkillsSourceConfig,
+    describe=_describe_skills,
+    validate=_validate_agent_skill_refs,
+)

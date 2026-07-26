@@ -1,12 +1,13 @@
 import json
 from collections.abc import Mapping
-from typing import Any, override
+from typing import override
 
-from pydantic import JsonValue, TypeAdapter, ValidationError
+from pydantic import JsonValue
+
+from app.features.agents.types import Tool, ToolOutput
 
 from .config import ToolConfig
 from .registry import ToolRegistry
-from .types import Tool, ToolOutput
 
 
 def _apply_overlay(
@@ -40,15 +41,6 @@ def _property(schema: JsonValue, default: JsonValue) -> JsonValue:
         return {**schema, 'default': default}
 
     return schema
-
-
-def _type_problem(annotation: Any, value: JsonValue) -> str | None:
-    try:
-        TypeAdapter(annotation).validate_python(value)
-    except ValidationError as error:
-        return '; '.join(item['msg'] for item in error.errors())
-
-    return None
 
 
 class ConfiguredTool(Tool):
@@ -89,31 +81,3 @@ def build_bound_tool(
 ) -> Tool:
     base = registry.build(config.kind, config)
     return ConfiguredTool(base, params, inject, config.description or base.description)
-
-
-def check_overlay(
-    registry: ToolRegistry,
-    kind: str,
-    params: Mapping[str, JsonValue],
-    inject: Mapping[str, JsonValue],
-) -> str | None:
-    if shared := set(params) & set(inject):
-        return f'params and inject cannot share keys: {", ".join(sorted(shared))}'
-
-    model = registry.params_model(kind)
-    fields = model.model_fields if model is not None else {}
-
-    for source, overlay in (('params', params), ('inject', inject)):
-        for key, value in overlay.items():
-            if key not in fields:
-                available = ', '.join(sorted(fields)) or 'none'
-                return (
-                    f'{source} references unknown parameter {key!r}; '
-                    f'available: {available}'
-                )
-
-            problem = _type_problem(fields[key].rebuild_annotation(), value)
-            if problem is not None:
-                return f'{source}.{key}: {problem}'
-
-    return None
