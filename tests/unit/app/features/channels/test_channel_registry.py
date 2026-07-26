@@ -5,7 +5,7 @@ from pydantic import Field, ValidationError
 
 from app.features.channels.config import (
     ChannelConfig,
-    ChannelsConfig,
+    ChannelConfigList,
     _build_channels_config,
 )
 from app.features.channels.registry import ChannelRegistry
@@ -24,7 +24,7 @@ def test_registered_channel_kind_extends_channels_schema() -> None:
     model = _build_channels_config(registry)
 
     channels = cast(
-        ChannelsConfig,
+        ChannelConfigList,
         model.model_validate(
             {
                 'alerts': {

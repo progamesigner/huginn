@@ -9,7 +9,7 @@ from app.core.providers.config import ConfigProvider
 from app.core.providers.settings import SettingsProvider
 from app.core.settings import HuginnSettings
 from app.features.agents.config import AGENTS
-from app.features.agents.providers import AgentsConfigProvider
+from app.features.agents.providers import AgentProvider
 from tests.helpers.settings import make_settings
 
 _MINIMAL = """
@@ -34,7 +34,7 @@ def build_app(
     return App().build(
         SettingsProvider(settings),
         ConfigProvider(path),
-        AgentsConfigProvider(),
+        AgentProvider(),
     )
 
 

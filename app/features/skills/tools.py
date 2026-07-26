@@ -56,18 +56,18 @@ class SkillTool(TypedTool[SkillParams]):
         return skill.body
 
 
-def build_skill_tool(
+def _build_skill_tool(
     repository: SkillRepository,
     inventory: tuple[SkillMeta, ...],
 ) -> SkillTool:
     return SkillTool(repository, inventory)
 
 
-async def build_agent_skills(
+async def _build_agent_skills(
     repository: SkillRepository,
     allow: Sequence[str],
 ) -> SkillTool:
     inventory = await repository.inventory()
     # NOTE: an empty allowlist offers every skill; a non-empty one narrows
     selected = tuple(meta for meta in inventory if not allow or meta.name in allow)
-    return build_skill_tool(repository, selected)
+    return _build_skill_tool(repository, selected)

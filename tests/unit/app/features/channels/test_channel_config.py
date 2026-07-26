@@ -1,14 +1,14 @@
 import pytest
 from pydantic import SecretStr, ValidationError
 
-from app.features.channels.config import ChannelConfig, ChannelsConfig
+from app.features.channels.config import ChannelConfig, ChannelConfigList
 from app.features.channels.exceptions import UnknownChannelKindError
 from app.features.channels.registry import ChannelRegistry
 from app.features.channels.telegram.config import TelegramChannelConfig
 
 
 def test_channels_support_multiple_named_telegram_instances() -> None:
-    config = ChannelsConfig(
+    config = ChannelConfigList(
         {
             'support_bot': TelegramChannelConfig(
                 kind='telegram',

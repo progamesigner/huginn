@@ -9,7 +9,7 @@ from uuid import uuid4
 from structlog.contextvars import bound_contextvars
 
 from app.features.skills.repositories import SkillRepository
-from app.features.skills.tools import build_agent_skills
+from app.features.skills.tools import _build_agent_skills
 from app.features.tools.binding import build_bound_tool
 from app.features.tools.config import ToolConfig
 from app.features.tools.mcp.bridge import MCPTool, build_mcp_tools
@@ -256,7 +256,7 @@ async def build_tool_set(
         tools.add(tool.name, tool)
 
     if agent.skills.enabled and skills is not None:
-        tools.add('skill', await build_agent_skills(skills, agent.skills.allow))
+        tools.add('skill', await _build_agent_skills(skills, agent.skills.allow))
 
     return tools
 

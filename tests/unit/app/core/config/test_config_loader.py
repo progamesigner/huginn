@@ -23,7 +23,7 @@ from app.features.agents.config import (
     AGENTS,
     DEFAULTS,
     AgentConfig,
-    AgentsConfig,
+    AgentConfigList,
     DefaultsConfig,
     MCPRef,
     ToolRef,
@@ -40,18 +40,22 @@ from app.features.agents.exceptions import (
 )
 from app.features.channels.config import (
     CHANNELS,
+    ChannelConfigList,
     ChannelRouterConfig,
-    ChannelsConfig,
     _validate_channels,
 )
 from app.features.channels.config import build_sections as build_channel_sections
 from app.features.channels.exceptions import DuplicateChannelSecretError
 from app.features.channels.registry import ChannelRegistry
 from app.features.channels.telegram.config import TelegramChannelConfig
-from app.features.tools.config import TOOLS, ToolConfig, ToolsConfig, _validate_tools
+from app.features.tools.config import TOOLS, ToolConfig, ToolConfigList, _validate_tools
 from app.features.tools.config import build_sections as build_tool_sections
 from app.features.tools.exceptions import UnknownToolKindError
-from app.features.tools.mcp.config import MCP_SERVERS, MCPServerConfig, MCPServersConfig
+from app.features.tools.mcp.config import (
+    MCP_SERVERS,
+    MCPServerConfig,
+    MCPServerConfigList,
+)
 from app.features.tools.registry import ToolRegistry
 from app.features.tools.types import ToolOutput, ToolParams, TypedTool
 from app.features.tools.websearch.config import WebSearchToolConfig
@@ -141,15 +145,15 @@ def build_app_config(
     agents: dict[str, AgentConfig] | None = None,
     tools: dict[str, WebSearchToolConfig] | None = None,
     mcp_servers: dict[str, MCPServerConfig] | None = None,
-    channels: ChannelsConfig | None = None,
+    channels: ChannelConfigList | None = None,
     defaults: DefaultsConfig | None = None,
 ) -> HuginnConfig:
     return HuginnConfig(
         {
-            'agents': AgentsConfig(agents or {}),
-            'tools': ToolsConfig(tools or {}),
-            'mcp_servers': MCPServersConfig(mcp_servers or {}),
-            'channels': channels or ChannelsConfig({}),
+            'agents': AgentConfigList(agents or {}),
+            'tools': ToolConfigList(tools or {}),
+            'mcp_servers': MCPServerConfigList(mcp_servers or {}),
+            'channels': channels or ChannelConfigList({}),
             'defaults': defaults or DefaultsConfig(model='test-model'),
         },
     )
@@ -493,7 +497,7 @@ def test_validators_accept_a_fully_consistent_config() -> None:
                 url=HttpUrl('https://memory.example.internal/mcp'),
             ),
         },
-        channels=ChannelsConfig(
+        channels=ChannelConfigList(
             {
                 'support_bot': telegram_channel(
                     bindings={'12345': 'scout'},
@@ -592,7 +596,7 @@ def test_validate_agents_accepts_agent_model_without_defaults() -> None:
 def test_validate_channels_requires_an_effective_router_model() -> None:
     config = build_app_config(
         agents={'scout': build_agent()},
-        channels=ChannelsConfig(
+        channels=ChannelConfigList(
             {
                 'support_bot': telegram_channel(
                     router=ChannelRouterConfig(fallback='scout'),
@@ -609,7 +613,7 @@ def test_validate_channels_requires_an_effective_router_model() -> None:
 def test_validate_channels_rejects_unknown_binding_agent() -> None:
     config = build_app_config(
         agents={'scout': build_agent()},
-        channels=ChannelsConfig(
+        channels=ChannelConfigList(
             {'support_bot': telegram_channel(bindings={'42': 'ghost'})},
         ),
     )
@@ -621,7 +625,7 @@ def test_validate_channels_rejects_unknown_binding_agent() -> None:
 def test_validate_channels_rejects_unknown_router_fallback() -> None:
     config = build_app_config(
         agents={'scout': build_agent()},
-        channels=ChannelsConfig(
+        channels=ChannelConfigList(
             {
                 'support_bot': telegram_channel(
                     router=ChannelRouterConfig(fallback='ghost'),
@@ -637,7 +641,7 @@ def test_validate_channels_rejects_unknown_router_fallback() -> None:
 def test_validate_channels_rejects_duplicate_secret_token() -> None:
     config = build_app_config(
         agents={'scout': build_agent()},
-        channels=ChannelsConfig(
+        channels=ChannelConfigList(
             {
                 'support_bot': telegram_channel(agent='scout'),
                 'research_bot': telegram_channel(agent='scout'),

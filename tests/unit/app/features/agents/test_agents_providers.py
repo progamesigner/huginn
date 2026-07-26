@@ -7,7 +7,7 @@ from app.core.config.registry import HuginnConfig, SectionRegistry
 from app.core.providers.config import ConfigProvider
 from app.features.agents.config import AGENTS
 from app.features.agents.exceptions import InvalidToolOverlayError
-from app.features.agents.providers import AgentsConfigProvider
+from app.features.agents.providers import AgentProvider
 from app.features.channels.providers import ChannelProvider
 from app.features.tools.providers import (
     ToolProvider,
@@ -79,7 +79,7 @@ def test_tools_config_provider_contributes_tools_section() -> None:
 
 
 def test_agents_config_provider_contributes_all_sections() -> None:
-    app = App().build(AgentsConfigProvider(), ChannelProvider())
+    app = App().build(AgentProvider(), ChannelProvider())
 
     keys = {spec.key for spec in app.resolve(SectionRegistry)}
 
@@ -89,7 +89,7 @@ def test_agents_config_provider_contributes_all_sections() -> None:
 def test_agents_config_provider_accepts_valid_tool_overlay(tmp_path: Path) -> None:
     path = tmp_path / 'huginn.yaml'
     path.write_text(_VALID_OVERLAY)
-    app = App().build(ConfigProvider(path), ToolProvider(), AgentsConfigProvider())
+    app = App().build(ConfigProvider(path), ToolProvider(), AgentProvider())
 
     config = app.resolve(HuginnConfig)
 
@@ -99,7 +99,7 @@ def test_agents_config_provider_accepts_valid_tool_overlay(tmp_path: Path) -> No
 def test_agents_config_provider_rejects_invalid_tool_overlay(tmp_path: Path) -> None:
     path = tmp_path / 'huginn.yaml'
     path.write_text(_INVALID_OVERLAY)
-    app = App().build(ConfigProvider(path), ToolProvider(), AgentsConfigProvider())
+    app = App().build(ConfigProvider(path), ToolProvider(), AgentProvider())
 
     with pytest.raises(InvalidToolOverlayError):
         app.resolve(HuginnConfig)

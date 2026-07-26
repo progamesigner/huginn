@@ -10,7 +10,7 @@ from .compaction import CompactionService
 from .repositories import ConversationRepository
 
 
-class ConversationsProvider(ProviderContract):
+class ConversationProvider(ProviderContract):
     dependencies = (DatabaseProvider, GUIDProvider, LLMProvider, ClockProvider)
 
     @override

@@ -21,7 +21,7 @@ def _token_codec(container: ContainerContract) -> IdentityTokenCodec:
     return IdentityTokenCodec(configured.get_secret_value().encode())
 
 
-class IdentitiesProvider(ProviderContract):
+class IdentityProvider(ProviderContract):
     dependencies = (DatabaseProvider, GUIDProvider, ClockProvider)
 
     @override
@@ -37,8 +37,8 @@ class IdentitiesProvider(ProviderContract):
         container.bind(IdentityResolver, constructor=IdentityResolver, scoped=True)
 
 
-class IdentitiesCommandProvider(ProviderContract):
-    dependencies = (CommandProvider, IdentitiesProvider)
+class IdentityCommandProvider(ProviderContract):
+    dependencies = (CommandProvider, IdentityProvider)
 
     @override
     def __call__(self, container: ContainerContract) -> None:

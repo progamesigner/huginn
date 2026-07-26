@@ -10,7 +10,7 @@ from pydantic import SecretStr
 
 from app.core.config.registry import HuginnConfig
 from app.exts.telegram.types import Update
-from app.features.channels.config import ChannelsConfig
+from app.features.channels.config import ChannelConfigList
 from app.features.channels.telegram.actor import TelegramChatActor
 from app.features.channels.telegram.config import TelegramChannelConfig
 from app.features.channels.telegram.handlers import TelegramUpdateHandler
@@ -63,7 +63,7 @@ def telegram(secret: str) -> TelegramChannelConfig:
 
 
 def make_config(channels: dict[str, TelegramChannelConfig]) -> HuginnConfig:
-    return HuginnConfig(sections={'channels': ChannelsConfig(channels)})
+    return HuginnConfig(sections={'channels': ChannelConfigList(channels)})
 
 
 def make_redis(store: set[str], *, fail: bool = False) -> MagicMock:

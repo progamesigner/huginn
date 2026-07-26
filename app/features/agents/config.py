@@ -51,7 +51,7 @@ class AgentConfig(ConfigValue):
     skills: Annotated[SkillsConfig, Field()] = Field(default_factory=SkillsConfig)
 
 
-class AgentsConfig(RootModel[dict[str, AgentConfig]]):
+class AgentConfigList(RootModel[dict[str, AgentConfig]]):
     pass
 
 
@@ -129,7 +129,7 @@ def resolve_model(explicit: str | None, default: str | None) -> str:
 
 AGENTS = SectionSpec(
     'agents',
-    AgentsConfig,
+    AgentConfigList,
     required=True,
     describe=_describe_agents,
 )

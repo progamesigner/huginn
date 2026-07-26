@@ -1,11 +1,11 @@
 import pytest
 from pydantic import HttpUrl, SecretStr, ValidationError
 
-from app.features.tools.mcp.config import MCPServerConfig, MCPServersConfig
+from app.features.tools.mcp.config import MCPServerConfig, MCPServerConfigList
 
 
 def test_mcp_servers_config_holds_named_declarations() -> None:
-    servers = MCPServersConfig(
+    servers = MCPServerConfigList(
         {
             'memory': MCPServerConfig(
                 transport='http',

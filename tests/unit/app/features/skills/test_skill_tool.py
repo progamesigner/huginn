@@ -3,7 +3,7 @@ from typing import override
 
 from app.features.skills.repositories import SkillRepository
 from app.features.skills.sources.contracts import SkillSource
-from app.features.skills.tools import SkillParams, build_skill_tool
+from app.features.skills.tools import SkillParams, _build_skill_tool
 from app.features.skills.types import Skill, SkillMeta
 from app.features.tools.registry import ToolSet
 from lib.llm import ToolCallSegment
@@ -35,7 +35,7 @@ async def build(*names: str) -> tuple[ToolSet, SkillRepository]:
     repository = SkillRepository(source, FakeClock(), ttl=timedelta(minutes=15))
     inventory = await repository.inventory()
     tools = ToolSet()
-    tools.add('skill', build_skill_tool(repository, inventory))
+    tools.add('skill', _build_skill_tool(repository, inventory))
     return tools, repository
 
 

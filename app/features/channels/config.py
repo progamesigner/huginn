@@ -38,7 +38,7 @@ class ChannelConfig(ConfigValue):
     router: Annotated[ChannelRouterConfig | None, Field()] = None
 
 
-class ChannelsConfig(RootModel[dict[str, ChannelConfig]]):
+class ChannelConfigList(RootModel[dict[str, ChannelConfig]]):
     pass
 
 
@@ -65,8 +65,8 @@ def _channel_kind(value: object) -> str | None:
 def _build_channels_config(registry: ChannelRegistry) -> type[BaseModel]:
     element = _channel_config_element(registry.config_models)
     return create_model(
-        'ChannelsConfig',
-        __base__=ChannelsConfig,
+        'ChannelConfigList',
+        __base__=ChannelConfigList,
         root=(dict[str, element], ...),
     )
 
@@ -143,6 +143,6 @@ def build_sections(registry: ChannelRegistry) -> Iterator[SectionSpec[BaseModel]
 
 CHANNELS = SectionSpec(
     'channels',
-    ChannelsConfig,
+    ChannelConfigList,
     describe=_describe_channels,
 )

@@ -9,7 +9,7 @@ from lib.container import ContainerContract, ProviderContract
 from .config import build_sections
 
 
-class AgentsConfigProvider(ProviderContract):
+class AgentProvider(ProviderContract):
     dependencies = (ConfigProvider, ToolsConfigProvider, MCPConfigProvider)
 
     @override

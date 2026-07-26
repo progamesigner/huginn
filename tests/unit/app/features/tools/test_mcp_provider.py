@@ -10,8 +10,8 @@ from mcp.shared.memory import create_connected_server_and_client_session
 
 from app.core.application import App
 from app.core.providers.config import ConfigProvider
-from app.features.tools.mcp.config import MCPServersConfig
-from app.features.tools.providers import MCPProvider, build_servers
+from app.features.tools.mcp.config import MCPServerConfigList
+from app.features.tools.providers import MCPProvider, _build_servers
 from lib.mcp import MCPClientContract, MCPServer, UnknownMCPServerError
 
 _CONFIG = """
@@ -41,7 +41,7 @@ async def _memory_connector(_: MCPServer) -> AsyncIterator[ClientSession]:
 
 
 def test_build_servers_maps_auth_to_bearer_header() -> None:
-    config = MCPServersConfig.model_validate_json(
+    config = MCPServerConfigList.model_validate_json(
         json.dumps(
             {
                 'memory': {
@@ -54,7 +54,7 @@ def test_build_servers_maps_auth_to_bearer_header() -> None:
         ),
     )
 
-    servers = {server.name: server for server in build_servers(config)}
+    servers = {server.name: server for server in _build_servers(config)}
 
     assert servers['memory'].headers == {'Authorization': 'Bearer secret-token'}
     assert servers['stock'].headers == {}

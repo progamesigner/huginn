@@ -18,7 +18,7 @@ class ToolConfig(ConfigValue):
     description: Annotated[str | None, Field()] = None
 
 
-class ToolsConfig(RootModel[dict[str, ToolConfig]]):
+class ToolConfigList(RootModel[dict[str, ToolConfig]]):
     pass
 
 
@@ -49,8 +49,8 @@ def _tool_kind(value: object) -> str | None:
 def _build_tools_config(registry: ToolRegistry) -> type[BaseModel]:
     element = _tool_config_element(registry.config_models)
     return create_model(
-        'ToolsConfig',
-        __base__=ToolsConfig,
+        'ToolConfigList',
+        __base__=ToolConfigList,
         root=(dict[str, element], ...),
     )
 
@@ -80,6 +80,6 @@ def build_sections(registry: ToolRegistry) -> Iterator[SectionSpec[BaseModel]]:
 
 TOOLS = SectionSpec(
     'tools',
-    ToolsConfig,
+    ToolConfigList,
     describe=_describe_tools,
 )

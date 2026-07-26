@@ -3,7 +3,7 @@ from pydantic import ValidationError
 
 from app.features.agents.config import (
     AgentConfig,
-    AgentsConfig,
+    AgentConfigList,
     DefaultsConfig,
     MCPRef,
     ToolRef,
@@ -11,7 +11,7 @@ from app.features.agents.config import (
 
 
 def test_agents_config_accepts_full_example() -> None:
-    agents = AgentsConfig(
+    agents = AgentConfigList(
         {
             'scout': AgentConfig(
                 description='General-purpose research agent',

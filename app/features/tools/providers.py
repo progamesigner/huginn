@@ -15,7 +15,7 @@ from lib.mcp import (
 )
 
 from .config import build_sections
-from .mcp.config import MCP_SERVERS, MCPServerConfig, MCPServersConfig
+from .mcp.config import MCP_SERVERS, MCPServerConfig, MCPServerConfigList
 from .registry import ToolRegistry
 from .websearch.config import WebSearchToolConfig
 from .websearch.repositories import WebSearchRepository
@@ -29,7 +29,7 @@ def _headers(server: MCPServerConfig) -> dict[str, str]:
     return {'Authorization': f'Bearer {server.auth.get_secret_value()}'}
 
 
-def build_servers(config: MCPServersConfig) -> list[MCPServer]:
+def _build_servers(config: MCPServerConfigList) -> list[MCPServer]:
     return [
         MCPServer(name=name, url=str(server.url), headers=_headers(server))
         for name, server in config.root.items()
@@ -72,7 +72,7 @@ class MCPProvider(ProviderContract):
             # NOTE: no config file at all means no servers; a malformed one still fails
             return MCPManager([], connector)
 
-        return MCPManager(build_servers(config.section(MCP_SERVERS)), connector)
+        return MCPManager(_build_servers(config.section(MCP_SERVERS)), connector)
 
 
 class ToolRegistryProvider(ProviderContract):

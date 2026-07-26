@@ -14,7 +14,7 @@ class MCPServerConfig(ConfigValue):
     auth: Annotated[SecretStr | None, Field()] = None
 
 
-class MCPServersConfig(RootModel[dict[str, MCPServerConfig]]):
+class MCPServerConfigList(RootModel[dict[str, MCPServerConfig]]):
     pass
 
 
@@ -25,6 +25,6 @@ def _describe_mcp_servers(config: HuginnConfig) -> list[str]:
 
 MCP_SERVERS = SectionSpec(
     'mcp_servers',
-    MCPServersConfig,
+    MCPServerConfigList,
     describe=_describe_mcp_servers,
 )

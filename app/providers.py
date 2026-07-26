@@ -1,14 +1,14 @@
 from typing import override
 
 from app.core.providers.config import ConfigCommandProvider
-from app.features.agents.providers import AgentsConfigProvider
+from app.features.agents.providers import AgentProvider
 from app.features.auditor.providers import AuditCommandProvider, AuditorProvider
 from app.features.channels.providers import ChannelEndpointProvider, ChannelProvider
 from app.features.channels.telegram.providers import TelegramProvider
-from app.features.conversations.providers import ConversationsProvider
+from app.features.conversations.providers import ConversationProvider
 from app.features.identities.providers import (
-    IdentitiesCommandProvider,
-    IdentitiesProvider,
+    IdentityCommandProvider,
+    IdentityProvider,
 )
 from app.features.probes.providers import ProbesEndpointProvider
 from app.features.skills.providers import SkillsProvider
@@ -18,11 +18,11 @@ from lib.container import ContainerContract, ProviderContract
 
 class HuginnProvider(ProviderContract):
     dependencies = (
-        AgentsConfigProvider,
+        AgentProvider,
         AuditorProvider,
         ChannelProvider,
-        ConversationsProvider,
-        IdentitiesProvider,
+        ConversationProvider,
+        IdentityProvider,
         MCPProvider,
         SkillsProvider,
         TelegramProvider,
@@ -46,7 +46,7 @@ class HuginnCommandProvider(ProviderContract):
     dependencies = (
         AuditCommandProvider,
         ConfigCommandProvider,
-        IdentitiesCommandProvider,
+        IdentityCommandProvider,
     )
 
     @override
