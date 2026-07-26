@@ -7,6 +7,7 @@ from lib.container import ContainerContract, ProviderContract
 from .config import build_sections
 from .registry import ChannelRegistry
 from .telegram.config import TelegramChannelConfig
+from .telegram.providers import TelegramEndpointProvider
 
 
 class ChannelRegistryProvider(ProviderContract):
@@ -26,3 +27,11 @@ class ChannelProvider(ProviderContract):
         sections = container.resolve(SectionRegistry)
         for spec in build_sections(registry):
             sections.register(spec)
+
+
+class ChannelEndpointProvider(ProviderContract):
+    dependencies = (ChannelProvider, TelegramEndpointProvider)
+
+    @override
+    def __call__(self, container: ContainerContract) -> None:
+        pass

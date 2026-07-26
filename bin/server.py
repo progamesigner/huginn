@@ -9,13 +9,8 @@ from app.core.application import App
 from app.core.providers.bootstrap import BootstrapProvider
 from app.core.providers.router import RouterProvider
 from app.core.providers.settings import SettingsProvider
-from app.features.channels.telegram.providers import TelegramWebhookEndpointProvider
-from app.features.probes.providers import ProbesEndpointProvider
-from app.features.providers import FeaturesProvider
-from app.features.tools.providers import MCPProvider
+from app.providers import HuginnEndpointProvider, HuginnProvider
 from lib.router import RouterContract
-
-ENDPOINTS = (ProbesEndpointProvider(), TelegramWebhookEndpointProvider())
 
 
 class ServerOptions(BaseSettings):
@@ -30,10 +25,9 @@ def build() -> App:
     return App().build(
         SettingsProvider(),
         BootstrapProvider(),
-        FeaturesProvider(),
-        MCPProvider(),
         RouterProvider(excludes=frozenset({'/healthz', '/readyz'})),
-        *ENDPOINTS,
+        HuginnProvider(),
+        HuginnEndpointProvider(),
     )
 
 

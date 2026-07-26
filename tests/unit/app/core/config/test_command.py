@@ -8,8 +8,7 @@ from app.core.application import App
 from app.core.providers.bootstrap import BootstrapProvider
 from app.core.providers.settings import SettingsProvider
 from app.core.settings import HuginnSettings
-from app.features.providers import FeaturesProvider
-from bin.cli import COMMANDS
+from app.providers import HuginnCommandProvider, HuginnProvider
 from lib.command import CommandContract
 from tests.helpers.settings import make_settings
 
@@ -49,8 +48,8 @@ def invoke_cli(
     container = App().build(
         SettingsProvider(settings),
         BootstrapProvider(),
-        FeaturesProvider(),
-        *COMMANDS,
+        HuginnProvider(),
+        HuginnCommandProvider(),
     )
     return runner.invoke(container.resolve(CommandContract).app, arguments)
 

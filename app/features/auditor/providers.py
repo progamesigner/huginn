@@ -8,12 +8,19 @@ from lib.container import ContainerContract, ProviderContract
 from .services import RedisAuditor
 
 
+class AuditorProvider(ProviderContract):
+    dependencies = (RedisProvider,)
+
+    @override
+    def __call__(self, container: ContainerContract) -> None:
+        container.bind(RedisAuditor, constructor=RedisAuditor, scoped=True)
+
+
 class AuditCommandProvider(ProviderContract):
-    dependencies = (CommandProvider, RedisProvider)
+    dependencies = (CommandProvider, AuditorProvider)
 
     @override
     def __call__(self, container: ContainerContract) -> None:
         from .commands import cli
 
-        container.bind(RedisAuditor, constructor=RedisAuditor, scoped=True)
         container.resolve(CommandContract).mount('audit', cli)

@@ -2,18 +2,9 @@ from pydantic import ValidationError
 
 from app.core.application import App
 from app.core.providers.bootstrap import BootstrapProvider
-from app.core.providers.config import ConfigCommandProvider
 from app.core.providers.settings import SettingsProvider
-from app.features.auditor.providers import AuditCommandProvider
-from app.features.identities.providers import IdentitiesCommandProvider
-from app.features.providers import FeaturesProvider
+from app.providers import HuginnCommandProvider, HuginnProvider
 from lib.command import CommandContract, echo
-
-COMMANDS = (
-    AuditCommandProvider(),
-    ConfigCommandProvider(),
-    IdentitiesCommandProvider(),
-)
 
 
 def main() -> None:
@@ -21,8 +12,8 @@ def main() -> None:
         container = App().build(
             SettingsProvider(),
             BootstrapProvider(),
-            FeaturesProvider(),
-            *COMMANDS,
+            HuginnProvider(),
+            HuginnCommandProvider(),
         )
     except ValidationError as error:
         echo(str(error), err=True)
