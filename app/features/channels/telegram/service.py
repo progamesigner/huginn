@@ -50,6 +50,10 @@ class TelegramMessageHandler(ChannelMessageHandlerContract):
         self.http = http
         self.redis = redis
 
+    def gateway(self, channel: TelegramChannelConfig) -> ChannelGatewayContract:
+        client = TelegramClient(http=self.http, bot_token=channel.token)
+        return TelegramGateway(client, self.clock)
+
     @override
     async def handle(self, message: InboundMessage) -> None:
         channel = self._channel(message.channel)
@@ -66,6 +70,10 @@ class TelegramMessageHandler(ChannelMessageHandlerContract):
             return
 
         self.background.spawn(self._process(message, channel))
+
+    def _channel(self, name: str) -> TelegramChannelConfig | None:
+        channel = self.config.section(CHANNELS).root.get(name)
+        return channel if isinstance(channel, TelegramChannelConfig) else None
 
     async def _process(
         self,
@@ -90,11 +98,3 @@ class TelegramMessageHandler(ChannelMessageHandlerContract):
             # NOTE: dedupe is best-effort; availability beats exactly-once here
             logger.warning('Dedupe unavailable; processing without it: %s', error)
             return True
-
-    def gateway(self, channel: TelegramChannelConfig) -> ChannelGatewayContract:
-        client = TelegramClient(http=self.http, bot_token=channel.token)
-        return TelegramGateway(client, self.clock)
-
-    def _channel(self, name: str) -> TelegramChannelConfig | None:
-        channel = self.config.section(CHANNELS).root.get(name)
-        return channel if isinstance(channel, TelegramChannelConfig) else None
