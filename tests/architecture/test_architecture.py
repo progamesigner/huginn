@@ -35,7 +35,18 @@ SHARED_SLICES = frozenset(
 )
 FEATURES_PACKAGE = 'app.features'
 EXTS_PACKAGE = 'app.exts'
-EXT_SLICE_NAMES = frozenset({'client', 'types', 'exceptions'})
+# An ext may expose a vendor's transport as well as its client: `endpoints` for what
+# the vendor calls inbound, `gateway` for what we call outbound. Both talk to the app
+# only through app.core.channels ports, so an ext still never imports a feature.
+EXT_SLICE_NAMES = frozenset(
+    {
+        'client',
+        'endpoints',
+        'exceptions',
+        'gateway',
+        'types',
+    },
+)
 BANNED_MODULE_NAMES = frozenset({'models', 'utils'})
 
 
@@ -359,7 +370,13 @@ def test_banned_name_check_flags_models_and_utils() -> None:
 def test_ext_vocabulary_check_flags_unknown_names() -> None:
     assert _unknown_ext_name(Path('felo/client.py')) is None
     assert _unknown_ext_name(Path('felo/__init__.py')) is None
+    # a vendor's own transport, inbound and outbound
+    assert _unknown_ext_name(Path('telegram/endpoints.py')) is None
+    assert _unknown_ext_name(Path('telegram/gateway.py')) is None
+    # orchestration still has no home here, whatever it is called
     assert _unknown_ext_name(Path('felo/service.py')) is not None
+    assert _unknown_ext_name(Path('telegram/actor.py')) is not None
+    assert _unknown_ext_name(Path('telegram/providers.py')) is not None
 
 
 def test_feature_files_do_not_retype_vendor_facts() -> None:

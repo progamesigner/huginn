@@ -22,9 +22,8 @@ class FakeReply(ChannelReplyContract):
         self.finished = True
 
 
-# NOTE: typing the parameter is the assertion -- it makes ty prove that a core
-# reply port is usable as the agent loop's sink without either side importing
-# the other. The whole point of keeping TextSink in agents rests on this.
+# NOTE: typing the parameter is the assertion — it makes ty prove a core reply
+# port works as the agent loop's sink without either side importing the other
 async def drive(sink: TextSink, *fragments: str) -> None:
     for fragment in fragments:
         await sink(fragment)
