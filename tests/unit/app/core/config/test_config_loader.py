@@ -48,14 +48,14 @@ from app.features.channels.config import build_sections as build_channel_section
 from app.features.channels.exceptions import DuplicateChannelSecretError
 from app.features.channels.registry import ChannelRegistry
 from app.features.channels.telegram.config import TelegramChannelConfig
-from app.features.tools.config import TOOLS, ToolConfig, ToolConfigList, _validate_tools
-from app.features.tools.config import build_sections as build_tool_sections
-from app.features.tools.exceptions import UnknownToolKindError
-from app.features.tools.mcp.config import (
+from app.features.mcp.config import (
     MCP_SERVERS,
     MCPServerConfig,
     MCPServerConfigList,
 )
+from app.features.tools.config import TOOLS, ToolConfig, ToolConfigList, _validate_tools
+from app.features.tools.config import build_sections as build_tool_sections
+from app.features.tools.exceptions import UnknownToolKindError
 from app.features.tools.registry import ToolRegistry
 from app.features.tools.types import ToolOutput, ToolParams, TypedTool
 from app.features.tools.websearch.config import WebSearchToolConfig

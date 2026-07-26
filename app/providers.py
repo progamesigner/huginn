@@ -10,9 +10,10 @@ from app.features.identities.providers import (
     IdentityCommandProvider,
     IdentityProvider,
 )
+from app.features.mcp.providers import MCPProvider
 from app.features.probes.providers import ProbesEndpointProvider
 from app.features.skills.providers import SkillsProvider
-from app.features.tools.providers import MCPProvider, ToolProvider
+from app.features.tools.providers import ToolProvider
 from lib.container import ContainerContract, ProviderContract
 
 

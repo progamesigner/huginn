@@ -10,8 +10,8 @@ from mcp.shared.memory import create_connected_server_and_client_session
 
 from app.core.application import App
 from app.core.providers.config import ConfigProvider
-from app.features.tools.mcp.config import MCPServerConfigList
-from app.features.tools.providers import MCPProvider, _build_servers
+from app.features.mcp.config import MCPServerConfigList
+from app.features.mcp.providers import MCPProvider, _build_servers
 from lib.mcp import MCPClientContract, MCPServer, UnknownMCPServerError
 
 _CONFIG = """

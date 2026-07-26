@@ -17,7 +17,9 @@ CROSS_FEATURE_SURFACE: dict[tuple[str, str], frozenset[str]] = {
         },
     ),
     ('agents', 'skills'): frozenset({'repositories', 'tools'}),
-    ('skills', 'tools'): frozenset({'providers', 'types'}),
+    ('agents', 'mcp'): frozenset({'config', 'providers'}),
+    ('skills', 'mcp'): frozenset({'providers'}),
+    ('skills', 'tools'): frozenset({'types'}),
     ('channels', 'agents'): frozenset({'config', 'exceptions'}),
     ('agents', 'channels'): frozenset({'config'}),
 }

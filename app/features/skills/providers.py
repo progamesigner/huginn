@@ -3,7 +3,7 @@ from typing import override
 from app.core.config.registry import HuginnConfig, SectionRegistry
 from app.core.providers.config import ConfigProvider
 from app.core.providers.temporal import ClockProvider
-from app.features.tools.providers import MCPProvider
+from app.features.mcp.providers import MCPProvider
 from lib.container import ContainerContract, ProviderContract
 from lib.mcp import MCPClientContract
 from lib.temporal import ClockContract

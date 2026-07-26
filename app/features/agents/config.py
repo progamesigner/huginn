@@ -6,9 +6,9 @@ from pydantic import BaseModel, Field, JsonValue, RootModel
 
 from app.core.config.registry import HuginnConfig, SectionSpec
 from app.core.config.schema import ConfigValue
+from app.features.mcp.config import MCP_SERVERS
 from app.features.tools.binding import check_overlay
 from app.features.tools.config import TOOLS
-from app.features.tools.mcp.config import MCP_SERVERS
 from app.features.tools.registry import ToolRegistry
 
 from .exceptions import (

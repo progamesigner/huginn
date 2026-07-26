@@ -2,7 +2,8 @@ from typing import override
 
 from app.core.config.registry import SectionRegistry
 from app.core.providers.config import ConfigProvider
-from app.features.tools.providers import MCPConfigProvider, ToolsConfigProvider
+from app.features.mcp.providers import MCPConfigProvider
+from app.features.tools.providers import ToolsConfigProvider
 from app.features.tools.registry import ToolRegistry
 from lib.container import ContainerContract, ProviderContract
 
