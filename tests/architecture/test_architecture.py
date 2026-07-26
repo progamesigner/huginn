@@ -14,13 +14,25 @@ from app.core import exceptions
 # feature absent from this list may not cross the feature boundary at all.
 FEATURE_TIERS: tuple[frozenset[str], ...] = (
     frozenset({'channels', 'skills', 'tools'}),
+    frozenset({'conversations'}),
+    frozenset({'identities'}),
     frozenset({'mcp'}),
     frozenset({'agents'}),
 )
 # A feature's public face: what it declares and how it is wired, never how it works.
 # There is no exception list; a feature that needs more than this needs a contract on
-# the other side.
-SHARED_SLICES = frozenset({'config', 'contracts', 'exceptions', 'providers', 'types'})
+# the other side. Schemas are public because a cross-feature query has to name the
+# other feature's tables; its repositories stay private.
+SHARED_SLICES = frozenset(
+    {
+        'config',
+        'contracts',
+        'exceptions',
+        'providers',
+        'schemas',
+        'types',
+    },
+)
 FEATURES_PACKAGE = 'app.features'
 EXTS_PACKAGE = 'app.exts'
 EXT_SLICE_NAMES = frozenset({'client', 'types', 'exceptions'})
@@ -282,6 +294,12 @@ def test_cross_feature_tier_check_allows_the_public_face_downward() -> None:
     assert _cross_feature_violation('tools', 'app.features.agents.types') is None
     assert _cross_feature_violation('mcp', 'app.features.agents.providers') is None
     assert _cross_feature_violation('skills', 'app.features.mcp.providers') is None
+    # a cross-feature query names the other feature's tables
+    turns = 'app.features.conversations.schemas.sqlalchemy'
+    users = 'app.features.identities.schemas.sqlalchemy'
+
+    assert _cross_feature_violation('channels', turns) is None
+    assert _cross_feature_violation('conversations', users) is None
 
 
 def test_cross_feature_tier_check_flags_violations() -> None:
@@ -299,6 +317,15 @@ def test_cross_feature_tier_check_flags_violations() -> None:
     assert _cross_feature_violation('tools', 'app.features.agents.services') is not None
     # unplaced features are denied outright
     assert _cross_feature_violation('probes', 'app.features.agents.types') is not None
+    # agents is the innermost tier: nothing sits below it, so it stays sealed
+    users = 'app.features.identities.schemas.sqlalchemy'
+
+    assert _cross_feature_violation('agents', users) is not None
+    # schemas are public, the repositories that query them are not
+    assert (
+        _cross_feature_violation('channels', 'app.features.conversations.repositories')
+        is not None
+    )
 
 
 def test_feature_and_ext_files_avoid_banned_names() -> None:
