@@ -36,7 +36,8 @@ class ExternalIdentityRecord(AppRecord):
     profile: Mapped[JsonValue] = mapped_column()
     linked_at: Mapped[datetime] = mapped_column(server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
-        server_default=func.now(), onupdate=func.now()
+        server_default=func.now(),
+        onupdate=func.now(),
     )
 
 
@@ -48,7 +49,7 @@ class IdentityAuditEventRecord(AppRecord):
 
     event_type: Mapped[str] = mapped_column()
     user_id: Mapped[UUID | None] = mapped_column(
-        ForeignKey('users.id', ondelete='SET NULL')
+        ForeignKey('users.id', ondelete='SET NULL'),
     )
     external_identity_id: Mapped[UUID | None] = mapped_column()
     provider: Mapped[str] = mapped_column()

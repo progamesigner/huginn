@@ -49,7 +49,7 @@ async def test_websearch_live() -> None:
     api_key = require_felo_api_key()
 
     result = await build_client(HTTPClientManager(), api_key).search(
-        "today's weather in Taipei"
+        "today's weather in Taipei",
     )
 
     assert result.answer

@@ -18,7 +18,7 @@ class RedisProvider(ProviderContract):
                 raise RedisError('redis urls are not configured')
 
             return RedisManager(
-                {name: str(url.get_secret_value()) for name, url in configured.items()}
+                {name: str(url.get_secret_value()) for name, url in configured.items()},
             )
 
         container.bind(RedisContract, factory=_factory, shared=True)

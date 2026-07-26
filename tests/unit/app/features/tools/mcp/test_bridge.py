@@ -52,7 +52,11 @@ def test_build_denies_every_tool_when_allow_is_empty() -> None:
 
 def test_build_filters_to_the_allowlist() -> None:
     tools = build_mcp_tools(
-        FakeClient(), 'memory', [_info('a'), _info('b')], ('a',), {}
+        FakeClient(),
+        'memory',
+        [_info('a'), _info('b')],
+        ('a',),
+        {},
     )
 
     assert [tool.name for tool in tools] == ['mcp__memory__a']
@@ -86,7 +90,7 @@ async def test_invoke_merges_injected_parameters() -> None:
 
     assert output == 'called'
     assert client.calls == [
-        ('memory', 'recall', {'query': 'hi', 'agent': 'default', 'user': 'swag'})
+        ('memory', 'recall', {'query': 'hi', 'agent': 'default', 'user': 'swag'}),
     ]
 
 

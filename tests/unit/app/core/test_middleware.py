@@ -44,10 +44,14 @@ async def test_binds_fresh_request_id_per_request() -> None:
     second = {}
 
     await RequestContextMiddleware(capturing_app(first))(
-        {'type': 'http', 'path': '/anything'}, receive, send
+        {'type': 'http', 'path': '/anything'},
+        receive,
+        send,
     )
     await RequestContextMiddleware(capturing_app(second))(
-        {'type': 'http', 'path': '/anything'}, receive, send
+        {'type': 'http', 'path': '/anything'},
+        receive,
+        send,
     )
 
     assert first['request_id'] != second['request_id']
@@ -57,7 +61,8 @@ async def test_binds_fresh_request_id_per_request() -> None:
 async def test_skips_excluded_paths(path: str) -> None:
     seen = {}
     middleware = RequestContextMiddleware(
-        capturing_app(seen), excludes=frozenset({'/healthz', '/readyz'})
+        capturing_app(seen),
+        excludes=frozenset({'/healthz', '/readyz'}),
     )
 
     await middleware({'type': 'http', 'path': path}, receive, send)

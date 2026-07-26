@@ -43,7 +43,7 @@ def configure_logging(
                 structlog.stdlib.ProcessorFormatter.remove_processors_meta,
                 renderer,
             ],
-        )
+        ),
     )
 
     root = logging.getLogger()

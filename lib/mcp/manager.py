@@ -75,7 +75,7 @@ class _Connection:
         await self.ready.wait()
         if self.session is None:
             raise MCPConnectionError(
-                f'{self.server.name}: {_describe(self.error)}'
+                f'{self.server.name}: {_describe(self.error)}',
             ) from self.error
 
     async def aclose(self) -> None:
@@ -134,7 +134,7 @@ class MCPManager(MCPClientContract):
 
     async def dispose(self) -> None:
         await asyncio.gather(
-            *(connection.aclose() for connection in self.connections.values())
+            *(connection.aclose() for connection in self.connections.values()),
         )
         self.connections.clear()
 

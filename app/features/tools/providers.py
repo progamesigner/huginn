@@ -63,7 +63,7 @@ class MCPProvider(ProviderContract):
 
     def _build(self, container: ContainerContract) -> MCPManager:
         connector = self.connector or streamable_http_connector(
-            container.resolve(HTTPClientContract)
+            container.resolve(HTTPClientContract),
         )
 
         try:

@@ -30,7 +30,7 @@ def _interpolate(
         name = match.group(1)
         if name not in environment:
             raise MissingEnvironmentVariableError(
-                f'{path}: environment variable {name!r} is not set'
+                f'{path}: environment variable {name!r} is not set',
             )
 
         return environment[name]
@@ -47,7 +47,7 @@ def _resolve_value_from(
         case {'env': str(name), **rest} if not rest:
             if name not in environment:
                 raise MissingEnvironmentVariableError(
-                    f'{path}: environment variable {name!r} is not set'
+                    f'{path}: environment variable {name!r} is not set',
                 )
 
             return environment[name]
@@ -56,11 +56,11 @@ def _resolve_value_from(
                 return Path(file_path).read_text(encoding='utf-8').strip()
             except OSError as error:
                 raise MissingConfigFileError(
-                    f'{path}: file {file_path!r} does not exist'
+                    f'{path}: file {file_path!r} does not exist',
                 ) from error
         case _:
             raise InvalidValueReferenceError(
-                f'{path}: value_from must be exactly one of {{env: NAME}} or {{file: PATH}}'
+                f'{path}: value_from must be exactly one of {{env: NAME}} or {{file: PATH}}',
             )
 
 
@@ -99,7 +99,7 @@ def _read_yaml(path: Path) -> JsonValue:
         text = path.read_text(encoding='utf-8')
     except OSError as error:
         raise MissingConfigFileError(
-            f'config file {str(path)!r} does not exist'
+            f'config file {str(path)!r} does not exist',
         ) from error
 
     return yaml.safe_load(text) or {}
@@ -112,7 +112,7 @@ def _parse_sections(
     if unknown := sorted(key for key in resolved if key not in registry):
         known = ', '.join(sorted(spec.key for spec in registry)) or 'none'
         raise UnknownSectionError(
-            f'unknown config sections: {", ".join(unknown)}; known: {known}'
+            f'unknown config sections: {", ".join(unknown)}; known: {known}',
         )
 
     sections = {}

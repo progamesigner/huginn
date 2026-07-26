@@ -109,7 +109,10 @@ class IdentityRepository:
         return _to_user(record) if record else None
 
     async def find_external(
-        self, provider: str, realm: str, external_user_id: str
+        self,
+        provider: str,
+        realm: str,
+        external_user_id: str,
     ) -> ExternalIdentity | None:
         query = select(ExternalIdentityRecord).where(
             ExternalIdentityRecord.provider == provider,

@@ -32,7 +32,8 @@ class FakeClient:
         self.requests = []
 
     async def stream(
-        self, request: CompletionRequest
+        self,
+        request: CompletionRequest,
     ) -> AsyncIterator[CompletionChunk]:
         self.requests.append(request)
         if self.error is not None:
@@ -91,7 +92,9 @@ async def test_resolve_uses_router_llm_choice_when_valid() -> None:
     channel = ChannelConfig(kind='test', router=_router())
 
     agent = await Router(agents, FakeLLM(_saying('scout')), 'm').resolve(
-        channel, '999', 'research this'
+        channel,
+        '999',
+        'research this',
     )
 
     assert agent is agents['scout']
@@ -102,7 +105,9 @@ async def test_resolve_parses_choice_from_a_decorated_reply() -> None:
     channel = ChannelConfig(kind='test', router=_router())
 
     agent = await Router(agents, FakeLLM(_saying('I choose scout.')), 'm').resolve(
-        channel, '999', 'hi'
+        channel,
+        '999',
+        'hi',
     )
 
     assert agent is agents['scout']
@@ -113,7 +118,9 @@ async def test_resolve_falls_back_when_llm_picks_unknown_agent() -> None:
     channel = ChannelConfig(kind='test', router=_router())
 
     agent = await Router(agents, FakeLLM(_saying('banana')), 'm').resolve(
-        channel, '999', 'hi'
+        channel,
+        '999',
+        'hi',
     )
 
     assert agent is agents['concierge']
@@ -124,7 +131,9 @@ async def test_resolve_falls_back_when_reply_is_ambiguous() -> None:
     channel = ChannelConfig(kind='test', router=_router())
 
     agent = await Router(agents, FakeLLM(_saying('scout or concierge')), 'm').resolve(
-        channel, '999', 'hi'
+        channel,
+        '999',
+        'hi',
     )
 
     assert agent is agents['concierge']
@@ -154,7 +163,9 @@ async def test_resolve_uses_router_model_for_selection() -> None:
     channel = ChannelConfig(kind='test', router=_router(model='router-model'))
 
     await Router(_agents(), FakeLLM(client), 'default-model').resolve(
-        channel, '999', 'hi'
+        channel,
+        '999',
+        'hi',
     )
 
     assert client.requests[0].model == 'router-model'
@@ -165,7 +176,9 @@ async def test_resolve_falls_back_to_default_model_for_selection() -> None:
     channel = ChannelConfig(kind='test', router=_router())
 
     await Router(_agents(), FakeLLM(client), 'default-model').resolve(
-        channel, '999', 'hi'
+        channel,
+        '999',
+        'hi',
     )
 
     assert client.requests[0].model == 'default-model'

@@ -82,6 +82,7 @@ markers = [
 extend-select = [
     "ASYNC", # flake8-async
     "B",     # flake8-bugbear
+    "COM",   # flake8-commas
     "DTZ",   # flake8-datetimez
     "G",     # flake8-logging-format
     "I",     # isort

@@ -34,8 +34,8 @@ async def test_audit_classifies_every_key_and_lists_other() -> None:
                 b'agent:memory:channel:telegram:user:42:messages',
                 b'BifrostSemanticCachePlugin:abc',
                 b'registration:\xff',
-            )
-        )
+            ),
+        ),
     )
 
     report = await auditor.run()

@@ -108,7 +108,7 @@ def _validate_channels(config: HuginnConfig, registry: ChannelRegistry) -> None:
             owner = secrets.setdefault(secret.get_secret_value(), name)
             if owner != name:
                 raise DuplicateChannelSecretError(
-                    f'{base}.secret_token: duplicates channels.{owner}'
+                    f'{base}.secret_token: duplicates channels.{owner}',
                 )
 
         if channel.agent is not None:

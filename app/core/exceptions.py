@@ -30,12 +30,12 @@ class AppError(Exception):
         if 'code' in cls.__dict__:
             if hasattr(cls, 'codespace') and cls.code not in cls.codespace:
                 raise TypeError(
-                    f'{cls.__name__} code {cls.code} outside {cls.codespace}'
+                    f'{cls.__name__} code {cls.code} outside {cls.codespace}',
                 )
 
             if (owner := AppError.claimed.setdefault(cls.code, cls)) is not cls:
                 raise TypeError(
-                    f'{cls.__name__} reuses code {cls.code} of {owner.__name__}'
+                    f'{cls.__name__} reuses code {cls.code} of {owner.__name__}',
                 )
 
     def __init__(

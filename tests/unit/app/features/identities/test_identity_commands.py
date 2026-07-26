@@ -48,7 +48,7 @@ def dependencies() -> tuple[MagicMock, MagicMock]:
             'opaque-token',
             'ABCD-EFGH-IJKL-MNOP-QRST-UVWX-YZ12-3456',
             datetime(2026, 1, 1, tzinfo=UTC),
-        )
+        ),
     )
     service.unlink = AsyncMock(return_value=True)
     return repository, service

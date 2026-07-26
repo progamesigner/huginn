@@ -39,7 +39,7 @@ def _include_transitive_dependencies(
                 raise BuildError(
                     f'provider {type(provider).__name__} depends on'
                     f' {dependency.__name__}, which needs explicit construction'
-                    f' arguments and must be listed'
+                    f' arguments and must be listed',
                 ) from error
 
             items[dependency] = instance

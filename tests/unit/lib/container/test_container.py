@@ -347,7 +347,9 @@ async def test_scoped_binding_may_depend_on_root_singleton() -> None:
     container = Container()
     container.bind(Greeter, factory=lambda _: Greeter('root'), shared=True)
     container.bind(
-        Farewell, factory=lambda c: Farewell(c.resolve(Greeter)), scoped=True
+        Farewell,
+        factory=lambda c: Farewell(c.resolve(Greeter)),
+        scoped=True,
     )
 
     async with container.scope() as scope:
@@ -358,7 +360,9 @@ async def test_singleton_cannot_capture_scoped_binding() -> None:
     container = Container()
     container.bind(Greeter, factory=lambda _: Greeter('scoped'), scoped=True)
     container.bind(
-        Farewell, factory=lambda c: Farewell(c.resolve(Greeter)), shared=True
+        Farewell,
+        factory=lambda c: Farewell(c.resolve(Greeter)),
+        shared=True,
     )
 
     async with container.scope() as scope:

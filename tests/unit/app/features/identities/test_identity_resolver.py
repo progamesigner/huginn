@@ -21,7 +21,7 @@ async def test_resolve_returns_linked_principal_for_known_identity() -> None:
             'telegram',
             'primary',
             '42',
-        )
+        ),
     )
 
     principal = await IdentityResolver(repository).resolve(

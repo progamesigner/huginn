@@ -34,7 +34,8 @@ class FakeLLM:
         self.requests = []
 
     async def stream(
-        self, request: CompletionRequest
+        self,
+        request: CompletionRequest,
     ) -> AsyncIterator[CompletionChunk]:
         self.requests.append(request)
         for chunk in self.responses.pop(0):
@@ -152,7 +153,7 @@ async def test_run_returns_text_immediately_when_no_tool_calls() -> None:
                 TextChunk(text='llo'),
                 FinishChunk(reason='stop'),
             ],
-        ]
+        ],
     )
     runner = AgentRunner(llm, make_toolset(), ClockManager())
     fragments = []
@@ -175,7 +176,7 @@ async def test_run_executes_single_tool_call_then_finishes() -> None:
                 FinishChunk(reason='tool_calls'),
             ],
             [TextChunk(text='done'), FinishChunk(reason='stop')],
-        ]
+        ],
     )
     runner = AgentRunner(llm, make_toolset(), ClockManager())
 
@@ -209,7 +210,7 @@ async def test_run_executes_multiple_tool_calls_in_one_turn() -> None:
                 FinishChunk(reason='tool_calls'),
             ],
             [TextChunk(text='done'), FinishChunk(reason='stop')],
-        ]
+        ],
     )
     runner = AgentRunner(llm, make_toolset(), ClockManager())
 
@@ -242,7 +243,7 @@ async def test_run_executes_tool_calls_concurrently() -> None:
                 FinishChunk(reason='tool_calls'),
             ],
             [TextChunk(text='done'), FinishChunk(reason='stop')],
-        ]
+        ],
     )
     runner = AgentRunner(llm, make_toolset(), ClockManager())
 
@@ -275,7 +276,7 @@ async def test_run_iterates_across_multiple_turns_until_no_tool_calls() -> None:
                 FinishChunk(reason='tool_calls'),
             ],
             [TextChunk(text='done'), FinishChunk(reason='stop')],
-        ]
+        ],
     )
     runner = AgentRunner(llm, make_toolset(), ClockManager())
 
@@ -321,7 +322,7 @@ async def test_run_reports_tool_timeout_as_error_and_continues(
                 FinishChunk(reason='tool_calls'),
             ],
             [TextChunk(text='done'), FinishChunk(reason='stop')],
-        ]
+        ],
     )
     runner = AgentRunner(llm, make_toolset(), ClockManager())
 
@@ -352,7 +353,7 @@ async def test_run_raises_turn_timeout_when_whole_turn_exceeds_budget(
                 ),
                 FinishChunk(reason='tool_calls'),
             ],
-        ]
+        ],
     )
     runner = AgentRunner(llm, make_toolset(), ClockManager())
 
@@ -386,7 +387,7 @@ async def test_run_records_steps_for_each_iteration(
                 FinishChunk(reason='tool_calls'),
             ],
             [TextChunk(text='done'), FinishChunk(reason='stop')],
-        ]
+        ],
     )
     runner = AgentRunner(llm, make_toolset(), ClockManager())
 
@@ -416,7 +417,7 @@ async def test_run_records_failed_tool_execution_in_steps() -> None:
                 FinishChunk(reason='tool_calls'),
             ],
             [TextChunk(text='done'), FinishChunk(reason='stop')],
-        ]
+        ],
     )
     runner = AgentRunner(llm, make_toolset(), ClockManager())
 
@@ -438,7 +439,7 @@ async def test_tool_duration_is_measured_by_the_injected_clock() -> None:
                 FinishChunk(reason='tool_calls'),
             ],
             [TextChunk(text='done'), FinishChunk(reason='stop')],
-        ]
+        ],
     )
     runner = AgentRunner(llm, tools, clock)
 
@@ -458,7 +459,7 @@ def probe_response() -> list[CompletionChunk]:
 
 async def test_run_binds_turn_id_during_tool_execution() -> None:
     llm = FakeLLM(
-        [probe_response(), [TextChunk(text='done'), FinishChunk(reason='stop')]]
+        [probe_response(), [TextChunk(text='done'), FinishChunk(reason='stop')]],
     )
     probe = ProbeTool()
     tools = ToolSet()
@@ -478,7 +479,7 @@ async def test_run_generates_unique_turn_id_per_turn() -> None:
             [TextChunk(text='done'), FinishChunk(reason='stop')],
             probe_response(),
             [TextChunk(text='done'), FinishChunk(reason='stop')],
-        ]
+        ],
     )
     probe = ProbeTool()
     tools = ToolSet()

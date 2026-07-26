@@ -47,8 +47,8 @@ async def test_invite_stores_only_keyed_digest(session: AsyncSession) -> None:
     record = (
         await session.execute(
             select(IdentityLinkInviteRecord).where(
-                IdentityLinkInviteRecord.user_id == user.id
-            )
+                IdentityLinkInviteRecord.user_id == user.id,
+            ),
         )
     ).scalar_one()
 
@@ -102,7 +102,7 @@ async def test_concurrent_completion_creates_one_link_and_success_event(
                     ExternalIdentityRecord.provider == 'telegram',
                     ExternalIdentityRecord.realm == realm,
                     ExternalIdentityRecord.external_user_id == '42',
-                )
+                ),
             )
             successes = await verification.scalar(
                 select(func.count())
@@ -110,7 +110,7 @@ async def test_concurrent_completion_creates_one_link_and_success_event(
                 .where(
                     IdentityAuditEventRecord.event_type == 'link_succeeded',
                     IdentityAuditEventRecord.realm == realm,
-                )
+                ),
             )
 
             assert first == second
@@ -119,11 +119,11 @@ async def test_concurrent_completion_creates_one_link_and_success_event(
 
             await verification.execute(
                 delete(IdentityAuditEventRecord).where(
-                    IdentityAuditEventRecord.realm == realm
-                )
+                    IdentityAuditEventRecord.realm == realm,
+                ),
             )
             await verification.execute(
-                delete(UserRecord).where(UserRecord.handle == handle)
+                delete(UserRecord).where(UserRecord.handle == handle),
             )
             await verification.commit()
     finally:

@@ -58,7 +58,7 @@ async def test_loading_a_skill_returns_its_body() -> None:
     tools, _ = await build('alpha')
 
     result = await tools.execute(
-        ToolCallSegment(id='c1', name='skill', arguments='{"name": "alpha"}')
+        ToolCallSegment(id='c1', name='skill', arguments='{"name": "alpha"}'),
     )
 
     assert not result.error
@@ -69,7 +69,7 @@ async def test_unknown_skill_lists_the_available_ones() -> None:
     tools, _ = await build('alpha', 'beta')
 
     result = await tools.execute(
-        ToolCallSegment(id='c1', name='skill', arguments='{"name": "gamma"}')
+        ToolCallSegment(id='c1', name='skill', arguments='{"name": "gamma"}'),
     )
 
     assert "unknown skill 'gamma'" in result.content

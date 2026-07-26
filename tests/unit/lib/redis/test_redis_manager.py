@@ -21,7 +21,7 @@ async def test_named_instance_uses_an_independent_client() -> None:
         {
             None: 'redis://cache/0',
             'queue': 'redis://queue/1',
-        }
+        },
     )
 
     async with manager.connect() as default, manager.connect('queue') as queue:

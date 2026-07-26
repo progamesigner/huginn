@@ -74,9 +74,9 @@ async def test_compact_end_to_end_against_real_postgres(session: AsyncSession) -
     llm_client = FakeLLM(
         [
             _summary_chunks(
-                '{"summary": "recap", "key_facts": ["fact"], "open_items": []}'
-            )
-        ]
+                '{"summary": "recap", "key_facts": ["fact"], "open_items": []}',
+            ),
+        ],
     )
     service = CompactionService(
         FakeLLMContract(llm_client),
@@ -119,7 +119,7 @@ async def test_compact_leaves_database_untouched_when_llm_output_is_not_json(
         [
             [TextChunk(text='not json at all'), FinishChunk(reason='stop')],
             [TextChunk(text='still not json'), FinishChunk(reason='stop')],
-        ]
+        ],
     )
     service = CompactionService(
         FakeLLMContract(llm_client),
@@ -156,12 +156,14 @@ async def test_second_compaction_folds_prior_summary_turn(
         [
             _summary_chunks(
                 '{"summary": "first recap", "key_facts": ["fact-a"],'
-                ' "open_items": ["todo-a"]}'
-            )
-        ]
+                ' "open_items": ["todo-a"]}',
+            ),
+        ],
     )
     first_service = CompactionService(
-        FakeLLMContract(first_llm), repository, keep_turns=1
+        FakeLLMContract(first_llm),
+        repository,
+        keep_turns=1,
     )
     first_result = await first_service.maybe_compact(conversation, 'test-model')
     assert first_result.compacted is True
@@ -178,12 +180,14 @@ async def test_second_compaction_folds_prior_summary_turn(
         [
             _summary_chunks(
                 '{"summary": "combined recap",'
-                ' "key_facts": ["fact-a", "fact-b"], "open_items": []}'
-            )
-        ]
+                ' "key_facts": ["fact-a", "fact-b"], "open_items": []}',
+            ),
+        ],
     )
     second_service = CompactionService(
-        FakeLLMContract(second_llm), repository, keep_turns=1
+        FakeLLMContract(second_llm),
+        repository,
+        keep_turns=1,
     )
 
     second_result = await second_service.maybe_compact(conversation, 'test-model')
@@ -203,7 +207,8 @@ async def test_second_compaction_folds_prior_summary_turn(
     # real turns, but turns are append-only: the first summary turn is still
     # directly queryable, just no longer part of the active window
     all_recent = await repository.load_recent_turns(
-        second_result.conversation, limit=50
+        second_result.conversation,
+        limit=50,
     )
     assert first_summary_id in [turn.id for turn in all_recent]
 
@@ -225,7 +230,7 @@ async def test_concurrent_compact_yields_exactly_one_winner(database_url: str) -
                     [Part(role='user', kind='text', payload={'text': f'turn {index}'})],
                 )
                 for index in range(5)
-            ]
+            ],
         )
         await session_setup.commit()
     finally:
@@ -310,7 +315,7 @@ async def test_concurrent_compact_yields_exactly_one_winner(database_url: str) -
         assert len(summary_turns) == 1
     finally:
         await session_verify.execute(
-            sa.delete(ConversationRecord).where(ConversationRecord.id == final.id)
+            sa.delete(ConversationRecord).where(ConversationRecord.id == final.id),
         )
         await session_verify.commit()
         await session_verify.close()

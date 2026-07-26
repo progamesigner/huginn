@@ -80,7 +80,7 @@ def _validate_agents(config: HuginnConfig, registry: ToolRegistry) -> None:
 
         if (agent.instructions is None) == (agent.instructions_file is None):
             raise AmbiguousInstructionsError(
-                f'{base}: exactly one of instructions/instructions_file is required'
+                f'{base}: exactly one of instructions/instructions_file is required',
             )
 
         try:
@@ -93,7 +93,7 @@ def _validate_agents(config: HuginnConfig, registry: ToolRegistry) -> None:
                 available = ', '.join(sorted(tools)) or 'none'
                 raise UnknownToolReferenceError(
                     f'{base}.tools[{index}].name: unknown tool {tool.name!r}; '
-                    f'available: {available}'
+                    f'available: {available}',
                 )
 
             problem = check_overlay(
@@ -110,7 +110,7 @@ def _validate_agents(config: HuginnConfig, registry: ToolRegistry) -> None:
                 available = ', '.join(sorted(mcp_servers)) or 'none'
                 raise UnknownMCPServerReferenceError(
                     f'{base}.mcp[{index}].server: unknown mcp server {mcp.server!r}; '
-                    f'available: {available}'
+                    f'available: {available}',
                 )
 
 

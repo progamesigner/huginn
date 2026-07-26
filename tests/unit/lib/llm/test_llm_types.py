@@ -20,7 +20,9 @@ from lib.llm import (
 
 def test_tool_call_segment_holds_raw_json_arguments() -> None:
     segment = ToolCallSegment(
-        id='call_1', name='search', arguments='{"query": "huginn"}'
+        id='call_1',
+        name='search',
+        arguments='{"query": "huginn"}',
     )
 
     assert segment.id == 'call_1'

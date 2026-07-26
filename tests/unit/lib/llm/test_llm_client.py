@@ -22,7 +22,7 @@ def test_provider_config_requires_api_key() -> None:
                 'name': 'anthropic',
                 'adapter': 'anthropic',
                 'models': ('claude-opus-4-8',),
-            }
+            },
         )
 
 

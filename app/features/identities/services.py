@@ -155,7 +155,10 @@ class IdentityLinkingService:
         return True
 
     def _invalid_reason(
-        self, invite: IdentityLinkInvite, provider: str, realm: str
+        self,
+        invite: IdentityLinkInvite,
+        provider: str,
+        realm: str,
     ) -> str | None:
         if invite.provider != provider or invite.realm != realm:
             return 'realm_mismatch'

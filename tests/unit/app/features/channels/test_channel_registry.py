@@ -31,8 +31,8 @@ def test_registered_channel_kind_extends_channels_schema() -> None:
                     'kind': 'discord',
                     'webhook_url': 'https://discord.example/webhook',
                     'agent': 'operator',
-                }
-            }
+                },
+            },
         ),
     )
 

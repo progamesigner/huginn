@@ -18,7 +18,7 @@ class FakeScript:
         args: Sequence[object] | None = None,
     ) -> object:
         self.client.evaluated.append(
-            (self.script, tuple(keys or ()), tuple(args or ()))
+            (self.script, tuple(keys or ()), tuple(args or ())),
         )
         return self.client.outcomes.pop(0) if self.client.outcomes else 1
 

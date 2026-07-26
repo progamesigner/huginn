@@ -36,7 +36,7 @@ async def _drive(engine: AsyncEngine, direction: str, revision: str) -> None:
 async def _public_tables(engine: AsyncEngine) -> set[str]:
     async with engine.connect() as connection:
         result = await connection.execute(
-            text("select tablename from pg_tables where schemaname = 'public'")
+            text("select tablename from pg_tables where schemaname = 'public'"),
         )
         return {row[0] for row in result}
 

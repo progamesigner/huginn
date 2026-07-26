@@ -62,9 +62,9 @@ def test_build_messages_collects_tool_call_segments() -> None:
                     'id': 'call_1',
                     'type': 'function',
                     'function': {'name': 'search', 'arguments': '{}'},
-                }
+                },
             ],
-        }
+        },
     ]
 
 
@@ -77,7 +77,7 @@ def test_build_messages_maps_tool_result_to_tool_role_entry() -> None:
     )
 
     assert list(build_messages(messages)) == [
-        {'role': 'tool', 'tool_call_id': 'call_1', 'content': '42'}
+        {'role': 'tool', 'tool_call_id': 'call_1', 'content': '42'},
     ]
 
 
@@ -112,7 +112,7 @@ def test_build_messages_preserves_order_across_messages() -> None:
 
 def test_decode_chunk_yields_text_delta() -> None:
     chunk = make_chunk(
-        Choice(index=0, delta=ChoiceDelta(content='hi'), finish_reason=None)
+        Choice(index=0, delta=ChoiceDelta(content='hi'), finish_reason=None),
     )
 
     assert list(decode_chunk(chunk)) == [TextChunk(text='hi')]
@@ -132,13 +132,13 @@ def test_decode_chunk_yields_single_tool_call_fragment() -> None:
                 id='call_1',
                 function=ChoiceDeltaToolCallFunction(name='search', arguments='{"q'),
                 type='function',
-            )
-        ]
+            ),
+        ],
     )
     chunk = make_chunk(Choice(index=0, delta=delta, finish_reason=None))
 
     assert list(decode_chunk(chunk)) == [
-        ToolCallChunk(index=0, id='call_1', name='search', arguments='{"q')
+        ToolCallChunk(index=0, id='call_1', name='search', arguments='{"q'),
     ]
 
 
@@ -155,7 +155,7 @@ def test_decode_chunk_yields_interleaved_multi_tool_calls_in_order() -> None:
                 function=ChoiceDeltaToolCallFunction(name='other', arguments=''),
                 type='function',
             ),
-        ]
+        ],
     )
     chunk = make_chunk(Choice(index=0, delta=delta, finish_reason=None))
 
@@ -187,7 +187,7 @@ def test_decode_chunk_maps_deprecated_function_call_finish_reason_to_tool_calls(
     None
 ):
     chunk = make_chunk(
-        Choice(index=0, delta=ChoiceDelta(), finish_reason='function_call')
+        Choice(index=0, delta=ChoiceDelta(), finish_reason='function_call'),
     )
 
     assert list(decode_chunk(chunk)) == [FinishChunk(reason='tool_calls')]
@@ -195,7 +195,7 @@ def test_decode_chunk_maps_deprecated_function_call_finish_reason_to_tool_calls(
 
 def test_decode_chunk_maps_content_filter_finish_reason_to_error() -> None:
     chunk = make_chunk(
-        Choice(index=0, delta=ChoiceDelta(), finish_reason='content_filter')
+        Choice(index=0, delta=ChoiceDelta(), finish_reason='content_filter'),
     )
 
     assert list(decode_chunk(chunk)) == [FinishChunk(reason='error')]
@@ -296,7 +296,8 @@ async def test_stream_sets_response_format_json_schema_with_name_and_schema_and_
 ):
     recorded: dict[str, object] = {}
     output_schema = OutputSchema(
-        name='summary_output', json_schema={'type': 'object', 'properties': {}}
+        name='summary_output',
+        json_schema={'type': 'object', 'properties': {}},
     )
 
     await _drain(

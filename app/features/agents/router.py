@@ -23,7 +23,7 @@ _WORD = re.compile(r'[\w-]+')
 
 async def _collect_text(stream: AsyncIterator[CompletionChunk]) -> str:
     return ''.join(
-        [chunk.text async for chunk in stream if isinstance(chunk, TextChunk)]
+        [chunk.text async for chunk in stream if isinstance(chunk, TextChunk)],
     )
 
 
@@ -82,7 +82,7 @@ class Router:
 
         if channel.router is None:
             raise UnroutableError(
-                f'chat {chat_id!r} has no binding and the channel defines no router'
+                f'chat {chat_id!r} has no binding and the channel defines no router',
             )
 
         return self.agents[await self._select(channel.router, chat_id, message)]

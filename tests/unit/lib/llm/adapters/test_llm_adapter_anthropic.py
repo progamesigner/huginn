@@ -48,7 +48,7 @@ def test_build_messages_wraps_text_segment_in_text_block() -> None:
     messages = (Message(role='user', segments=(TextSegment(text='hi there'),)),)
 
     assert list(build_messages(messages)) == [
-        {'role': 'user', 'content': [{'type': 'text', 'text': 'hi there'}]}
+        {'role': 'user', 'content': [{'type': 'text', 'text': 'hi there'}]},
     ]
 
 
@@ -71,9 +71,9 @@ def test_build_messages_parses_tool_call_arguments_into_input() -> None:
                     'id': 'call_1',
                     'name': 'search',
                     'input': {'q': 'x'},
-                }
+                },
             ],
-        }
+        },
     ]
 
 
@@ -89,9 +89,9 @@ def test_build_messages_remaps_tool_role_to_user_with_tool_result_block() -> Non
         {
             'role': 'user',
             'content': [
-                {'type': 'tool_result', 'tool_use_id': 'call_1', 'content': '42'}
+                {'type': 'tool_result', 'tool_use_id': 'call_1', 'content': '42'},
             ],
-        }
+        },
     ]
 
 
@@ -114,9 +114,9 @@ def test_build_messages_marks_failed_tool_result_as_error() -> None:
                     'tool_use_id': 'call_1',
                     'content': 'boom',
                     'is_error': True,
-                }
+                },
             ],
-        }
+        },
     ]
 
 
@@ -145,7 +145,7 @@ def test_build_messages_preserves_segment_order_within_message() -> None:
                 {'type': 'text', 'text': 'looking...'},
                 {'type': 'tool_use', 'id': 'call_1', 'name': 'search', 'input': {}},
             ],
-        }
+        },
     ]
 
 
@@ -165,7 +165,7 @@ def test_build_messages_marks_last_block_cacheable() -> None:
                 {'type': 'text', 'text': 'a'},
                 {'type': 'text', 'text': 'b', 'cache_control': {'type': 'ephemeral'}},
             ],
-        }
+        },
     ]
 
 
@@ -186,7 +186,7 @@ def test_build_tools_unwraps_openai_shaped_function_schema() -> None:
             'name': 'search',
             'description': 'search the web',
             'input_schema': {'type': 'object', 'properties': {}},
-        }
+        },
     ]
 
 
@@ -195,12 +195,15 @@ def test_decode_event_yields_tool_call_chunk_on_tool_use_block_start() -> None:
         type='content_block_start',
         index=0,
         content_block=ToolUseBlock(
-            type='tool_use', id='call_1', name='search', input={}
+            type='tool_use',
+            id='call_1',
+            name='search',
+            input={},
         ),
     )
 
     assert list(decode_event(event)) == [
-        ToolCallChunk(index=0, id='call_1', name='search', arguments='')
+        ToolCallChunk(index=0, id='call_1', name='search', arguments=''),
     ]
 
 
@@ -388,7 +391,7 @@ async def test_stream_sets_format_independent_of_effort() -> None:
     )
 
     assert recorded['output_config'] == {
-        'format': {'type': 'json_schema', 'schema': {'type': 'object'}}
+        'format': {'type': 'json_schema', 'schema': {'type': 'object'}},
     }
     assert 'effort' not in cast(dict[str, object], recorded['output_config'])
     assert recorded['thinking'] is omit

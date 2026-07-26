@@ -63,12 +63,15 @@ async def test_agent_loads_a_skill_through_the_tool_loop() -> None:
         [
             [
                 ToolCallChunk(
-                    index=0, id='c1', name='skill', arguments='{"name": "triage"}'
+                    index=0,
+                    id='c1',
+                    name='skill',
+                    arguments='{"name": "triage"}',
                 ),
                 FinishChunk(reason='tool_calls'),
             ],
             [TextChunk(text='done'), FinishChunk(reason='stop')],
-        ]
+        ],
     )
     runner = AgentRunner(llm, tools, ClockManager())
 

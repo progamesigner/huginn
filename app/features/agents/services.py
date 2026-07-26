@@ -230,7 +230,7 @@ class AgentRunner:
         except TimeoutError as error:
             logger.warning('Turn exceeded turn_timeout=%.1fs', turn.turn_timeout)
             raise TurnTimeout(
-                f'turn exceeded turn_timeout={turn.turn_timeout}s'
+                f'turn exceeded turn_timeout={turn.turn_timeout}s',
             ) from error
 
         logger.warning(

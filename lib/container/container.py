@@ -33,7 +33,7 @@ def wire[T](constructor: type[T]) -> Callable[[ContainerContract], T]:
         if parameter.annotation is Parameter.empty:
             raise BindingError(
                 f'{constructor.__qualname__} parameter {parameter.name!r}'
-                f' has no annotation to resolve'
+                f' has no annotation to resolve',
             )
 
         annotation = parameter.annotation
@@ -150,7 +150,7 @@ class Container(ContainerContract):
         if registration.scoped and self.parent is None:
             chain = ' -> '.join(t.__qualname__ for t in (*self.resolving, binding))
             raise ResolutionError(
-                f'{binding.__qualname__} is scoped and needs an active scope: {chain}'
+                f'{binding.__qualname__} is scoped and needs an active scope: {chain}',
             )
 
         self.resolving.append(binding)

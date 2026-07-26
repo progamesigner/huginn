@@ -23,7 +23,7 @@ class SectionRegistry:
     def register(self, spec: SectionSpec[BaseModel]) -> None:
         if spec.key in self.specs:
             raise DuplicateSectionError(
-                f'config section {spec.key!r} is already registered'
+                f'config section {spec.key!r} is already registered',
             )
 
         self.specs[spec.key] = spec
@@ -70,14 +70,14 @@ class HuginnConfig:
         if spec.key not in self.sections:
             known = ', '.join(sorted(self.sections)) or 'none'
             raise UnknownSectionError(
-                f'unknown config section {spec.key!r}; known: {known}'
+                f'unknown config section {spec.key!r}; known: {known}',
             )
 
         value = self.sections[spec.key]
         if not isinstance(value, spec.model):
             raise UnknownSectionError(
                 f'config section {spec.key!r} is {type(value).__name__},'
-                f' not {spec.model.__name__}'
+                f' not {spec.model.__name__}',
             )
 
         return value

@@ -70,7 +70,10 @@ async def test_concurrent_messages_to_one_chat_all_process_within_two_rounds(
 
     pairs = [message(i, chat_id) for i in range(1, 6)]
     await asyncio.gather(
-        *(actor.handle('support_bot', _CHANNEL, update, body) for update, body in pairs)
+        *(
+            actor.handle('support_bot', _CHANNEL, update, body)
+            for update, body in pairs
+        ),
     )
 
     assert len(processor.rounds) <= 2

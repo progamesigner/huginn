@@ -116,13 +116,19 @@ def test_same_kind_instances_are_distinguishable_in_a_tool_set() -> None:
     tools.add(
         'search',
         build_bound_tool(
-            registry, ToolConfig(kind='search', description='Basic'), {}, {}
+            registry,
+            ToolConfig(kind='search', description='Basic'),
+            {},
+            {},
         ),
     )
     tools.add(
         'supersearch',
         build_bound_tool(
-            registry, ToolConfig(kind='search', description='Deep'), {}, {}
+            registry,
+            ToolConfig(kind='search', description='Deep'),
+            {},
+            {},
         ),
     )
 

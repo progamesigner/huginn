@@ -77,7 +77,8 @@ async def test_call_tool_returns_rendered_text() -> None:
 
 async def test_unreachable_server_degrades_without_raising() -> None:
     manager = MCPManager(
-        [MCPServer('memory', 'http://memory.test')], _failing_connector
+        [MCPServer('memory', 'http://memory.test')],
+        _failing_connector,
     )
 
     await manager.start()
@@ -94,7 +95,8 @@ async def test_degraded_start_logs_the_underlying_error(
     caplog: pytest.LogCaptureFixture,
 ) -> None:
     manager = MCPManager(
-        [MCPServer('memory', 'http://memory.test')], _group_failing_connector
+        [MCPServer('memory', 'http://memory.test')],
+        _group_failing_connector,
     )
 
     with caplog.at_level('WARNING', logger='lib.mcp.manager'):

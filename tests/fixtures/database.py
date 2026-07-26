@@ -28,7 +28,7 @@ def database_url() -> Iterator[str]:
             yield container.get_connection_url()
     except Exception as error:
         pytest.skip(
-            f'Docker unavailable; set HUGINN_DATABASE_URL to run db tests ({error})'
+            f'Docker unavailable; set HUGINN_DATABASE_URL to run db tests ({error})',
         )
 
 

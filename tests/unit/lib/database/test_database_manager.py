@@ -45,7 +45,7 @@ async def test_named_instance_uses_an_independent_engine() -> None:
         {
             None: _URL,
             'analytics': _URL.replace('huginn', 'analytics'),
-        }
+        },
     )
 
     manager.scoped()

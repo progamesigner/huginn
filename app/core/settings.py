@@ -56,8 +56,8 @@ class HuginnSettings(BaseSettings):
                     host=self.database_host,
                     port=self.database_port,
                     path=self.database_name,
-                )
-            )
+                ),
+            ),
         }
 
     @computed_field
@@ -82,8 +82,8 @@ class HuginnSettings(BaseSettings):
                     host=self.redis_host,
                     port=self.redis_port,
                     path=str(self.redis_database),
-                )
-            )
+                ),
+            ),
         }
 
     def running_in_mode(self, *modes: Environment) -> bool:

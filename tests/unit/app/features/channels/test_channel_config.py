@@ -22,7 +22,7 @@ def test_channels_support_multiple_named_telegram_instances() -> None:
                 secret_token=SecretStr('research-secret'),
                 agent='research',
             ),
-        }
+        },
     )
 
     assert config.root['support_bot'].agent == 'support'

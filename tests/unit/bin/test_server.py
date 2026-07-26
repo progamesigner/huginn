@@ -77,7 +77,7 @@ async def test_dev_environment_exposes_docs() -> None:
 
 async def test_prod_environment_hides_docs() -> None:
     transport = httpx.ASGITransport(
-        app=create_with_settings(make_settings(environment='prod'))
+        app=create_with_settings(make_settings(environment='prod')),
     )
     async with httpx.AsyncClient(
         transport=transport,

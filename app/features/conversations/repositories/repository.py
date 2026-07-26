@@ -178,7 +178,7 @@ class ConversationRepository:
     ) -> Conversation | None:
         if not turns_folded:
             raise NoTurnsToCompactError(
-                'apply_compaction requires at least one folded turn'
+                'apply_compaction requires at least one folded turn',
             )
 
         boundary = turns_folded[-1]
@@ -214,7 +214,7 @@ class ConversationRepository:
                         payload=dict(summary_payload),
                     ),
                 ],
-            )
+            ),
         )
         await self.session.flush()
 

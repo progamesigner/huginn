@@ -26,7 +26,7 @@ def test_agents_config_accepts_full_example() -> None:
                     ),
                 ),
             ),
-        }
+        },
     )
 
     assert agents.root['scout'].description == 'General-purpose research agent'

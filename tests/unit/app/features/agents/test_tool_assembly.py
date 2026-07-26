@@ -92,7 +92,9 @@ class FakeSkillSource(SkillSource):
     async def list(self) -> tuple[SkillMeta, ...]:
         return (
             SkillMeta(
-                name='triage', description='triage incidents', path='s/triage.md'
+                name='triage',
+                description='triage incidents',
+                path='s/triage.md',
             ),
             SkillMeta(name='report', description='write a report', path='s/report.md'),
         )

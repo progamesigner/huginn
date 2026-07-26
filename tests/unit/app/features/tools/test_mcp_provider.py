@@ -50,8 +50,8 @@ def test_build_servers_maps_auth_to_bearer_header() -> None:
                     'auth': 'secret-token',
                 },
                 'stock': {'transport': 'http', 'url': 'https://stock.test'},
-            }
-        )
+            },
+        ),
     )
 
     servers = {server.name: server for server in build_servers(config)}

@@ -12,7 +12,7 @@ class ChannelRegistry:
     def register(self, kind: str, config: type[BaseModel]) -> None:
         if kind in self.config_models:
             raise DuplicateChannelKindError(
-                f'channel kind {kind!r} is already registered'
+                f'channel kind {kind!r} is already registered',
             )
 
         self.config_models[kind] = config
@@ -21,7 +21,7 @@ class ChannelRegistry:
         if kind not in self.config_models:
             available = ', '.join(sorted(self.config_models)) or 'none'
             raise UnknownChannelKindError(
-                f'unknown channel kind {kind!r}; available: {available}'
+                f'unknown channel kind {kind!r}; available: {available}',
             )
 
         return self.config_models[kind]

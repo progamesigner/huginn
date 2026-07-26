@@ -122,7 +122,7 @@ def list_identities(
         for identity in identities:
             echo(
                 f'{identity.id} {identity.provider} {identity.realm} '
-                f'{identity.external_user_id}'
+                f'{identity.external_user_id}',
             )
 
     try:

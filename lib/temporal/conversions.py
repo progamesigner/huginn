@@ -20,7 +20,7 @@ _COMMON_FORMATS = (
 def as_utc(dt: datetime) -> datetime:
     if dt.tzinfo is None:
         raise ValueError(
-            'naive datetime is not allowed; use assume_utc for known-UTC values'
+            'naive datetime is not allowed; use assume_utc for known-UTC values',
         )
     return dt.astimezone(UTC)
 
@@ -28,7 +28,7 @@ def as_utc(dt: datetime) -> datetime:
 def assume_utc(dt: datetime) -> datetime:
     if dt.tzinfo is not None:
         raise ValueError(
-            'assume_utc expects a naive datetime; use as_utc for aware values'
+            'assume_utc expects a naive datetime; use as_utc for aware values',
         )
     return dt.replace(tzinfo=UTC)
 

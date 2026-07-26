@@ -14,7 +14,7 @@ CROSS_FEATURE_SURFACE: dict[tuple[str, str], frozenset[str]] = {
             'mcp',
             'providers',
             'registry',
-        }
+        },
     ),
     ('agents', 'skills'): frozenset({'repositories', 'tools'}),
     ('skills', 'tools'): frozenset({'providers', 'types'}),
@@ -143,7 +143,7 @@ def test_init_reexport_check_flags_logic_and_absolute_imports() -> None:
     assert _init_reexport_only('')
     assert _init_reexport_only(
         'from .repository import ConversationRepository\n\n'
-        "__all__ = ['ConversationRepository']\n"
+        "__all__ = ['ConversationRepository']\n",
     )
 
     assert not _init_reexport_only('import os\n')

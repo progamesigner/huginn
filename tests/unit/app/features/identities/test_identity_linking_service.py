@@ -137,7 +137,10 @@ async def test_consumed_invite_is_idempotent_for_the_same_identity() -> None:
     linking = service(repo)
 
     result = await linking.complete(
-        linking.tokens.issue()[0], 'telegram', 'primary', '42'
+        linking.tokens.issue()[0],
+        'telegram',
+        'primary',
+        '42',
     )
 
     assert result == linked
@@ -164,7 +167,7 @@ async def test_unknown_credential_is_redacted_and_audited() -> None:
 
     assert credential not in repr(caught.value)
     assert repo.record_audit.await_args.kwargs['metadata'] == {
-        'reason': 'unknown_token'
+        'reason': 'unknown_token',
     }
 
 

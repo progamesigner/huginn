@@ -31,7 +31,11 @@ def test_to_utc_rejects_naive() -> None:
 
 def test_assume_utc_labels_a_naive_datetime() -> None:
     assert assume_utc(datetime.fromisoformat('2026-07-23T12:00:00')) == datetime(
-        2026, 7, 23, 12, tzinfo=UTC
+        2026,
+        7,
+        23,
+        12,
+        tzinfo=UTC,
     )
 
 
@@ -81,10 +85,16 @@ def test_parse_rejects_garbage() -> None:
 
 def test_parse_formats_tries_each_format_in_order() -> None:
     assert parse_formats('2026-07-23', '%Y-%m-%d', '%Y/%m/%d') == datetime(
-        2026, 7, 23, tzinfo=UTC
+        2026,
+        7,
+        23,
+        tzinfo=UTC,
     )
     assert parse_formats('2026/07/23', '%Y-%m-%d', '%Y/%m/%d') == datetime(
-        2026, 7, 23, tzinfo=UTC
+        2026,
+        7,
+        23,
+        tzinfo=UTC,
     )
 
 
@@ -105,7 +115,13 @@ def test_parse_formats_assumes_the_given_timezone() -> None:
 def test_parse_formats_guesses_common_formats_when_none_given() -> None:
     assert parse_formats('2026/07/23') == datetime(2026, 7, 23, tzinfo=UTC)
     assert parse_formats('2026-07-23 12:30:45') == datetime(
-        2026, 7, 23, 12, 30, 45, tzinfo=UTC
+        2026,
+        7,
+        23,
+        12,
+        30,
+        45,
+        tzinfo=UTC,
     )
 
 

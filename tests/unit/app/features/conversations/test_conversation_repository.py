@@ -100,7 +100,7 @@ class FakeConversationRepository:
     ) -> Conversation | None:
         if not turns_folded:
             raise NoTurnsToCompactError(
-                'apply_compaction requires at least one folded turn'
+                'apply_compaction requires at least one folded turn',
             )
 
         if self.force_cas_conflict or conversation.compact_version != expected_version:

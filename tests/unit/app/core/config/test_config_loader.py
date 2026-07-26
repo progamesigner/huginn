@@ -151,7 +151,7 @@ def build_app_config(
             'mcp_servers': MCPServersConfig(mcp_servers or {}),
             'channels': channels or ChannelsConfig({}),
             'defaults': defaults or DefaultsConfig(model='test-model'),
-        }
+        },
     )
 
 
@@ -171,7 +171,8 @@ def test_interpolate_substitutes_known_env_var() -> None:
 
 def test_interpolate_raises_for_missing_env_var() -> None:
     with pytest.raises(
-        MissingEnvironmentVariableError, match=r'defaults\.model.*MISSING_VAR'
+        MissingEnvironmentVariableError,
+        match=r'defaults\.model.*MISSING_VAR',
     ):
         _interpolate('${MISSING_VAR}', 'defaults.model', {})
 
@@ -202,7 +203,9 @@ def test_resolve_value_from_file_succeeds(tmp_path: Path) -> None:
     secret_file.write_text('felo-secret\n')
 
     resolved = _resolve_value_from(
-        {'file': str(secret_file)}, 'tools.websearch.api_key', {}
+        {'file': str(secret_file)},
+        'tools.websearch.api_key',
+        {},
     )
 
     assert resolved == 'felo-secret'
@@ -268,7 +271,8 @@ def test_resolve_references_reports_field_path_for_missing_env() -> None:
     raw = {'tools': {'websearch': {'api_key': {'value_from': {'env': 'FELO_API_KEY'}}}}}
 
     with pytest.raises(
-        MissingEnvironmentVariableError, match=r'tools\.websearch\.api_key'
+        MissingEnvironmentVariableError,
+        match=r'tools\.websearch\.api_key',
     ):
         _resolve_references(raw, environment={})
 
@@ -304,7 +308,7 @@ def test_load_config_defaults_optional_sections(tmp_path: Path) -> None:
         '  scout:\n'
         '    description: x\n'
         '    instructions: y\n'
-        '    model: test-model\n'
+        '    model: test-model\n',
     )
 
     config = load_config(config_file, build_section_registry())
@@ -345,7 +349,7 @@ def test_load_config_resolves_env_and_value_from_then_validates(
         '    token: ${TELEGRAM_BOT_TOKEN}\n'
         '    secret_token: ${TELEGRAM_WEBHOOK_SECRET}\n'
         "    bindings: {'12345': scout}\n"
-        '    router: {fallback: scout}\n'
+        '    router: {fallback: scout}\n',
     )
 
     config = load_config(
@@ -392,7 +396,7 @@ def test_new_tool_kind_parses_and_schemas_without_touching_config_module(
         '    description: x\n'
         '    instructions: y\n'
         '    model: test-model\n'
-        '    tools: [{name: custom}]\n'
+        '    tools: [{name: custom}]\n',
     )
 
     config = load_config(config_file, section_registry)
@@ -419,7 +423,7 @@ def test_configless_tool_kind_parses_as_base_tool_config(tmp_path: Path) -> None
         '    description: x\n'
         '    instructions: y\n'
         '    model: test-model\n'
-        '    tools: [{name: custom}]\n'
+        '    tools: [{name: custom}]\n',
     )
 
     config = load_config(config_file, section_registry)
@@ -440,7 +444,7 @@ def test_unknown_tool_kind_fails_at_parse_listing_registered_tags(
         'agents:\n'
         '  scout:\n'
         '    description: x\n'
-        '    instructions: y\n'
+        '    instructions: y\n',
     )
 
     with pytest.raises(ValidationError, match=r"'bogus'.*'websearch'"):
@@ -494,8 +498,8 @@ def test_validators_accept_a_fully_consistent_config() -> None:
                 'support_bot': telegram_channel(
                     bindings={'12345': 'scout'},
                     router=ChannelRouterConfig(fallback='scout'),
-                )
-            }
+                ),
+            },
         ),
     )
 
@@ -518,7 +522,8 @@ def test_validate_agents_rejects_unknown_tool_reference() -> None:
     )
 
     with pytest.raises(
-        UnknownToolReferenceError, match=r'agents\.scout\.tools\[0\]\.name'
+        UnknownToolReferenceError,
+        match=r'agents\.scout\.tools\[0\]\.name',
     ):
         _validate_agents(config, build_tool_registry())
 
@@ -529,7 +534,8 @@ def test_validate_agents_rejects_unknown_mcp_server() -> None:
     )
 
     with pytest.raises(
-        UnknownMCPServerReferenceError, match=r'agents\.scout\.mcp\[0\]\.server'
+        UnknownMCPServerReferenceError,
+        match=r'agents\.scout\.mcp\[0\]\.server',
     ):
         _validate_agents(config, build_tool_registry())
 
@@ -540,12 +546,14 @@ def test_validate_agents_requires_exactly_one_instruction_source() -> None:
 
     with pytest.raises(AmbiguousInstructionsError, match=r'agents\.scout'):
         _validate_agents(
-            build_app_config(agents={'scout': both}), build_tool_registry()
+            build_app_config(agents={'scout': both}),
+            build_tool_registry(),
         )
 
     with pytest.raises(AmbiguousInstructionsError, match=r'agents\.scout'):
         _validate_agents(
-            build_app_config(agents={'scout': neither}), build_tool_registry()
+            build_app_config(agents={'scout': neither}),
+            build_tool_registry(),
         )
 
 
@@ -587,9 +595,9 @@ def test_validate_channels_requires_an_effective_router_model() -> None:
         channels=ChannelsConfig(
             {
                 'support_bot': telegram_channel(
-                    router=ChannelRouterConfig(fallback='scout')
-                )
-            }
+                    router=ChannelRouterConfig(fallback='scout'),
+                ),
+            },
         ),
         defaults=DefaultsConfig(),
     )
@@ -602,7 +610,7 @@ def test_validate_channels_rejects_unknown_binding_agent() -> None:
     config = build_app_config(
         agents={'scout': build_agent()},
         channels=ChannelsConfig(
-            {'support_bot': telegram_channel(bindings={'42': 'ghost'})}
+            {'support_bot': telegram_channel(bindings={'42': 'ghost'})},
         ),
     )
 
@@ -616,9 +624,9 @@ def test_validate_channels_rejects_unknown_router_fallback() -> None:
         channels=ChannelsConfig(
             {
                 'support_bot': telegram_channel(
-                    router=ChannelRouterConfig(fallback='ghost')
-                )
-            }
+                    router=ChannelRouterConfig(fallback='ghost'),
+                ),
+            },
         ),
     )
 
@@ -633,11 +641,12 @@ def test_validate_channels_rejects_duplicate_secret_token() -> None:
             {
                 'support_bot': telegram_channel(agent='scout'),
                 'research_bot': telegram_channel(agent='scout'),
-            }
+            },
         ),
     )
 
     with pytest.raises(
-        DuplicateChannelSecretError, match=r'research_bot\.secret_token'
+        DuplicateChannelSecretError,
+        match=r'research_bot\.secret_token',
     ):
         _validate_channels(config, build_channel_registry())

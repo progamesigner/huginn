@@ -44,7 +44,10 @@ async def test_updates_without_a_message_skip_the_actor_entirely() -> None:
     actor = TelegramChatActor(make_redis(client), process, ttl=_TTL)
 
     await actor.handle(
-        'support_bot', channel(), Update(update_id=1), b'{"update_id": 1}'
+        'support_bot',
+        channel(),
+        Update(update_id=1),
+        b'{"update_id": 1}',
     )
 
     assert calls == []

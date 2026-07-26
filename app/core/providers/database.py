@@ -25,7 +25,7 @@ class DatabaseProvider(ProviderContract):
                 raise DatabaseError('database urls are not configured')
 
             return DatabaseManager(
-                {name: str(url.get_secret_value()) for name, url in configured.items()}
+                {name: str(url.get_secret_value()) for name, url in configured.items()},
             )
 
         container.bind(DatabaseContract, factory=_factory, shared=True)

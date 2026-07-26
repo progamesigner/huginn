@@ -142,7 +142,9 @@ async def test_rejects_unknown_secret() -> None:
 
     async with webhook_client(config, make_redis(set()), handler) as client:
         response = await client.post(
-            _PATH, headers={_HEADER: 'wrong'}, json={'update_id': 7}
+            _PATH,
+            headers={_HEADER: 'wrong'},
+            json={'update_id': 7},
         )
 
     assert response.status_code == 403
@@ -156,7 +158,9 @@ async def test_accepts_and_dispatches_to_the_handler() -> None:
 
     async with webhook_client(config, make_redis(store), handler) as client:
         response = await client.post(
-            _PATH, headers={_HEADER: 'sekret'}, json={'update_id': 7}
+            _PATH,
+            headers={_HEADER: 'sekret'},
+            json={'update_id': 7},
         )
         assert response.status_code == 200
         async with asyncio.timeout(1):
@@ -172,7 +176,7 @@ async def test_routes_to_the_instance_matching_the_secret() -> None:
         {
             'support_bot': telegram('support-secret'),
             'research_bot': telegram('research-secret'),
-        }
+        },
     )
 
     async with webhook_client(config, make_redis(set()), handler) as client:
@@ -196,13 +200,17 @@ async def test_deduplicates_repeated_update_id() -> None:
 
     async with webhook_client(config, make_redis(store), handler) as client:
         first = await client.post(
-            _PATH, headers={_HEADER: 'sekret'}, json={'update_id': 7}
+            _PATH,
+            headers={_HEADER: 'sekret'},
+            json={'update_id': 7},
         )
         async with asyncio.timeout(1):
             await handler.finished.wait()
         handler.finished.clear()
         second = await client.post(
-            _PATH, headers={_HEADER: 'sekret'}, json={'update_id': 7}
+            _PATH,
+            headers={_HEADER: 'sekret'},
+            json={'update_id': 7},
         )
         await asyncio.sleep(0.05)
 
@@ -217,7 +225,9 @@ async def test_returns_200_before_handler_completes() -> None:
 
     async with webhook_client(config, make_redis(set()), handler) as client:
         response = await client.post(
-            _PATH, headers={_HEADER: 'sekret'}, json={'update_id': 7}
+            _PATH,
+            headers={_HEADER: 'sekret'},
+            json={'update_id': 7},
         )
         assert response.status_code == 200
 
@@ -238,7 +248,9 @@ async def test_processes_when_dedupe_is_unavailable() -> None:
 
     async with webhook_client(config, make_redis(set(), fail=True), handler) as client:
         response = await client.post(
-            _PATH, headers={_HEADER: 'sekret'}, json={'update_id': 7}
+            _PATH,
+            headers={_HEADER: 'sekret'},
+            json={'update_id': 7},
         )
         assert response.status_code == 200
         async with asyncio.timeout(1):

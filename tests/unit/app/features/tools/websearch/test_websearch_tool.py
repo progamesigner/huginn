@@ -135,7 +135,7 @@ def test_build_websearch_binds_config_credentials() -> None:
     tool = build_websearch(
         repository,
         WebSearchToolConfig.model_validate(
-            {'kind': 'websearch', 'api_key': 'felo-key'}
+            {'kind': 'websearch', 'api_key': 'felo-key'},
         ),
     )
 

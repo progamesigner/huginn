@@ -27,5 +27,5 @@ def redis_url() -> Iterator[str]:
             yield f'redis://{host}:{port}/0'
     except Exception as error:
         pytest.skip(
-            f'Docker unavailable; set HUGINN_REDIS_URL to run redis tests ({error})'
+            f'Docker unavailable; set HUGINN_REDIS_URL to run redis tests ({error})',
         )

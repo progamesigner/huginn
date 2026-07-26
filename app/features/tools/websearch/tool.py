@@ -71,7 +71,7 @@ def build_websearch(
 ) -> WebSearchTool:
     if not isinstance(config, WebSearchToolConfig):
         raise ToolError(
-            f'websearch requires WebSearchToolConfig, got {type(config).__name__}'
+            f'websearch requires WebSearchToolConfig, got {type(config).__name__}',
         )
 
     return WebSearchTool(repository, config.api_key, str(config.base_url))

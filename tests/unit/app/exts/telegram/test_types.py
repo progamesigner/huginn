@@ -19,7 +19,7 @@ def test_update_ignores_unknown_vendor_fields() -> None:
                 'text': 'hello',
                 'new_message_field': {'anything': 'ignored'},
             },
-        }
+        },
     )
 
     assert update.update_id == 42

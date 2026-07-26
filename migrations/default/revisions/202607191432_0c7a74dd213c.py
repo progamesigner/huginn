@@ -68,7 +68,10 @@ def upgrade() -> None:
         schema=SCHEMA,
     )
     op.create_index(
-        'ix_turns_conversation_id', 'turns', ['conversation_id', 'id'], schema=SCHEMA
+        'ix_turns_conversation_id',
+        'turns',
+        ['conversation_id', 'id'],
+        schema=SCHEMA,
     )
 
     op.create_table(

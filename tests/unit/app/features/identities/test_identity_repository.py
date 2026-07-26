@@ -23,16 +23,27 @@ class FakeIdentityRepository:
         return self.users.get(handle.strip().lower())
 
     async def link(
-        self, user: User, provider: str, realm: str, external_user_id: str
+        self,
+        user: User,
+        provider: str,
+        realm: str,
+        external_user_id: str,
     ) -> ExternalIdentity:
         identity = ExternalIdentity(
-            self.next_id(), user.id, provider, realm, external_user_id
+            self.next_id(),
+            user.id,
+            provider,
+            realm,
+            external_user_id,
         )
         self.identities[(provider, realm, external_user_id)] = identity
         return identity
 
     async def find_external(
-        self, provider: str, realm: str, external_user_id: str
+        self,
+        provider: str,
+        realm: str,
+        external_user_id: str,
     ) -> ExternalIdentity | None:
         return self.identities.get((provider, realm, external_user_id))
 

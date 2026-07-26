@@ -72,11 +72,11 @@ async def test_compact_persists_summary_turn_and_advances_boundary() -> None:
         [
             [
                 TextChunk(
-                    text='{"summary": "recap", "key_facts": [], "open_items": []}'
+                    text='{"summary": "recap", "key_facts": [], "open_items": []}',
                 ),
                 FinishChunk(reason='stop'),
             ],
-        ]
+        ],
     )
     service = build_service(FakeLLMContract(llm_client), repository)
 
@@ -162,7 +162,7 @@ async def test_compact_abandons_on_cas_conflict_without_retrying_the_llm() -> No
                 TextChunk(text='{"summary": "ok", "key_facts": [], "open_items": []}'),
                 FinishChunk(reason='stop'),
             ],
-        ]
+        ],
     )
     service = build_service(FakeLLMContract(llm_client), repository)
 
@@ -257,14 +257,17 @@ async def test_maybe_compact_folds_prior_summary_and_accumulates_context() -> No
                     text=(
                         '{"summary": "first recap", "key_facts": ["fact-a"],'
                         ' "open_items": ["todo-a"]}'
-                    )
+                    ),
                 ),
                 FinishChunk(reason='stop'),
             ],
-        ]
+        ],
     )
     first_service = build_service(
-        FakeLLMContract(first_llm), repository, keep_turns=1, token_threshold=50_000
+        FakeLLMContract(first_llm),
+        repository,
+        keep_turns=1,
+        token_threshold=50_000,
     )
     first_result = await first_service.maybe_compact(conversation, 'test-model')
     assert first_result.compacted is True
@@ -282,14 +285,17 @@ async def test_maybe_compact_folds_prior_summary_and_accumulates_context() -> No
                     text=(
                         '{"summary": "combined recap",'
                         ' "key_facts": ["fact-a", "fact-b"], "open_items": []}'
-                    )
+                    ),
                 ),
                 FinishChunk(reason='stop'),
             ],
-        ]
+        ],
     )
     second_service = build_service(
-        FakeLLMContract(second_llm), repository, keep_turns=1, token_threshold=50_000
+        FakeLLMContract(second_llm),
+        repository,
+        keep_turns=1,
+        token_threshold=50_000,
     )
 
     second_result = await second_service.maybe_compact(conversation, 'test-model')
@@ -324,7 +330,7 @@ async def test_summary_request_leads_with_cacheable_transcript_then_instruction(
                 TextChunk(text='{"summary": "ok", "key_facts": [], "open_items": []}'),
                 FinishChunk(reason='stop'),
             ],
-        ]
+        ],
     )
     service = build_service(FakeLLMContract(llm_client), repository)
 

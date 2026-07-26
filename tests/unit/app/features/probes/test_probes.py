@@ -29,7 +29,7 @@ def make_database(*, failing: bool = False) -> MagicMock:
     session = MagicMock()
     session.execute = AsyncMock(
         # NOTE: asyncpg lets the OSError through unwrapped; the integration test pins it
-        side_effect=ConnectionRefusedError('Connect call failed') if failing else None
+        side_effect=ConnectionRefusedError('Connect call failed') if failing else None,
     )
     connection = MagicMock()
     connection.__aenter__ = AsyncMock(return_value=session)
