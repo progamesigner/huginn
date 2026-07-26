@@ -12,7 +12,6 @@ from lib.database import Timestamp
 class UserRecord(TimestampRecordMixin, AppRecord):
     __tablename__ = 'users'
     __table_args__ = (
-        # NOTE: the metadata convention prefixes ck_<table>_, so name the rule only
         CheckConstraint(
             'handle = lower(btrim(handle)) AND length(handle) > 0',
             name='handle_normalized',
