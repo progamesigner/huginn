@@ -33,6 +33,7 @@ SHARED_SLICES = frozenset(
         'types',
     },
 )
+ROOT_PACKAGES = ('app', 'bin', 'lib')
 FEATURES_PACKAGE = 'app.features'
 EXTS_PACKAGE = 'app.exts'
 # An ext may expose a vendor's transport as well as its client: `endpoints` for what
@@ -60,6 +61,14 @@ def _exts_dir() -> Path:
     import app
 
     return Path(app.__file__).parent / 'exts'
+
+
+def _source_dirs(package: str) -> set[Path]:
+    module = import_module(package)
+
+    assert module.__file__ is not None
+    root = Path(module.__file__).parent
+    return {path.parent for path in root.rglob('*.py')}
 
 
 def _package_of(path: Path, root: Path, package: str) -> str:
@@ -336,6 +345,22 @@ def test_cross_feature_tier_check_flags_violations() -> None:
     assert (
         _cross_feature_violation('channels', 'app.features.conversations.repositories')
         is not None
+    )
+
+
+def test_every_package_carries_an_init_module() -> None:
+    # NOTE: grimp does not walk namespace packages, so a directory without an
+    # __init__.py silently shrinks what the layers contract checks rather than
+    # failing it. In 2026-07 that hid 86 of app/'s 98 modules from import-linter.
+    missing = [
+        str(directory)
+        for package in ROOT_PACKAGES
+        for directory in sorted(_source_dirs(package))
+        if not (directory / '__init__.py').exists()
+    ]
+
+    assert not missing, 'these packages are invisible to import-linter:\n' + '\n'.join(
+        missing,
     )
 
 
