@@ -6,21 +6,23 @@ from pathlib import Path
 
 from app.core import exceptions
 
-CROSS_FEATURE_SURFACE: dict[tuple[str, str], frozenset[str]] = {
-    ('agents', 'tools'): frozenset(
-        {
-            'binding',
-            'config',
-            'mcp',
-            'providers',
-            'registry',
-        },
-    ),
+# Features sit in tiers, outermost first. A feature may only import from a strictly
+# lower tier, which keeps the feature graph a DAG however many features get added; a
+# feature absent from this list may not cross the feature boundary at all.
+FEATURE_TIERS: tuple[frozenset[str], ...] = (
+    frozenset({'channels', 'skills'}),
+    frozenset({'agents'}),
+    frozenset({'mcp', 'tools'}),
+)
+# A feature's public face: what it declares and how it is wired, never how it works.
+SHARED_SLICES = frozenset({'config', 'contracts', 'exceptions', 'providers', 'types'})
+# Reaching past that, or against the tier order. Every entry states why.
+DECLARED_EXCEPTIONS: dict[tuple[str, str], frozenset[str]] = {
+    # DEBT: agents drives the tool machinery instead of asking for tools
+    ('agents', 'tools'): frozenset({'binding', 'mcp', 'registry'}),
+    # DEBT: agents builds the skill tool itself instead of being handed one
     ('agents', 'skills'): frozenset({'repositories', 'tools'}),
-    ('agents', 'mcp'): frozenset({'config', 'providers'}),
-    ('skills', 'mcp'): frozenset({'providers'}),
-    ('skills', 'tools'): frozenset({'types'}),
-    ('channels', 'agents'): frozenset({'config', 'exceptions'}),
+    # DEBT: Router takes a ChannelConfig; agents should define its own routing input
     ('agents', 'channels'): frozenset({'config'}),
 }
 FEATURES_PACKAGE = 'app.features'
@@ -57,6 +59,13 @@ def _import_targets(source: str, package: str) -> Iterator[str]:
                 yield node.module
 
 
+def _tier_of(feature: str) -> int | None:
+    return next(
+        (index for index, tier in enumerate(FEATURE_TIERS) if feature in tier),
+        None,
+    )
+
+
 def _cross_feature_violation(feature: str, target: str) -> str | None:
     prefix = f'{FEATURES_PACKAGE}.'
     if not target.startswith(prefix):
@@ -70,8 +79,24 @@ def _cross_feature_violation(feature: str, target: str) -> str | None:
         return f'{target}: cross-feature import must name a submodule, not the package root'
 
     slice_ = rest.split('.')[0]
-    if slice_ not in CROSS_FEATURE_SURFACE.get((feature, imported), frozenset()):
-        return f'{target}: {imported}.{slice_} is not an approved cross-feature surface'
+    if slice_ in DECLARED_EXCEPTIONS.get((feature, imported), frozenset()):
+        return None
+
+    mine, theirs = _tier_of(feature), _tier_of(imported)
+    if mine is None or theirs is None:
+        return f'{target}: {feature} and {imported} must both appear in FEATURE_TIERS'
+
+    if mine >= theirs:
+        return (
+            f'{target}: {feature} may not import {imported};'
+            f' feature tiers run outermost first and imports must go strictly down'
+        )
+
+    if slice_ not in SHARED_SLICES:
+        return (
+            f'{target}: {imported}.{slice_} is an implementation slice;'
+            f' import one of {sorted(SHARED_SLICES)} or declare an exception'
+        )
 
     return None
 
@@ -153,7 +178,7 @@ def test_init_reexport_check_flags_logic_and_absolute_imports() -> None:
     assert not _init_reexport_only('value = compute()\n')
 
 
-def test_cross_feature_imports_stay_within_approved_surface() -> None:
+def test_cross_feature_imports_respect_the_feature_tiers() -> None:
     root = _features_dir()
     violations = []
 
@@ -173,15 +198,25 @@ def test_cross_feature_imports_stay_within_approved_surface() -> None:
     assert not violations, 'cross-feature import violations:\n' + '\n'.join(violations)
 
 
-def test_cross_feature_surface_check_flags_violations() -> None:
-    assert _cross_feature_violation('agents', 'app.features.tools.registry') is None
+def test_cross_feature_tier_check_allows_the_public_face_downward() -> None:
     assert _cross_feature_violation('agents', 'app.features.agents.config') is None
     assert _cross_feature_violation('agents', 'lib.llm') is None
+    assert _cross_feature_violation('agents', 'app.features.tools.config') is None
+    assert _cross_feature_violation('agents', 'app.features.tools.registry') is None
+    assert _cross_feature_violation('channels', 'app.features.agents.config') is None
+    assert _cross_feature_violation('skills', 'app.features.tools.types') is None
 
+
+def test_cross_feature_tier_check_flags_violations() -> None:
+    # the package root hides which slice is really being used
     assert _cross_feature_violation('agents', 'app.features.tools') is not None
+    # sideways: two features in the same tier must not know each other
+    assert _cross_feature_violation('channels', 'app.features.skills.types') is not None
+    # downward but too deep: websearch is an implementation slice, not vocabulary
     assert (
         _cross_feature_violation('agents', 'app.features.tools.websearch') is not None
     )
+    # unplaced features are denied outright
     assert _cross_feature_violation('probes', 'app.features.tools.registry') is not None
 
 
