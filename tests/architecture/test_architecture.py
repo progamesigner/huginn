@@ -1,7 +1,10 @@
 import ast
 import asyncio
 import inspect
-from collections.abc import Iterator
+from collections.abc import Iterable, Iterator, Sequence
+from dataclasses import dataclass, fields, is_dataclass
+from datetime import timedelta
+from importlib import import_module
 from pathlib import Path
 
 from app.core import exceptions
@@ -19,6 +22,7 @@ FEATURE_TIERS: tuple[frozenset[str], ...] = (
 # the other side.
 SHARED_SLICES = frozenset({'config', 'contracts', 'exceptions', 'providers', 'types'})
 FEATURES_PACKAGE = 'app.features'
+EXTS_PACKAGE = 'app.exts'
 EXT_SLICE_NAMES = frozenset({'client', 'types', 'exceptions'})
 BANNED_MODULE_NAMES = frozenset({'models', 'utils'})
 
@@ -118,6 +122,88 @@ def _unknown_ext_name(relative: Path) -> str | None:
         return None
 
     return f'{relative}: unknown ext file name (allowed: {sorted(EXT_SLICE_NAMES)})'
+
+
+# A vendor fact an ext already owns must be read off its spec, never retyped. The
+# forbidden values are derived from the specs themselves, so a new vendor or field
+# widens the check for free and there is nothing to keep in sync.
+@dataclass(frozen=True)
+class _Fact:
+    vendor: str
+    instance: str
+    field: str
+    value: object
+
+
+def _facts() -> tuple[_Fact, ...]:
+    collected = []
+    for path in sorted(_exts_dir().glob('*/types.py')):
+        vendor = path.parent.name
+        module = import_module(f'{EXTS_PACKAGE}.{vendor}.types')
+        collected.extend(
+            _Fact(
+                vendor=vendor,
+                instance=name,
+                field=field.name,
+                value=getattr(spec, field.name),
+            )
+            # NOTE: a spec is a frozen dataclass instance; the classes themselves
+            # answer is_dataclass too, hence the isinstance guard
+            for name, spec in vars(module).items()
+            if is_dataclass(spec) and not isinstance(spec, type)
+            for field in fields(spec)
+        )
+
+    return tuple(collected)
+
+
+def _imported_vendors(targets: Iterable[str]) -> frozenset[str]:
+    prefix = f'{EXTS_PACKAGE}.'
+    return frozenset(
+        target[len(prefix) :].partition('.')[0]
+        for target in targets
+        if target.startswith(prefix)
+    )
+
+
+def _forbidden(facts: Sequence[_Fact], vendors: frozenset[str]) -> frozenset[object]:
+    values = set()
+    for fact in facts:
+        if fact.vendor not in vendors:
+            continue
+
+        values.add(fact.value)
+        if isinstance(fact.value, timedelta):
+            # NOTE: timedelta(seconds=1.1) is a call; only the 1.1 is a literal
+            values.add(fact.value.total_seconds())
+
+    return frozenset(value for value in values if value is not None)
+
+
+def _retyped_facts(
+    source: str,
+    package: str,
+    facts: Sequence[_Fact],
+) -> Iterator[str]:
+    vendors = _imported_vendors(_import_targets(source, package))
+    forbidden = _forbidden(facts, vendors)
+    if not forbidden:
+        return
+
+    for node in ast.walk(ast.parse(source)):
+        if (
+            isinstance(node, ast.Constant)
+            # NOTE: isinstance(True, int) holds, so booleans would match any 0/1 fact
+            and not isinstance(node.value, bool)
+            and node.value in forbidden
+        ):
+            yield f'line {node.lineno}: {node.value!r} is a vendor fact; read the spec'
+
+
+def _attribute_reads(source: str) -> Iterator[tuple[str, str]]:
+    for node in ast.walk(ast.parse(source)):
+        if isinstance(node, ast.Attribute) and isinstance(node.value, ast.Name):
+            yield node.value.id, node.attr
 
 
 def test_skeleton_imports() -> None:
@@ -247,3 +333,73 @@ def test_ext_vocabulary_check_flags_unknown_names() -> None:
     assert _unknown_ext_name(Path('felo/client.py')) is None
     assert _unknown_ext_name(Path('felo/__init__.py')) is None
     assert _unknown_ext_name(Path('felo/service.py')) is not None
+
+
+def test_feature_files_do_not_retype_vendor_facts() -> None:
+    root = _features_dir()
+    facts = _facts()
+
+    assert facts, 'no ext spec found; the check would pass vacuously'
+
+    violations = [
+        f'{path.relative_to(root)}: {message}'
+        for path in sorted(root.rglob('*.py'))
+        for message in _retyped_facts(path.read_text(), _package_of(path, root), facts)
+    ]
+
+    assert not violations, 'retyped vendor facts:\n' + '\n'.join(violations)
+
+
+def test_every_vendor_fact_is_read_by_a_feature() -> None:
+    root = _features_dir()
+    reads = {
+        read
+        for path in sorted(root.rglob('*.py'))
+        for read in _attribute_reads(path.read_text())
+    }
+    unread = [
+        f'{fact.vendor}.{fact.instance}.{fact.field}'
+        for fact in _facts()
+        if (fact.instance, fact.field) not in reads
+    ]
+
+    assert not unread, 'vendor facts no feature reads:\n' + '\n'.join(unread)
+
+
+def test_vendor_fact_check_flags_retyped_values_only_where_the_vendor_is_known() -> (
+    None
+):
+    facts = (
+        _Fact(
+            vendor='telegram',
+            instance='WEBHOOK',
+            field='signature_header',
+            value='X-Vendor-Header',
+        ),
+        _Fact(
+            vendor='telegram',
+            instance='MESSAGE',
+            field='edit_interval',
+            value=timedelta(seconds=1.1),
+        ),
+    )
+    package = f'{FEATURES_PACKAGE}.channels.telegram'
+    imports = f'from {EXTS_PACKAGE}.telegram.types import MESSAGE, WEBHOOK\n'
+
+    def flagged(body: str) -> list[str]:
+        return list(_retyped_facts(imports + body, package, facts))
+
+    assert flagged("value = 'X-Vendor-Header'\n")
+    assert flagged('wait = timedelta(seconds=1.1)\n')
+    assert not flagged('value = WEBHOOK.signature_header\n')
+    # a value no spec of a named vendor claims is none of the check's business
+    assert not flagged('width = 200\n')
+    # known blind spot: the check polices retyping, not first-time misplacement
+    assert not list(_retyped_facts("value = 'X-Vendor-Header'\n", package, facts))
+
+
+def test_attribute_read_check_sees_spec_field_access() -> None:
+    assert ('WEBHOOK', 'ack_status') in set(
+        _attribute_reads('status = WEBHOOK.ack_status\n'),
+    )
+    assert not set(_attribute_reads('status = 200\n'))
