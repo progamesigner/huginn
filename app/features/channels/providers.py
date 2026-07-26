@@ -1,13 +1,19 @@
 from typing import override
 
-from app.core.config.registry import SectionRegistry
+from app.core.channels.contracts import ChannelResolverContract
+from app.core.config.registry import HuginnConfig, SectionRegistry
 from app.core.providers.config import ConfigProvider
 from lib.container import ContainerContract, ProviderContract
 
 from .config import build_sections
 from .registry import ChannelRegistry
+from .resolver import ChannelSecretResolver
 from .telegram.config import TelegramChannelConfig
 from .telegram.providers import TelegramEndpointProvider
+
+
+def _resolver(container: ContainerContract) -> ChannelSecretResolver:
+    return ChannelSecretResolver(container.resolve(HuginnConfig))
 
 
 class ChannelRegistryProvider(ProviderContract):
@@ -21,6 +27,8 @@ class ChannelProvider(ProviderContract):
 
     @override
     def __call__(self, container: ContainerContract) -> None:
+        container.bind(ChannelResolverContract, factory=_resolver)
+
         registry = container.resolve(ChannelRegistry)
         registry.register('telegram', TelegramChannelConfig)
 

@@ -21,6 +21,20 @@ from lib.router import RouterContract
 
 _PATH = '/webhooks/telegram'
 _HEADER = 'X-Telegram-Bot-Api-Secret-Token'
+_CHAT_ID = 4242
+
+
+def update(update_id: int, *, chat_id: int = _CHAT_ID) -> dict[str, object]:
+    # NOTE: a chat message is the only update shape the adapter forwards
+    return {
+        'update_id': update_id,
+        'message': {
+            'message_id': update_id,
+            'date': 1_721_600_000,
+            'chat': {'id': chat_id, 'type': 'private'},
+            'text': 'hello',
+        },
+    }
 
 
 class RecordingHandler(TelegramUpdateHandler):
@@ -130,7 +144,7 @@ async def test_rejects_missing_secret() -> None:
     config = make_config({'support_bot': telegram('sekret')})
 
     async with webhook_client(config, make_redis(set()), handler) as client:
-        response = await client.post(_PATH, json={'update_id': 7})
+        response = await client.post(_PATH, json=update(7))
 
     assert response.status_code == 403
     assert handler.calls == []
@@ -144,7 +158,7 @@ async def test_rejects_unknown_secret() -> None:
         response = await client.post(
             _PATH,
             headers={_HEADER: 'wrong'},
-            json={'update_id': 7},
+            json=update(7),
         )
 
     assert response.status_code == 403
@@ -160,7 +174,7 @@ async def test_accepts_and_dispatches_to_the_handler() -> None:
         response = await client.post(
             _PATH,
             headers={_HEADER: 'sekret'},
-            json={'update_id': 7},
+            json=update(7),
         )
         assert response.status_code == 200
         async with asyncio.timeout(1):
@@ -183,7 +197,7 @@ async def test_routes_to_the_instance_matching_the_secret() -> None:
         response = await client.post(
             _PATH,
             headers={_HEADER: 'research-secret'},
-            json={'update_id': 9},
+            json=update(9),
         )
         assert response.status_code == 200
         async with asyncio.timeout(1):
@@ -202,7 +216,7 @@ async def test_deduplicates_repeated_update_id() -> None:
         first = await client.post(
             _PATH,
             headers={_HEADER: 'sekret'},
-            json={'update_id': 7},
+            json=update(7),
         )
         async with asyncio.timeout(1):
             await handler.finished.wait()
@@ -210,7 +224,7 @@ async def test_deduplicates_repeated_update_id() -> None:
         second = await client.post(
             _PATH,
             headers={_HEADER: 'sekret'},
-            json={'update_id': 7},
+            json=update(7),
         )
         await asyncio.sleep(0.05)
 
@@ -227,7 +241,7 @@ async def test_returns_200_before_handler_completes() -> None:
         response = await client.post(
             _PATH,
             headers={_HEADER: 'sekret'},
-            json={'update_id': 7},
+            json=update(7),
         )
         assert response.status_code == 200
 
@@ -250,10 +264,29 @@ async def test_processes_when_dedupe_is_unavailable() -> None:
         response = await client.post(
             _PATH,
             headers={_HEADER: 'sekret'},
-            json={'update_id': 7},
+            json=update(7),
         )
         assert response.status_code == 200
         async with asyncio.timeout(1):
             await handler.finished.wait()
 
     assert handler.calls == [7]
+
+
+async def test_acknowledges_but_discards_an_update_without_a_message() -> None:
+    handler = RecordingHandler()
+    store = set()
+    config = make_config({'support_bot': telegram('sekret')})
+
+    async with webhook_client(config, make_redis(store), handler) as client:
+        response = await client.post(
+            _PATH,
+            headers={_HEADER: 'sekret'},
+            json={'update_id': 7, 'edited_message': {}},
+        )
+
+    # NOTE: the adapter normalises or discards; an update with no chat cannot be
+    # keyed by conversation, so nothing downstream can act on it
+    assert response.status_code == 200
+    assert handler.calls == []
+    assert not store

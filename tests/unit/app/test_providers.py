@@ -6,6 +6,10 @@ from fastapi import FastAPI
 from typer.testing import CliRunner
 
 from app.core.application import App
+from app.core.channels.contracts import (
+    ChannelMessageHandlerContract,
+    ChannelResolverContract,
+)
 from app.core.config.exceptions import UnknownSectionError
 from app.core.config.registry import HuginnConfig, SectionRegistry
 from app.core.providers.bootstrap import BootstrapProvider
@@ -13,7 +17,7 @@ from app.core.providers.router import RouterProvider
 from app.core.providers.settings import SettingsProvider
 from app.features.auditor.services import RedisAuditor
 from app.features.channels.telegram.providers import TelegramProvider
-from app.features.channels.telegram.service import TelegramWebhookService
+from app.features.channels.telegram.service import TelegramMessageHandler
 from app.features.tools.registry import ToolRegistry
 from app.providers import HuginnCommandProvider, HuginnEndpointProvider, HuginnProvider
 from lib.command import CommandContract
@@ -46,7 +50,9 @@ def test_base_provider_binds_services_without_any_endpoint() -> None:
 
     # NOTE: the point of the *Provider / *EndpointProvider split
     assert not container.bound(RouterContract)
-    assert container.bound(TelegramWebhookService)
+    assert container.bound(TelegramMessageHandler)
+    assert container.bound(ChannelMessageHandlerContract)
+    assert container.bound(ChannelResolverContract)
     assert container.bound(RedisAuditor)
     assert container.bound(MCPClientContract)
 
@@ -71,7 +77,9 @@ def test_endpoint_provider_pulls_the_base_wiring_its_routes_need() -> None:
         HuginnEndpointProvider(),
     )
 
-    assert container.bound(TelegramWebhookService)
+    assert container.bound(TelegramMessageHandler)
+    assert container.bound(ChannelMessageHandlerContract)
+    assert container.bound(ChannelResolverContract)
 
 
 def test_command_provider_mounts_every_command_group() -> None:
@@ -89,14 +97,17 @@ def test_command_provider_mounts_every_command_group() -> None:
         assert group in result.output
 
 
-def test_telegram_provider_binds_the_webhook_service_without_a_router() -> None:
+def test_telegram_provider_binds_the_channel_ports_without_a_router() -> None:
     container = App().build(
         SettingsProvider(),
         BootstrapProvider(),
         TelegramProvider(),
     )
 
-    assert container.bound(TelegramWebhookService)
+    assert container.bound(TelegramMessageHandler)
+    assert container.bound(ChannelMessageHandlerContract)
+    # NOTE: the resolver belongs to the channels feature, not to one vendor
+    assert not container.bound(ChannelResolverContract)
     assert not container.bound(RouterContract)
 
 

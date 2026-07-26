@@ -62,8 +62,8 @@ def _exts_dir() -> Path:
     return Path(app.__file__).parent / 'exts'
 
 
-def _package_of(path: Path, root: Path) -> str:
-    return '.'.join((FEATURES_PACKAGE, *path.relative_to(root).parts[:-1]))
+def _package_of(path: Path, root: Path, package: str) -> str:
+    return '.'.join((package, *path.relative_to(root).parts[:-1]))
 
 
 def _import_targets(source: str, package: str) -> Iterator[str]:
@@ -287,7 +287,7 @@ def test_cross_feature_imports_respect_the_feature_tiers() -> None:
             continue
 
         feature = relative.parts[0]
-        package = _package_of(path, root)
+        package = _package_of(path, root, FEATURES_PACKAGE)
         violations.extend(
             f'{relative}: {message}'
             for target in _import_targets(path.read_text(), package)
@@ -336,6 +336,26 @@ def test_cross_feature_tier_check_flags_violations() -> None:
     assert (
         _cross_feature_violation('channels', 'app.features.conversations.repositories')
         is not None
+    )
+
+
+def test_exts_never_import_a_feature() -> None:
+    # NOTE: the layers contract is meant to cover this, but grimp does not walk
+    # namespace packages, so it sees 12 of the 98 modules under app/ and would pass
+    # this silently. Until every package carries an __init__.py, this is the check.
+    root = _exts_dir()
+    violations = [
+        f'{path.relative_to(root)}: {target}'
+        for path in sorted(root.rglob('*.py'))
+        for target in _import_targets(
+            path.read_text(),
+            _package_of(path, root, EXTS_PACKAGE),
+        )
+        if target == FEATURES_PACKAGE or target.startswith(f'{FEATURES_PACKAGE}.')
+    ]
+
+    assert not violations, 'an ext must not import a feature:\n' + '\n'.join(
+        violations,
     )
 
 
@@ -388,16 +408,21 @@ def test_feature_files_do_not_retype_vendor_facts() -> None:
     violations = [
         f'{path.relative_to(root)}: {message}'
         for path in sorted(root.rglob('*.py'))
-        for message in _retyped_facts(path.read_text(), _package_of(path, root), facts)
+        for message in _retyped_facts(
+            path.read_text(),
+            _package_of(path, root, FEATURES_PACKAGE),
+            facts,
+        )
     ]
 
     assert not violations, 'retyped vendor facts:\n' + '\n'.join(violations)
 
 
-def test_every_vendor_fact_is_read_by_a_feature() -> None:
-    root = _features_dir()
+def test_every_vendor_fact_is_read() -> None:
+    # NOTE: an ext owns its transport now, so a fact its own endpoints read is in use
     reads = {
         read
+        for root in (_features_dir(), _exts_dir())
         for path in sorted(root.rglob('*.py'))
         for read in _attribute_reads(path.read_text())
     }
@@ -407,7 +432,7 @@ def test_every_vendor_fact_is_read_by_a_feature() -> None:
         if (fact.instance, fact.field) not in reads
     ]
 
-    assert not unread, 'vendor facts no feature reads:\n' + '\n'.join(unread)
+    assert not unread, 'vendor facts nobody reads:\n' + '\n'.join(unread)
 
 
 def test_vendor_fact_check_flags_retyped_values_only_where_the_vendor_is_known() -> (

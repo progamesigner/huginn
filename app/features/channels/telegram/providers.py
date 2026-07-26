@@ -1,5 +1,6 @@
 from typing import override
 
+from app.core.channels.contracts import ChannelMessageHandlerContract
 from app.core.config.registry import HuginnConfig
 from app.core.providers.config import ConfigProvider
 from app.core.providers.http import HTTPClientProvider
@@ -12,7 +13,7 @@ from lib.router import RouterContract
 
 from .actor import TelegramChatActor, log_turn_batch
 from .handlers import ReactionUpdateHandler, TelegramUpdateHandler
-from .service import TelegramWebhookService
+from .service import TelegramMessageHandler
 from .tasks import BackgroundTasks
 
 
@@ -20,8 +21,8 @@ def _actor(container: ContainerContract) -> TelegramChatActor:
     return TelegramChatActor(container.resolve(RedisContract), log_turn_batch)
 
 
-def _service(container: ContainerContract) -> TelegramWebhookService:
-    return TelegramWebhookService(
+def _handler(container: ContainerContract) -> TelegramMessageHandler:
+    return TelegramMessageHandler(
         config=container.resolve(HuginnConfig),
         redis=container.resolve(RedisContract),
         handler=container.resolve(TelegramUpdateHandler),
@@ -40,7 +41,8 @@ class TelegramProvider(ProviderContract):
         container.bind(BackgroundTasks, instance=BackgroundTasks())
         container.bind(TelegramUpdateHandler, instance=handler)
         container.bind(TelegramChatActor, factory=_actor)
-        container.bind(TelegramWebhookService, factory=_service)
+        container.bind(TelegramMessageHandler, factory=_handler)
+        container.bind(ChannelMessageHandlerContract, factory=_handler)
 
 
 class TelegramEndpointProvider(ProviderContract):
@@ -48,6 +50,6 @@ class TelegramEndpointProvider(ProviderContract):
 
     @override
     def __call__(self, container: ContainerContract) -> None:
-        from .endpoints import router
+        from app.exts.telegram.endpoints import router
 
         container.resolve(RouterContract).include(router)
