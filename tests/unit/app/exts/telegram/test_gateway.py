@@ -5,9 +5,10 @@ import httpx
 import respx
 from pydantic import SecretStr
 
+from app.core.channels.types import InboundMessage
 from app.exts.telegram.client import TelegramClient
+from app.exts.telegram.gateway import TelegramGateway, TelegramReply
 from app.features.agents.contracts import TextSink
-from app.features.channels.telegram.streamer import TelegramStreamer
 from lib.http import HTTPClientManager
 from tests.helpers.clock import FakeClock
 
@@ -23,8 +24,8 @@ def make_client() -> TelegramClient:
     )
 
 
-def make_streamer(clock: FakeClock) -> TelegramStreamer:
-    return TelegramStreamer(make_client(), _CHAT_ID, clock)
+def make_reply(clock: FakeClock) -> TelegramReply:
+    return TelegramReply(make_client(), _CHAT_ID, clock)
 
 
 def message(message_id: int) -> httpx.Response:
@@ -45,7 +46,7 @@ def texts(route: respx.Route) -> list[str]:
     return [json.loads(call.request.content)['text'] for call in route.calls]
 
 
-# NOTE: typing the parameter proves the streamer satisfies the agent loop's sink
+# NOTE: typing the parameter proves the reply port satisfies the agent loop's sink
 async def drive(sink: TextSink, *fragments: str) -> None:
     for fragment in fragments:
         await sink(fragment)
@@ -56,7 +57,7 @@ async def test_sends_a_draft_on_the_first_fragment() -> None:
     send = respx.post(f'{_BASE_URL}/sendMessage').mock(return_value=message(7))
     edit = respx.post(f'{_BASE_URL}/editMessageText').mock(return_value=message(7))
 
-    await drive(make_streamer(FakeClock()).on_text, 'He')
+    await drive(make_reply(FakeClock()).on_text, 'He')
 
     assert json.loads(send.calls.last.request.content) == {
         'chat_id': _CHAT_ID,
@@ -70,7 +71,7 @@ async def test_holds_edits_inside_the_throttle_window() -> None:
     respx.post(f'{_BASE_URL}/sendMessage').mock(return_value=message(7))
     edit = respx.post(f'{_BASE_URL}/editMessageText').mock(return_value=message(7))
     clock = FakeClock()
-    streamer = make_streamer(clock)
+    streamer = make_reply(clock)
 
     await drive(streamer.on_text, 'He')
     clock.advance(timedelta(seconds=1.0))
@@ -84,7 +85,7 @@ async def test_edits_once_the_throttle_window_elapses() -> None:
     respx.post(f'{_BASE_URL}/sendMessage').mock(return_value=message(7))
     edit = respx.post(f'{_BASE_URL}/editMessageText').mock(return_value=message(7))
     clock = FakeClock()
-    streamer = make_streamer(clock)
+    streamer = make_reply(clock)
 
     await drive(streamer.on_text, 'He')
     clock.advance(timedelta(seconds=1.2))
@@ -102,7 +103,7 @@ async def test_edits_once_the_throttle_window_elapses() -> None:
 async def test_finish_flushes_the_pending_tail() -> None:
     respx.post(f'{_BASE_URL}/sendMessage').mock(return_value=message(7))
     edit = respx.post(f'{_BASE_URL}/editMessageText').mock(return_value=message(7))
-    streamer = make_streamer(FakeClock())
+    streamer = make_reply(FakeClock())
 
     await drive(streamer.on_text, 'He', 'llo', ' there')
     await streamer.finish()
@@ -114,7 +115,7 @@ async def test_finish_flushes_the_pending_tail() -> None:
 async def test_finish_skips_the_edit_when_the_draft_is_current() -> None:
     respx.post(f'{_BASE_URL}/sendMessage').mock(return_value=message(7))
     edit = respx.post(f'{_BASE_URL}/editMessageText').mock(return_value=message(7))
-    streamer = make_streamer(FakeClock())
+    streamer = make_reply(FakeClock())
 
     await drive(streamer.on_text, 'Hello')
     await streamer.finish()
@@ -126,7 +127,7 @@ async def test_finish_skips_the_edit_when_the_draft_is_current() -> None:
 async def test_sends_nothing_when_the_turn_produced_no_text() -> None:
     send = respx.post(f'{_BASE_URL}/sendMessage').mock(return_value=message(7))
     edit = respx.post(f'{_BASE_URL}/editMessageText').mock(return_value=message(7))
-    streamer = make_streamer(FakeClock())
+    streamer = make_reply(FakeClock())
 
     await drive(streamer.on_text, '', '')
     await streamer.finish()
@@ -141,7 +142,7 @@ async def test_rolls_over_into_a_new_message_at_a_line_break() -> None:
         side_effect=[message(7), message(8)],
     )
     edit = respx.post(f'{_BASE_URL}/editMessageText').mock(return_value=message(7))
-    streamer = TelegramStreamer(make_client(), _CHAT_ID, FakeClock(), limit=12)
+    streamer = TelegramReply(make_client(), _CHAT_ID, FakeClock(), limit=12)
 
     await drive(streamer.on_text, 'first line\nsecond line')
     await streamer.finish()
@@ -155,7 +156,7 @@ async def test_rollover_cuts_mid_token_when_there_is_no_whitespace() -> None:
     send = respx.post(f'{_BASE_URL}/sendMessage').mock(
         side_effect=[message(7), message(8)],
     )
-    streamer = TelegramStreamer(make_client(), _CHAT_ID, FakeClock(), limit=5)
+    streamer = TelegramReply(make_client(), _CHAT_ID, FakeClock(), limit=5)
 
     await drive(streamer.on_text, 'abcdefghij')
     await streamer.finish()
@@ -168,7 +169,7 @@ async def test_no_message_exceeds_the_telegram_length_limit() -> None:
     send = respx.post(f'{_BASE_URL}/sendMessage').mock(
         side_effect=[message(7), message(8)],
     )
-    streamer = make_streamer(FakeClock())
+    streamer = make_reply(FakeClock())
 
     await drive(streamer.on_text, 'word ' * 1200)
     await streamer.finish()
@@ -185,7 +186,7 @@ async def test_keeps_editing_the_continuation_message_after_a_rollover() -> None
     respx.post(f'{_BASE_URL}/sendMessage').mock(side_effect=[message(7), message(8)])
     edit = respx.post(f'{_BASE_URL}/editMessageText').mock(return_value=message(8))
     clock = FakeClock()
-    streamer = TelegramStreamer(make_client(), _CHAT_ID, clock, limit=12)
+    streamer = TelegramReply(make_client(), _CHAT_ID, clock, limit=12)
 
     await drive(streamer.on_text, 'first line\nsecond')
     clock.advance(timedelta(seconds=1.2))
@@ -195,4 +196,64 @@ async def test_keeps_editing_the_continuation_message_after_a_rollover() -> None
         'chat_id': _CHAT_ID,
         'message_id': 8,
         'text': 'second line',
+    }
+
+
+def make_message(raw: bytes) -> InboundMessage:
+    return InboundMessage(channel='support_bot', chat=str(_CHAT_ID), event='7', raw=raw)
+
+
+def make_gateway(clock: FakeClock) -> TelegramGateway:
+    return TelegramGateway(make_client(), clock)
+
+
+@respx.mock
+async def test_acknowledge_reacts_to_the_incoming_message() -> None:
+    route = respx.post(f'{_BASE_URL}/setMessageReaction').mock(
+        return_value=httpx.Response(200, json={'ok': True, 'result': True}),
+    )
+    raw = json.dumps(
+        {
+            'update_id': 7,
+            'message': {
+                'message_id': 31,
+                'date': 1_721_600_000,
+                'chat': {'id': _CHAT_ID, 'type': 'private'},
+                'text': 'hello',
+            },
+        },
+    ).encode()
+
+    await make_gateway(FakeClock()).acknowledge(make_message(raw))
+
+    assert json.loads(route.calls.last.request.content) == {
+        'chat_id': str(_CHAT_ID),
+        'message_id': 31,
+        'reaction': [{'type': 'emoji', 'emoji': '\N{EYES}'}],
+    }
+
+
+@respx.mock
+async def test_acknowledge_skips_a_payload_with_nothing_to_react_to() -> None:
+    route = respx.post(f'{_BASE_URL}/setMessageReaction').mock(
+        return_value=httpx.Response(200, json={'ok': True, 'result': True}),
+    )
+
+    await make_gateway(FakeClock()).acknowledge(make_message(b'{"update_id": 7}'))
+    await make_gateway(FakeClock()).acknowledge(make_message(b'not json'))
+
+    assert not route.called
+
+
+@respx.mock
+async def test_reply_streams_into_the_inbound_chat() -> None:
+    send = respx.post(f'{_BASE_URL}/sendMessage').mock(return_value=message(7))
+    reply = make_gateway(FakeClock()).reply(make_message(b'{"update_id": 7}'))
+
+    await reply.on_text('hello')
+    await reply.finish()
+
+    assert json.loads(send.calls.last.request.content) == {
+        'chat_id': str(_CHAT_ID),
+        'text': 'hello',
     }

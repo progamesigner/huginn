@@ -1,11 +1,29 @@
 import logging
 from datetime import timedelta
+from typing import override
 
-from app.exts.telegram.client import TelegramClient
-from app.exts.telegram.types import MESSAGE
+from pydantic import ValidationError
+
+from app.core.channels.contracts import ChannelGatewayContract, ChannelReplyContract
+from app.core.channels.types import InboundMessage
 from lib.temporal import ClockContract, Timer
 
+from .client import TelegramClient
+from .types import MESSAGE, Update
+
 logger = logging.getLogger(__name__)
+
+# NOTE: telegram only accepts reactions from its own allowed set
+_ACK_EMOJI = '👀'
+
+
+def _message_id(raw: bytes) -> int | None:
+    try:
+        update = Update.model_validate_json(raw)
+    except ValidationError:
+        return None
+
+    return None if update.message is None else update.message.message_id
 
 
 def _split(text: str, limit: int) -> tuple[str, str]:
@@ -19,9 +37,9 @@ def _split(text: str, limit: int) -> tuple[str, str]:
     return text[:cut], text[cut:].lstrip()
 
 
-class TelegramStreamer:
+class TelegramReply(ChannelReplyContract):
     client: TelegramClient
-    chat_id: int
+    chat_id: int | str
     clock: ClockContract
     interval: timedelta
     limit: int
@@ -33,7 +51,7 @@ class TelegramStreamer:
     def __init__(
         self,
         client: TelegramClient,
-        chat_id: int,
+        chat_id: int | str,
         clock: ClockContract,
         *,
         interval: timedelta = MESSAGE.edit_interval,
@@ -49,9 +67,11 @@ class TelegramStreamer:
         self.pending = ''
         self.timer = clock.timer()
 
+    @override
     async def finish(self) -> None:
         await self._flush()
 
+    @override
     async def on_text(self, fragment: str) -> None:
         self.pending += fragment
         if self.draft is None or self.timer.elapsed() >= self.interval:
@@ -83,3 +103,25 @@ class TelegramStreamer:
 
         self.sent = text
         self.timer = self.clock.timer()
+
+
+class TelegramGateway(ChannelGatewayContract):
+    client: TelegramClient
+    clock: ClockContract
+
+    def __init__(self, client: TelegramClient, clock: ClockContract) -> None:
+        self.client = client
+        self.clock = clock
+
+    @override
+    async def acknowledge(self, message: InboundMessage) -> None:
+        # NOTE: the vendor's own bytes, so the vendor's adapter reads them
+        if (message_id := _message_id(message.raw)) is None:
+            logger.info('Nothing to acknowledge in event %s', message.event)
+            return
+
+        await self.client.set_message_reaction(message.chat, message_id, _ACK_EMOJI)
+
+    @override
+    def reply(self, message: InboundMessage) -> ChannelReplyContract:
+        return TelegramReply(self.client, message.chat, self.clock)

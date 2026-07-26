@@ -5,6 +5,7 @@ from typing import override
 from unittest.mock import AsyncMock, MagicMock
 
 import httpx
+import respx
 from fastapi import FastAPI
 from pydantic import SecretStr
 
@@ -13,12 +14,12 @@ from app.exts.telegram.types import Update
 from app.features.channels.config import ChannelConfigList
 from app.features.channels.telegram.actor import TelegramChatActor
 from app.features.channels.telegram.config import TelegramChannelConfig
-from app.features.channels.telegram.handlers import TelegramUpdateHandler
 from bin.server import build
 from lib.mcp import MCPClientContract
 from lib.redis import RedisContract
 from lib.router import RouterContract
 
+_BASE_URL = 'https://api.telegram.org/botbot-token'
 _PATH = '/webhooks/telegram'
 _HEADER = 'X-Telegram-Bot-Api-Secret-Token'
 _CHAT_ID = 4242
@@ -37,7 +38,7 @@ def update(update_id: int, *, chat_id: int = _CHAT_ID) -> dict[str, object]:
     }
 
 
-class RecordingHandler(TelegramUpdateHandler):
+class RecordingActor(TelegramChatActor):
     names: list[str]
     calls: list[int]
     started: asyncio.Event
@@ -59,6 +60,7 @@ class RecordingHandler(TelegramUpdateHandler):
         name: str,
         channel: TelegramChannelConfig,
         update: Update,
+        body: bytes,
     ) -> None:
         self.names.append(name)
         self.calls.append(update.update_id)
@@ -107,26 +109,22 @@ def make_redis(store: set[str], *, fail: bool = False) -> MagicMock:
     return redis
 
 
-def make_actor() -> MagicMock:
-    # NOTE: this file exercises ack/dedupe only; the actor gets its own test suite
-    actor = MagicMock(spec=TelegramChatActor)
-    actor.handle = AsyncMock(return_value=None)
-    return actor
-
-
 @asynccontextmanager
 async def webhook_client(
     config: HuginnConfig,
     redis: MagicMock,
-    handler: TelegramUpdateHandler,
+    actor: TelegramChatActor,
 ) -> AsyncIterator[httpx.AsyncClient]:
+    # NOTE: the ack reaches the real client; the gateway suite owns its payload
+    respx.post(f'{_BASE_URL}/setMessageReaction').mock(
+        return_value=httpx.Response(200, json={'ok': True, 'result': True}),
+    )
     application = build()
     with (
         application.use(HuginnConfig, config),
         application.use(MCPClientContract, MagicMock(spec=MCPClientContract)),
         application.use(RedisContract, redis),
-        application.use(TelegramUpdateHandler, handler),
-        application.use(TelegramChatActor, make_actor()),
+        application.use(TelegramChatActor, actor),
     ):
         app = application.resolve(RouterContract).app
         assert isinstance(app, FastAPI)
@@ -139,8 +137,9 @@ async def webhook_client(
                 yield client
 
 
+@respx.mock
 async def test_rejects_missing_secret() -> None:
-    handler = RecordingHandler()
+    handler = RecordingActor()
     config = make_config({'support_bot': telegram('sekret')})
 
     async with webhook_client(config, make_redis(set()), handler) as client:
@@ -150,8 +149,9 @@ async def test_rejects_missing_secret() -> None:
     assert handler.calls == []
 
 
+@respx.mock
 async def test_rejects_unknown_secret() -> None:
-    handler = RecordingHandler()
+    handler = RecordingActor()
     config = make_config({'support_bot': telegram('sekret')})
 
     async with webhook_client(config, make_redis(set()), handler) as client:
@@ -165,8 +165,9 @@ async def test_rejects_unknown_secret() -> None:
     assert handler.calls == []
 
 
+@respx.mock
 async def test_accepts_and_dispatches_to_the_handler() -> None:
-    handler = RecordingHandler()
+    handler = RecordingActor()
     store = set()
     config = make_config({'support_bot': telegram('sekret')})
 
@@ -184,8 +185,9 @@ async def test_accepts_and_dispatches_to_the_handler() -> None:
     assert 'telegram:support_bot:7' in store
 
 
+@respx.mock
 async def test_routes_to_the_instance_matching_the_secret() -> None:
-    handler = RecordingHandler()
+    handler = RecordingActor()
     config = make_config(
         {
             'support_bot': telegram('support-secret'),
@@ -207,8 +209,9 @@ async def test_routes_to_the_instance_matching_the_secret() -> None:
     assert handler.calls == [9]
 
 
+@respx.mock
 async def test_deduplicates_repeated_update_id() -> None:
-    handler = RecordingHandler()
+    handler = RecordingActor()
     store = set()
     config = make_config({'support_bot': telegram('sekret')})
 
@@ -233,8 +236,9 @@ async def test_deduplicates_repeated_update_id() -> None:
     assert handler.calls == [7]
 
 
+@respx.mock
 async def test_returns_200_before_handler_completes() -> None:
-    handler = RecordingHandler(block=True)
+    handler = RecordingActor(block=True)
     config = make_config({'support_bot': telegram('sekret')})
 
     async with webhook_client(config, make_redis(set()), handler) as client:
@@ -256,8 +260,9 @@ async def test_returns_200_before_handler_completes() -> None:
     assert handler.calls == [7]
 
 
+@respx.mock
 async def test_processes_when_dedupe_is_unavailable() -> None:
-    handler = RecordingHandler()
+    handler = RecordingActor()
     config = make_config({'support_bot': telegram('sekret')})
 
     async with webhook_client(config, make_redis(set(), fail=True), handler) as client:
@@ -273,8 +278,9 @@ async def test_processes_when_dedupe_is_unavailable() -> None:
     assert handler.calls == [7]
 
 
+@respx.mock
 async def test_acknowledges_but_discards_an_update_without_a_message() -> None:
-    handler = RecordingHandler()
+    handler = RecordingActor()
     store = set()
     config = make_config({'support_bot': telegram('sekret')})
 
