@@ -12,9 +12,10 @@ from lib.database import Timestamp
 class UserRecord(TimestampRecordMixin, AppRecord):
     __tablename__ = 'users'
     __table_args__ = (
+        # NOTE: the metadata convention prefixes ck_<table>_, so name the rule only
         CheckConstraint(
             'handle = lower(btrim(handle)) AND length(handle) > 0',
-            name='ck_users_handle_normalized',
+            name='handle_normalized',
         ),
     )
 
@@ -66,7 +67,7 @@ class IdentityLinkInviteRecord(AppRecord):
         UniqueConstraint('token_digest'),
         CheckConstraint(
             'NOT (consumed_at IS NOT NULL AND revoked_at IS NOT NULL)',
-            name='ck_identity_link_invites_terminal_state',
+            name='terminal_state',
         ),
         Index('ix_identity_link_invites_user_created', 'user_id', 'created_at'),
     )
