@@ -79,7 +79,7 @@ def test_parse_naive_assumes_utc() -> None:
 
 
 def test_parse_rejects_garbage() -> None:
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match='Invalid isoformat string'):
         parse('not-a-timestamp')
 
 

@@ -56,7 +56,7 @@ def test_client_for_caches_adapter_per_provider() -> None:
 
 @pytest.mark.parametrize(
     ('provider', 'model'),
-    (
+    [
         (
             ProviderConfig(
                 name='openai',
@@ -75,7 +75,7 @@ def test_client_for_caches_adapter_per_provider() -> None:
             ),
             'claude-opus-4-8',
         ),
-    ),
+    ],
 )
 def test_client_for_reports_missing_extra(
     monkeypatch: pytest.MonkeyPatch,

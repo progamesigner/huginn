@@ -87,6 +87,7 @@ extend-select = [
     "G",     # flake8-logging-format
     "I",     # isort
     "LOG",   # flake8-logging
+    "PT",    # flake8-pytest-style
     "RUF",   # Ruff-specific rules
     "S",     # flake8-bandit
     "TID",   # flake8-tidy-imports

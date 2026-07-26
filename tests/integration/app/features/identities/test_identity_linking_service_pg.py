@@ -58,8 +58,8 @@ async def test_invite_stores_only_keyed_digest(session: AsyncSession) -> None:
     assert linking.tokens.matches(record.token_digest, invite.short_code)
 
 
+@pytest.mark.usefixtures('_migrated')
 async def test_concurrent_completion_creates_one_link_and_success_event(
-    _migrated: None,
     database_url: str,
 ) -> None:
     engine = create_async_engine(database_url)

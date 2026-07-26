@@ -410,10 +410,13 @@ async def test_scope_disposes_even_when_body_raises() -> None:
         scoped=True,
     )
 
-    with pytest.raises(RuntimeError, match='boom'):
+    async def resolve_then_fail() -> None:
         async with container.scope() as scope:
             scope.resolve(RecordingManager)
             raise RuntimeError('boom')
+
+    with pytest.raises(RuntimeError, match='boom'):
+        await resolve_then_fail()
 
     assert journal == ['scoped:dispose']
 
