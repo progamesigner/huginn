@@ -80,7 +80,7 @@ def test_scoped_uses_and_disposes_child_container() -> None:
     container.bind(ScopedService, constructor=ScopedService, scoped=True)
     manager = CommandManager(container)
     commands = Typer()
-    instances: list[ScopedService] = []
+    instances = []
 
     @commands.command()
     def show() -> None:

@@ -61,7 +61,7 @@ async def test_ignores_updates_without_a_message() -> None:
 
 @respx.mock
 async def test_acks_within_the_latency_budget() -> None:
-    fired: list[float] = []
+    fired = []
 
     def _record(request: httpx.Request) -> httpx.Response:
         fired.append(time.perf_counter())

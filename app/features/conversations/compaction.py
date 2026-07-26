@@ -186,7 +186,7 @@ class CompactionService:
                 messages=messages,
                 output_schema=OutputSchema.from_model(SummaryOutput),
             )
-            fragments: list[str] = []
+            fragments = []
             async for chunk in client.stream(request):
                 match chunk:
                     case TextChunk(text=fragment):

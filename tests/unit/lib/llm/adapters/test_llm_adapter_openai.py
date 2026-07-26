@@ -247,7 +247,7 @@ async def _drain(adapter: OpenAIAdapter, request: CompletionRequest) -> None:
 
 
 async def test_stream_forwards_max_completion_tokens() -> None:
-    recorded: dict[str, object] = {}
+    recorded = {}
 
     await _drain(
         OpenAIAdapter(
@@ -262,7 +262,7 @@ async def test_stream_forwards_max_completion_tokens() -> None:
 
 
 async def test_stream_omits_max_completion_tokens_when_unset() -> None:
-    recorded: dict[str, object] = {}
+    recorded = {}
 
     await _drain(
         OpenAIAdapter(
@@ -277,7 +277,7 @@ async def test_stream_omits_max_completion_tokens_when_unset() -> None:
 
 
 async def test_stream_omits_response_format_when_no_schema() -> None:
-    recorded: dict[str, object] = {}
+    recorded = {}
 
     await _drain(
         OpenAIAdapter(
@@ -294,7 +294,7 @@ async def test_stream_omits_response_format_when_no_schema() -> None:
 async def test_stream_sets_response_format_json_schema_with_name_and_schema_and_strict() -> (
     None
 ):
-    recorded: dict[str, object] = {}
+    recorded = {}
     output_schema = OutputSchema(
         name='summary_output',
         json_schema={'type': 'object', 'properties': {}},

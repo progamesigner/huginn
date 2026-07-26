@@ -54,10 +54,9 @@ class TelegramChatActor:
             return
 
         async with lock.renew():
-            batch: tuple[bytes, ...] = (body,)
-            while batch:
+            await self.process(name, channel, _parse(name, (body,)))
+            while batch := await mailbox.drain():
                 await self.process(name, channel, _parse(name, batch))
-                batch = await mailbox.drain()
 
     def _key(self, name: str, chat_id: int, kind: str) -> str:
         return f'telegram:{name}:{kind}:{chat_id}'

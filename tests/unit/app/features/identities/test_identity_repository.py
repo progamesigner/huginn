@@ -4,11 +4,16 @@ from app.features.identities.types import ExternalIdentity, IdentityAuditEvent, 
 
 
 class FakeIdentityRepository:
+    counter: int
+    users: dict[str, User]
+    identities: dict[tuple[str, str, str], ExternalIdentity]
+    audit: list[IdentityAuditEvent]
+
     def __init__(self) -> None:
         self.counter = 0
-        self.users: dict[str, User] = {}
-        self.identities: dict[tuple[str, str, str], ExternalIdentity] = {}
-        self.audit: list[IdentityAuditEvent] = []
+        self.users = {}
+        self.identities = {}
+        self.audit = []
 
     def next_id(self) -> UUID:
         self.counter += 1

@@ -98,7 +98,7 @@ async def test_get_file() -> None:
 async def test_retries_rate_limit_after_retry_after(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    sleeps: list[float] = []
+    sleeps = []
 
     async def record_sleep(delay: float) -> None:
         sleeps.append(delay)

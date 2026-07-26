@@ -31,7 +31,7 @@ def body(update_id: int, chat_id: int = 555) -> bytes:
 
 
 async def test_updates_without_a_message_skip_the_actor_entirely() -> None:
-    calls: list[tuple[Update, ...]] = []
+    calls = []
 
     async def process(
         name: str,
@@ -55,7 +55,7 @@ async def test_updates_without_a_message_skip_the_actor_entirely() -> None:
 
 
 async def test_a_refused_claim_leaves_processing_to_the_owner() -> None:
-    calls: list[tuple[Update, ...]] = []
+    calls = []
 
     async def process(
         name: str,
@@ -76,7 +76,7 @@ async def test_a_refused_claim_leaves_processing_to_the_owner() -> None:
 async def test_the_owner_processes_its_own_message_then_stops_on_an_empty_drain() -> (
     None
 ):
-    calls: list[tuple[int, ...]] = []
+    calls = []
 
     async def process(
         name: str,
@@ -95,7 +95,7 @@ async def test_the_owner_processes_its_own_message_then_stops_on_an_empty_drain(
 
 
 async def test_a_non_empty_drain_coalesces_into_a_second_round() -> None:
-    calls: list[tuple[int, ...]] = []
+    calls = []
 
     async def process(
         name: str,
@@ -114,7 +114,7 @@ async def test_a_non_empty_drain_coalesces_into_a_second_round() -> None:
 
 
 async def test_unparseable_queued_bytes_are_dropped_from_the_round() -> None:
-    calls: list[tuple[int, ...]] = []
+    calls = []
 
     async def process(
         name: str,

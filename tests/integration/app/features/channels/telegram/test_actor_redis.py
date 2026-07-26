@@ -43,8 +43,12 @@ def message(update_id: int, chat_id: int) -> tuple[Update, bytes]:
 
 
 class SettlingProcessor:
+    rounds: list[tuple[int, ...]]
+    settle: float
+    calls: int
+
     def __init__(self, *, settle: float) -> None:
-        self.rounds: list[tuple[int, ...]] = []
+        self.rounds = []
         self.settle = settle
         self.calls = 0
 

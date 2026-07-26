@@ -203,12 +203,10 @@ class Container(ContainerContract):
         return container
 
     def _override(self, binding: type[object]) -> Container | None:
-        node: Container | None = self
-        while node is not None:
-            if binding in node.overrides:
-                return node
-            node = node.parent
-        return None
+        if binding in self.overrides:
+            return self
+
+        return self.parent._override(binding) if self.parent is not None else None
 
     def _root(self) -> Container:
         node = self

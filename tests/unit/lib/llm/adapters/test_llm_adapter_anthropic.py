@@ -332,7 +332,7 @@ async def _drain(adapter: AnthropicAdapter, request: CompletionRequest) -> None:
 
 
 async def test_stream_forwards_max_completion_tokens_as_max_tokens() -> None:
-    recorded: dict[str, object] = {}
+    recorded = {}
 
     await _drain(
         AnthropicAdapter(
@@ -347,7 +347,7 @@ async def test_stream_forwards_max_completion_tokens_as_max_tokens() -> None:
 
 
 async def test_stream_falls_back_to_instance_max_tokens_when_unset() -> None:
-    recorded: dict[str, object] = {}
+    recorded = {}
 
     await _drain(
         AnthropicAdapter(
@@ -363,7 +363,7 @@ async def test_stream_falls_back_to_instance_max_tokens_when_unset() -> None:
 
 
 async def test_stream_omits_output_config_when_no_effort_and_no_schema() -> None:
-    recorded: dict[str, object] = {}
+    recorded = {}
 
     await _drain(
         AnthropicAdapter(
@@ -378,7 +378,7 @@ async def test_stream_omits_output_config_when_no_effort_and_no_schema() -> None
 
 
 async def test_stream_sets_format_independent_of_effort() -> None:
-    recorded: dict[str, object] = {}
+    recorded = {}
     output_schema = OutputSchema(name='summary', json_schema={'type': 'object'})
 
     await _drain(
@@ -398,7 +398,7 @@ async def test_stream_sets_format_independent_of_effort() -> None:
 
 
 async def test_stream_sets_both_effort_and_format_when_both_requested() -> None:
-    recorded: dict[str, object] = {}
+    recorded = {}
     output_schema = OutputSchema(name='summary', json_schema={'type': 'object'})
 
     await _drain(

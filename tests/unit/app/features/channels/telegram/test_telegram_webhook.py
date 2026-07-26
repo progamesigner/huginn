@@ -153,7 +153,7 @@ async def test_rejects_unknown_secret() -> None:
 
 async def test_accepts_and_dispatches_to_the_handler() -> None:
     handler = RecordingHandler()
-    store: set[str] = set()
+    store = set()
     config = make_config({'support_bot': telegram('sekret')})
 
     async with webhook_client(config, make_redis(store), handler) as client:
@@ -195,7 +195,7 @@ async def test_routes_to_the_instance_matching_the_secret() -> None:
 
 async def test_deduplicates_repeated_update_id() -> None:
     handler = RecordingHandler()
-    store: set[str] = set()
+    store = set()
     config = make_config({'support_bot': telegram('sekret')})
 
     async with webhook_client(config, make_redis(store), handler) as client:
