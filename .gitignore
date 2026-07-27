@@ -5,6 +5,7 @@ huginn.yaml
 
 # Tool artifacts
 __pycache__/
+.grimp_cache/
 .import_linter_cache/
 .pytest_cache/
 .ruff_cache/
