@@ -19,6 +19,7 @@ class ServerOptions(BaseSettings):
     host: Annotated[str, Field()] = '127.0.0.1'
     port: Annotated[int, Field()] = 8000
     reload: Annotated[bool, Field()] = False
+    timeout_graceful_shutdown: Annotated[int, Field()] = 60
 
 
 def build() -> App:
@@ -43,6 +44,7 @@ def main() -> None:
         host=options.host,
         port=options.port,
         reload=options.reload,
+        timeout_graceful_shutdown=options.timeout_graceful_shutdown,
         log_config=None,
     )
 

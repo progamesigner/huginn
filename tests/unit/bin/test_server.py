@@ -108,18 +108,21 @@ def test_server_options_defaults() -> None:
     assert options.host == '127.0.0.1'
     assert options.port == 8000
     assert options.reload is False
+    assert options.timeout_graceful_shutdown == 60
 
 
 def test_server_options_read_prefixed_env(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv('HUGINN_SERVER_HOST', 'localhost')
     monkeypatch.setenv('HUGINN_SERVER_PORT', '8001')
     monkeypatch.setenv('HUGINN_SERVER_RELOAD', 'true')
+    monkeypatch.setenv('HUGINN_SERVER_TIMEOUT_GRACEFUL_SHUTDOWN', '90')
 
     options = ServerOptions()
 
     assert options.host == 'localhost'
     assert options.port == 8001
     assert options.reload is True
+    assert options.timeout_graceful_shutdown == 90
 
 
 def test_server_options_ignore_unprefixed_port(monkeypatch: pytest.MonkeyPatch) -> None:

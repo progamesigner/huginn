@@ -1,3 +1,4 @@
+from datetime import timedelta
 from typing import override
 
 from app.core.config.registry import HuginnConfig
@@ -7,6 +8,7 @@ from app.core.providers.redis import RedisProvider
 from app.core.providers.router import RouterProvider
 from app.core.providers.temporal import ClockProvider
 from app.ports.channels import ChannelMessageHandlerContract
+from lib.concurrency import TaskSupervisor, TaskSupervisorContract
 from lib.container import ContainerContract, ProviderContract
 from lib.http import HTTPClientContract
 from lib.redis import RedisContract
@@ -15,7 +17,9 @@ from lib.temporal import ClockContract
 
 from .actor import TelegramChatActor, log_turn_batch
 from .service import TelegramMessageHandler
-from .tasks import BackgroundTasks
+
+_TURN_LIMIT = 32
+_TURN_GRACE = timedelta(seconds=60)
 
 
 def _actor(container: ContainerContract) -> TelegramChatActor:
@@ -29,7 +33,7 @@ def _handler(container: ContainerContract) -> TelegramMessageHandler:
         http=container.resolve(HTTPClientContract),
         clock=container.resolve(ClockContract),
         actor=container.resolve(TelegramChatActor),
-        background=container.resolve(BackgroundTasks),
+        supervisor=container.resolve(TaskSupervisorContract),
     )
 
 
@@ -38,7 +42,10 @@ class TelegramProvider(ProviderContract):
 
     @override
     def __call__(self, container: ContainerContract) -> None:
-        container.bind(BackgroundTasks, instance=BackgroundTasks())
+        container.bind(
+            TaskSupervisorContract,
+            instance=TaskSupervisor(limit=_TURN_LIMIT, grace=_TURN_GRACE),
+        )
         container.bind(TelegramChatActor, factory=_actor)
         container.bind(TelegramMessageHandler, factory=_handler)
         container.bind(ChannelMessageHandlerContract, factory=_handler)

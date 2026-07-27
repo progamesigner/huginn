@@ -9,13 +9,13 @@ from app.ports.channels import (
     ChannelMessageHandlerContract,
     InboundMessage,
 )
+from lib.concurrency import TaskSupervisorContract
 from lib.http import HTTPClientContract
 from lib.redis import RedisContract
 from lib.temporal import ClockContract
 
 from .actor import TelegramChatActor
 from .config import TelegramChannelConfig
-from .tasks import BackgroundTasks
 
 logger = logging.getLogger(__name__)
 
@@ -24,11 +24,11 @@ _DEDUPE_TTL = 6 * 60 * 60
 
 class TelegramMessageHandler(ChannelMessageHandlerContract):
     actor: TelegramChatActor
-    background: BackgroundTasks
     clock: ClockContract
     config: HuginnConfig
     http: HTTPClientContract
     redis: RedisContract
+    supervisor: TaskSupervisorContract
 
     def __init__(
         self,
@@ -37,14 +37,14 @@ class TelegramMessageHandler(ChannelMessageHandlerContract):
         http: HTTPClientContract,
         clock: ClockContract,
         actor: TelegramChatActor,
-        background: BackgroundTasks,
+        supervisor: TaskSupervisorContract,
     ) -> None:
         self.actor = actor
-        self.background = background
         self.clock = clock
         self.config = config
         self.http = http
         self.redis = redis
+        self.supervisor = supervisor
 
     def gateway(self, channel: TelegramChannelConfig) -> ChannelGatewayContract:
         return build_gateway(self.http, channel.token, self.clock)
@@ -64,7 +64,7 @@ class TelegramMessageHandler(ChannelMessageHandlerContract):
             )
             return
 
-        self.background.spawn(self._process(message, channel))
+        self.supervisor.spawn(self._process(message, channel))
 
     def _channel(self, name: str) -> TelegramChannelConfig | None:
         channel = self.config.section(CHANNELS).root.get(name)

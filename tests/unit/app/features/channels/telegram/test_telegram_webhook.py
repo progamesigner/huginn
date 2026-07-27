@@ -45,14 +45,16 @@ class RecordingActor(TelegramChatActor):
     finished: asyncio.Event
     release: asyncio.Event
     block: bool
+    delay: float
 
-    def __init__(self, *, block: bool = False) -> None:
+    def __init__(self, *, block: bool = False, delay: float = 0.0) -> None:
         self.names = []
         self.calls = []
         self.started = asyncio.Event()
         self.finished = asyncio.Event()
         self.release = asyncio.Event()
         self.block = block
+        self.delay = delay
 
     @override
     async def handle(
@@ -65,6 +67,8 @@ class RecordingActor(TelegramChatActor):
         self.started.set()
         if self.block:
             await self.release.wait()
+        if self.delay:
+            await asyncio.sleep(self.delay)
         self.finished.set()
 
 
@@ -256,6 +260,27 @@ async def test_returns_200_before_handler_completes() -> None:
             await handler.finished.wait()
 
     assert handler.calls == ['7']
+
+
+@respx.mock
+async def test_shutdown_drains_the_turn_the_webhook_already_acknowledged() -> None:
+    # NOTE: the 200 is out, so uvicorn no longer counts this work as in-flight; the
+    # only thing that waits for it is the supervisor's drain on the way out
+    handler = RecordingActor(delay=0.05)
+    config = make_config({'support_bot': telegram('sekret')})
+
+    async with webhook_client(config, make_redis(set()), handler) as client:
+        response = await client.post(
+            _PATH,
+            headers={_HEADER: 'sekret'},
+            json=update(7),
+        )
+        assert response.status_code == 200
+        async with asyncio.timeout(1):
+            await handler.started.wait()
+        assert not handler.finished.is_set()
+
+    assert handler.finished.is_set()
 
 
 @respx.mock
