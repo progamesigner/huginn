@@ -1,0 +1,2 @@
+class ConcurrencyError(Exception):
+    pass
