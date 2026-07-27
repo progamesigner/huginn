@@ -40,15 +40,17 @@ ROOT_PACKAGES = ('app', 'bin', 'lib')
 FEATURES_PACKAGE = 'app.features'
 EXTS_PACKAGE = 'app.exts'
 PORTS_PACKAGE = 'app.ports'
-# An ext may expose a vendor's transport as well as its client: `endpoints` for what
-# the vendor calls inbound, `gateway` for what we call outbound. Both talk to the app
-# only through app.ports ports, so an ext still never imports a feature.
+# An ext slice is named for whose vocabulary it speaks: `clients` and `types` speak the
+# vendor's, `gateways` speaks ours by implementing an app.ports contract, and
+# `endpoints` is what the vendor calls inbound. A gateway reaches the app only through
+# those ports, so an ext still never imports a feature. Slice names are plural because
+# a vendor may well have more than one of each; singular is for a named single thing.
 EXT_SLICE_NAMES = frozenset(
     {
-        'client',
+        'clients',
         'endpoints',
         'exceptions',
-        'gateway',
+        'gateways',
         'types',
     },
 )
@@ -546,11 +548,14 @@ def test_banned_name_check_flags_models_and_utils() -> None:
 
 
 def test_ext_vocabulary_check_flags_unknown_names() -> None:
-    assert _unknown_ext_name(Path('felo/client.py')) is None
+    assert _unknown_ext_name(Path('felo/clients.py')) is None
     assert _unknown_ext_name(Path('felo/__init__.py')) is None
     # a vendor's own transport, inbound and outbound
     assert _unknown_ext_name(Path('telegram/endpoints.py')) is None
-    assert _unknown_ext_name(Path('telegram/gateway.py')) is None
+    assert _unknown_ext_name(Path('telegram/gateways.py')) is None
+    # the singular reads like a named single thing, which a slice is not
+    assert _unknown_ext_name(Path('telegram/client.py')) is not None
+    assert _unknown_ext_name(Path('telegram/gateway.py')) is not None
     # orchestration still has no home here, whatever it is called
     assert _unknown_ext_name(Path('felo/service.py')) is not None
     assert _unknown_ext_name(Path('telegram/actor.py')) is not None

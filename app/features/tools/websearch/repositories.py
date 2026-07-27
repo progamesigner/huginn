@@ -2,7 +2,7 @@ from dataclasses import dataclass
 
 from pydantic import SecretStr
 
-from app.exts.felo.client import FeloClient
+from app.exts.felo.clients import FeloClient
 from lib.http import HTTPClientContract
 
 

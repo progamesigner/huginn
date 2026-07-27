@@ -5,8 +5,8 @@ import httpx
 import respx
 from pydantic import SecretStr
 
-from app.exts.telegram.client import TelegramClient
-from app.exts.telegram.gateway import TelegramGateway, TelegramReply
+from app.exts.telegram.clients import TelegramClient
+from app.exts.telegram.gateways import TelegramGateway, TelegramReply
 from app.features.agents.contracts import TextSink
 from app.ports.channels import InboundMessage
 from lib.http import HTTPClientManager

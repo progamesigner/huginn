@@ -11,7 +11,7 @@ from app.ports.channels import (
 )
 from lib.temporal import ClockContract, Timer
 
-from .client import TelegramClient
+from .clients import TelegramClient
 from .types import MESSAGE, Update
 
 logger = logging.getLogger(__name__)

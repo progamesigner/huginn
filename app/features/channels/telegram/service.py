@@ -4,8 +4,8 @@ from typing import override
 from pydantic import ValidationError
 
 from app.core.config.registry import HuginnConfig
-from app.exts.telegram.client import TelegramClient
-from app.exts.telegram.gateway import TelegramGateway
+from app.exts.telegram.clients import TelegramClient
+from app.exts.telegram.gateways import TelegramGateway
 from app.exts.telegram.types import Update
 from app.features.channels.config import CHANNELS
 from app.ports.channels import (

@@ -5,7 +5,7 @@ import pytest
 import respx
 from pydantic import SecretStr
 
-from app.exts.telegram.client import TelegramClient
+from app.exts.telegram.clients import TelegramClient
 from lib.http import HTTPClientManager
 
 _BASE_URL = 'https://api.telegram.org/bottelegram-token'
@@ -103,7 +103,7 @@ async def test_retries_rate_limit_after_retry_after(
     async def record_sleep(delay: float) -> None:
         sleeps.append(delay)
 
-    monkeypatch.setattr('app.exts.telegram.client.asyncio.sleep', record_sleep)
+    monkeypatch.setattr('app.exts.telegram.clients.asyncio.sleep', record_sleep)
     route = respx.post(f'{_BASE_URL}/sendMessage').mock(
         side_effect=[
             httpx.Response(
@@ -131,7 +131,7 @@ async def test_retries_server_errors_then_raises(
     async def no_sleep(delay: float) -> None:
         pass
 
-    monkeypatch.setattr('app.exts.telegram.client.asyncio.sleep', no_sleep)
+    monkeypatch.setattr('app.exts.telegram.clients.asyncio.sleep', no_sleep)
     route = respx.post(f'{_BASE_URL}/sendMessage').mock(
         return_value=httpx.Response(503),
     )

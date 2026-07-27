@@ -4,7 +4,7 @@ import pytest
 from pydantic import Field, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-from app.exts.felo.client import FeloClient
+from app.exts.felo.clients import FeloClient
 from app.features.agents.services import AgentRunner, TurnInput
 from app.features.agents.types import ToolSet
 from app.features.tools.websearch.repositories import WebSearchRepository

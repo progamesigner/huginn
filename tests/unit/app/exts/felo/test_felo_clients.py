@@ -5,7 +5,7 @@ import pytest
 import respx
 from pydantic import SecretStr
 
-from app.exts.felo.client import FeloClient, SearchResource
+from app.exts.felo.clients import FeloClient, SearchResource
 from lib.http import HTTPClientManager
 
 _PAYLOAD = {
