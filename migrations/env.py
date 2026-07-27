@@ -6,88 +6,57 @@ from sqlalchemy.ext.asyncio import create_async_engine
 
 from app.core.application import App
 from app.core.providers.database import DatabaseProvider
-from lib.database import DatabaseContract, DatabaseManager
-
-type ConnectionName = str | None
-type MigrationDomain = tuple[ConnectionName, str]
-
-_DOMAINS = {
-    'default': (None, 'public'),
-}
-_VERSION_TABLE = 'migrations'
+from lib.database import DatabaseContract
 
 target_metadata = None
 
 
-def _database() -> DatabaseManager:
-    manager = App().build(DatabaseProvider()).resolve(DatabaseContract)
-    if not isinstance(manager, DatabaseManager):
-        raise TypeError('DatabaseProvider must bind a DatabaseManager')
-    return manager
-
-
-def _domain() -> str:
+def _parse() -> tuple[str | None, str]:
     revision = getattr(context.config.cmd_opts, 'revision', None)
     domain = context.config.attributes.get('migration_domain')
     if domain is None and isinstance(revision, str) and '@' in revision:
         domain = revision.rpartition('@')[0].rpartition(':')[2]
-    if domain is None and len(_DOMAINS) == 1:
-        return next(iter(_DOMAINS))
-    if not isinstance(domain, str) or domain not in _DOMAINS:
-        raise util.CommandError(f'unknown or ambiguous migration domain {domain!r}')
-    return domain
+    match domain:
+        case None | 'default':
+            return None, 'public'
+        case _:
+            raise util.CommandError(f'unknown or ambiguous migration domain {domain!r}')
 
 
-def _parse() -> MigrationDomain:
-    return _DOMAINS[_domain()]
+def _url(instance: str | None) -> str:
+    return App().build(DatabaseProvider()).resolve(DatabaseContract).url(instance)
 
 
-def _run_migrations(connection: Connection) -> None:
-    _, schema = _parse()
+def _run_migrations(
+    connection: Connection | None,
+    /,
+    schema: str,
+    url: str | None,
+) -> None:
     context.configure(
         connection=connection,
-        target_metadata=target_metadata,
-        version_table=_VERSION_TABLE,
-        version_table_schema=schema,
-        include_schemas=True,
-    )
-    with context.begin_transaction():
-        context.run_migrations()
-
-
-def run_migrations_offline() -> None:
-    instance, schema = _parse()
-    context.configure(
-        url=_database().url(instance),
-        target_metadata=target_metadata,
-        version_table=_VERSION_TABLE,
-        version_table_schema=schema,
-        include_schemas=True,
-        literal_binds=True,
+        url=url,
         dialect_opts={'paramstyle': 'named'},
+        literal_binds=url is not None,
+        target_metadata=target_metadata,
+        version_table='migrations',
+        version_table_schema=schema,
     )
     with context.begin_transaction():
         context.run_migrations()
 
 
-async def _run_migrations_online() -> None:
-    instance, _ = _parse()
-    engine = create_async_engine(_database().url(instance), poolclass=pool.NullPool)
+async def _run_migrations_online(schema: str, url: str) -> None:
+    engine = create_async_engine(url, poolclass=pool.NullPool)
     async with engine.connect() as connection:
-        await connection.run_sync(_run_migrations)
+        await connection.run_sync(_run_migrations, schema=schema, url=None)
     await engine.dispose()
 
 
-def run_migrations_online() -> None:
-    connection = context.config.attributes.get('connection')
-    if connection is not None:
-        _run_migrations(connection)
-        return
-
-    asyncio.run(_run_migrations_online())
-
-
+instance, schema = _parse()
 if context.is_offline_mode():
-    run_migrations_offline()
+    _run_migrations(None, schema=schema, url=_url(instance))
+elif (connection := context.config.attributes.get('connection')) is not None:
+    _run_migrations(connection, schema=schema, url=None)
 else:
-    run_migrations_online()
+    asyncio.run(_run_migrations_online(schema, _url(instance)))

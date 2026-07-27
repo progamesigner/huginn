@@ -15,3 +15,6 @@ class DatabaseContract(ABC):
         self,
         instance: str | None = None,
     ) -> AbstractAsyncContextManager[AsyncSession]: ...
+
+    @abstractmethod
+    def url(self, instance: str | None = None) -> str: ...

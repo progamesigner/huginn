@@ -44,6 +44,7 @@ class DatabaseManager(DatabaseContract):
         self.engines.clear()
         self.session_makers.clear()
 
+    @override
     def url(self, instance: str | None = None) -> str:
         if instance not in self.urls:
             raise DatabaseError(f'database instance {instance!r} is not configured')
