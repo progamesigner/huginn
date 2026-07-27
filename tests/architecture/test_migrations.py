@@ -10,22 +10,13 @@ from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
 from sqlalchemy.schema import CreateTable
 
 from app.core.records import AppRecord
-from app.features.conversations.schemas import sqlalchemy as conversations_schema
-from app.features.identities.schemas import sqlalchemy as identities_schema
+from tests.helpers.schemas import mapped_tables
 
 pytestmark = pytest.mark.integration
 
-# NOTE: a table only reaches the metadata once its schema module is imported
-_SCHEMAS = (conversations_schema, identities_schema)
-_TABLES = {
-    'conversations',
-    'external_identities',
-    'identity_audit_events',
-    'identity_link_invites',
-    'parts',
-    'turns',
-    'users',
-}
+# NOTE: mirrors _VERSION_TABLE in migrations/default/env.py, which cannot be imported
+# because importing it runs the migrations
+_VERSION_TABLE = 'migrations'
 _CONSTRAINT = re.compile(r'CONSTRAINT (\S+) (FOREIGN KEY|PRIMARY KEY|UNIQUE|CHECK)')
 _KINDS = {'FOREIGN KEY': 'f', 'PRIMARY KEY': 'p', 'UNIQUE': 'u', 'CHECK': 'c'}
 # NOTE: cast contype because asyncpg hands PostgreSQL's "char" back as bytes
@@ -59,16 +50,19 @@ async def _public_tables(engine: AsyncEngine) -> set[str]:
         return {row[0] for row in result}
 
 
-async def _live_constraints(engine: AsyncEngine) -> set[tuple[str, str, str]]:
+async def _live_constraints(
+    engine: AsyncEngine,
+    tables: frozenset[str],
+) -> set[tuple[str, str, str]]:
     async with engine.connect() as connection:
         result = await connection.execute(text(_CONSTRAINTS))
-        return {(row[0], row[1], row[2]) for row in result if row[0] in _TABLES}
+        return {(row[0], row[1], row[2]) for row in result if row[0] in tables}
 
 
 def _declared_constraints() -> set[tuple[str, str, str]]:
     # NOTE: read the names off the DDL SQLAlchemy would emit rather than off
     # constraint.name — only rendering makes the naming convention materialise
-    declared = {
+    return {
         (table.name, name.strip('"'), _KINDS[kind])
         for table in AppRecord.metadata.tables.values()
         for name, kind in _CONSTRAINT.findall(
@@ -76,18 +70,15 @@ def _declared_constraints() -> set[tuple[str, str, str]]:
         )
     }
 
-    assert _SCHEMAS
-    assert _TABLES <= {table for table, _, _ in declared}
-    return declared
-
 
 async def test_declared_constraints_match_the_migrated_schema(
     database_url: str,
 ) -> None:
+    tables = mapped_tables()
     engine = create_async_engine(database_url)
     try:
         await _drive(engine, 'up', 'default@head')
-        live = await _live_constraints(engine)
+        live = await _live_constraints(engine, tables)
     finally:
         await engine.dispose()
 
@@ -95,15 +86,21 @@ async def test_declared_constraints_match_the_migrated_schema(
 
 
 async def test_migration_upgrade_downgrade_upgrade_roundtrip(database_url: str) -> None:
+    tables = mapped_tables()
     engine = create_async_engine(database_url)
     try:
         await _drive(engine, 'up', 'default@head')
-        assert _TABLES <= await _public_tables(engine)
+        assert tables <= await _public_tables(engine)
 
         await _drive(engine, 'down', 'default@base')
-        assert not (_TABLES & await _public_tables(engine))
+        remaining = await _public_tables(engine)
+
+        # NOTE: naming no table keeps this honest as schemas are added; the version
+        # table is alembic's own and downgrading to base deliberately leaves it
+        assert not (tables & remaining)
+        assert remaining <= {_VERSION_TABLE}
 
         await _drive(engine, 'up', 'default@head')
-        assert _TABLES <= await _public_tables(engine)
+        assert tables <= await _public_tables(engine)
     finally:
         await engine.dispose()

@@ -10,7 +10,7 @@ from pathlib import Path
 from sqlalchemy.orm import configure_mappers
 
 from app.core import exceptions
-from app.core.records import AppRecord
+from tests.helpers.schemas import mapped_tables
 
 # Features sit in tiers, outermost first. A feature may only import from a strictly
 # lower tier, which keeps the feature graph a DAG however many features get added; a
@@ -98,19 +98,6 @@ def _source_dirs(package: str) -> set[Path]:
 
 def _package_of(path: Path, root: Path, package: str) -> str:
     return '.'.join((package, *path.relative_to(root).parts[:-1]))
-
-
-def _module_of(path: Path, root: Path, package: str) -> str:
-    return '.'.join((package, *path.relative_to(root).with_suffix('').parts))
-
-
-def _schema_modules() -> tuple[str, ...]:
-    root = _features_dir()
-    return tuple(
-        _module_of(path, root, FEATURES_PACKAGE)
-        for path in sorted(root.rglob('schemas/*.py'))
-        if path.name != '__init__.py'
-    )
 
 
 def _import_targets(source: str, package: str) -> Iterator[str]:
@@ -454,14 +441,7 @@ def test_orm_mappers_resolve_once_every_schema_is_imported() -> None:
     # reference or a record module nobody imports raises on the first production
     # query and nowhere else. configure_mappers() forces that resolution here; it
     # touches metadata only, so this needs no database.
-    modules = _schema_modules()
-
-    assert modules, 'no schema module found; the check would pass vacuously'
-
-    for module in modules:
-        import_module(module)
-
-    assert AppRecord.metadata.tables, 'importing the schemas mapped no table'
+    assert mapped_tables()
 
     configure_mappers()
 
