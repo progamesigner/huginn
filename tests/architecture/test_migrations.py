@@ -3,6 +3,7 @@ import re
 import pytest
 from alembic import command
 from alembic.config import Config
+from alembic.script import ScriptDirectory
 from sqlalchemy import text
 from sqlalchemy.dialects import postgresql
 from sqlalchemy.engine import Connection
@@ -12,7 +13,9 @@ from sqlalchemy.schema import CreateTable
 from app.core.records import AppRecord
 from tests.helpers.schemas import mapped_tables
 
-pytestmark = pytest.mark.integration
+# NOTE: the history check reads the revision files only, so it is marked per test
+# rather than for the module and still runs where there is no database
+_integration = pytest.mark.integration
 
 # NOTE: mirrors _VERSION_TABLE in migrations/default/env.py, which cannot be imported
 # because importing it runs the migrations
@@ -71,6 +74,7 @@ def _declared_constraints() -> set[tuple[str, str, str]]:
     }
 
 
+@_integration
 async def test_declared_constraints_match_the_migrated_schema(
     database_url: str,
 ) -> None:
@@ -85,6 +89,7 @@ async def test_declared_constraints_match_the_migrated_schema(
     assert _declared_constraints() == live
 
 
+@_integration
 async def test_migration_upgrade_downgrade_upgrade_roundtrip(database_url: str) -> None:
     tables = mapped_tables()
     engine = create_async_engine(database_url)
@@ -104,3 +109,16 @@ async def test_migration_upgrade_downgrade_upgrade_roundtrip(database_url: str) 
         assert tables <= await _public_tables(engine)
     finally:
         await engine.dispose()
+
+
+def test_migration_history_has_a_single_head() -> None:
+    scripts = ScriptDirectory.from_config(Config(toml_file='pyproject.toml'))
+    heads = scripts.get_heads()
+    bases = scripts.get_bases()
+    revisions = list(scripts.walk_revisions())
+
+    assert revisions, 'no revision found; the check would pass vacuously'
+    # NOTE: two heads mean two branches were authored against the same parent and
+    # `upgrade head` becomes ambiguous; alembic only reports it when you run it
+    assert len(heads) == 1, f'divergent migration branches: {sorted(heads)}'
+    assert len(bases) == 1, f'disconnected migration roots: {sorted(bases)}'
