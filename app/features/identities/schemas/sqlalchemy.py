@@ -2,11 +2,22 @@ from datetime import datetime
 from uuid import UUID
 
 from pydantic import JsonValue
-from sqlalchemy import CheckConstraint, ForeignKey, Index, UniqueConstraint, func
+from sqlalchemy import (
+    CheckConstraint,
+    ForeignKey,
+    Index,
+    UniqueConstraint,
+    func,
+    text,
+)
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.records import AppRecord, TimestampRecordMixin
 from lib.database import Timestamp
+
+# NOTE: pydantic's JsonValue admits None, so SQLAlchemy infers a nullable column from
+# the annotation alone; every JSON column here is NOT NULL and has to say so
+_EMPTY_JSON = text("'{}'::jsonb")
 
 
 class UserRecord(TimestampRecordMixin, AppRecord):
@@ -35,7 +46,10 @@ class ExternalIdentityRecord(AppRecord):
     provider: Mapped[str] = mapped_column()
     realm: Mapped[str] = mapped_column()
     external_user_id: Mapped[str] = mapped_column()
-    profile: Mapped[JsonValue] = mapped_column()
+    profile: Mapped[JsonValue] = mapped_column(
+        nullable=False,
+        server_default=_EMPTY_JSON,
+    )
     linked_at: Mapped[datetime] = mapped_column(server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         server_default=func.now(),
@@ -57,7 +71,11 @@ class IdentityAuditEventRecord(AppRecord):
     provider: Mapped[str] = mapped_column()
     realm: Mapped[str] = mapped_column()
     occurred_at: Mapped[datetime] = mapped_column(server_default=func.now())
-    metadata_: Mapped[JsonValue] = mapped_column('metadata')
+    metadata_: Mapped[JsonValue] = mapped_column(
+        'metadata',
+        nullable=False,
+        server_default=_EMPTY_JSON,
+    )
 
 
 class IdentityLinkInviteRecord(AppRecord):

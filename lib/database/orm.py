@@ -2,7 +2,7 @@ import uuid
 from datetime import datetime
 
 from pydantic import JsonValue
-from sqlalchemy import MetaData
+from sqlalchemy import MetaData, Text
 from sqlalchemy.orm import DeclarativeBase
 
 from .types import GUID, Json, Timestamp
@@ -17,6 +17,9 @@ _NAMING_CONVENTION = {
 
 _TYPE_ANNOTATION_MAP = {
     datetime: Timestamp,
+    # NOTE: without this a bare `Mapped[str]` becomes an unbounded VARCHAR; TEXT is
+    # what PostgreSQL wants and what every migration already writes
+    str: Text,
     JsonValue: Json,
     uuid.UUID: GUID,
 }

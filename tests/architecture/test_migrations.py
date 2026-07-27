@@ -2,7 +2,9 @@ import re
 
 import pytest
 from alembic import command
+from alembic.autogenerate import compare_metadata
 from alembic.config import Config
+from alembic.migration import MigrationContext
 from alembic.script import ScriptDirectory
 from sqlalchemy import text
 from sqlalchemy.dialects import postgresql
@@ -30,6 +32,16 @@ where connamespace = 'public'::regnamespace and contype in ('c', 'f', 'p', 'u')
 """
 
 
+def _drift(connection: Connection) -> list[object]:
+    # NOTE: alembic compares types by default but not server defaults, and this has to
+    # catch both; it deliberately ignores its own version table
+    context = MigrationContext.configure(
+        connection,
+        opts={'version_table': _VERSION_TABLE, 'compare_server_default': True},
+    )
+    return compare_metadata(context, AppRecord.metadata)
+
+
 def _migrate(connection: Connection, direction: str, revision: str) -> None:
     # NOTE: env.py picks the live connection up from attributes and drives in-process
     config = Config(toml_file='pyproject.toml')
@@ -43,6 +55,11 @@ def _migrate(connection: Connection, direction: str, revision: str) -> None:
 async def _drive(engine: AsyncEngine, direction: str, revision: str) -> None:
     async with engine.begin() as connection:
         await connection.run_sync(_migrate, direction, revision)
+
+
+async def _drifted(engine: AsyncEngine) -> list[object]:
+    async with engine.connect() as connection:
+        return await connection.run_sync(_drift)
 
 
 async def _public_tables(engine: AsyncEngine) -> set[str]:
@@ -90,6 +107,22 @@ async def test_declared_constraints_match_the_migrated_schema(
 
 
 @_integration
+async def test_the_orm_matches_the_migrated_schema(database_url: str) -> None:
+    assert mapped_tables()
+
+    engine = create_async_engine(database_url)
+    try:
+        await _drive(engine, 'up', 'default@head')
+        drift = await _drifted(engine)
+    finally:
+        await engine.dispose()
+
+    assert not drift, 'the ORM and the migrated schema disagree:\n' + '\n'.join(
+        repr(entry) for entry in drift
+    )
+
+
+@_integration
 async def test_migration_upgrade_downgrade_upgrade_roundtrip(database_url: str) -> None:
     tables = mapped_tables()
     engine = create_async_engine(database_url)
@@ -107,6 +140,10 @@ async def test_migration_upgrade_downgrade_upgrade_roundtrip(database_url: str) 
 
         await _drive(engine, 'up', 'default@head')
         assert tables <= await _public_tables(engine)
+
+        # NOTE: a downgrade that does not fully undo itself shows up here rather than
+        # as a missing table -- the re-upgrade has to land back on the declared schema
+        assert not await _drifted(engine)
     finally:
         await engine.dispose()
 
