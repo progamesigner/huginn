@@ -54,6 +54,15 @@ EXT_SLICE_NAMES = frozenset(
         'types',
     },
 )
+# A feature reaches an ext in one of two directions, and the slice it names says which.
+# A data-source ext is pulled: the feature calls the vendor, so a repository owns that
+# call and translates the answer into domain values -- `clients` may only be named from
+# there. A transport ext is pushed: it implements an app.ports contract and the feature
+# is handed the result, so its `endpoints` and `gateways` may be named at the wiring
+# point. There is no third way, which is why no blanket "always via a repository" rule
+# survives here: it would demand a repository for a vendor that answers no queries.
+EXT_CLIENT_SLICE = 'clients'
+EXT_CLIENT_HOSTS = frozenset({'repositories', 'sources'})
 BANNED_MODULE_NAMES = frozenset({'models', 'utils'})
 
 
@@ -172,6 +181,24 @@ def _banned_name(relative: Path) -> str | None:
         return f'{relative}: banned file name {sorted(banned)}'
 
     return None
+
+
+def _ext_client_reach(relative: Path, targets: Iterable[str]) -> Iterator[str]:
+    if {*relative.parts[:-1], relative.stem} & EXT_CLIENT_HOSTS:
+        return
+
+    prefix = f'{EXTS_PACKAGE}.'
+    for target in targets:
+        if not target.startswith(prefix):
+            continue
+
+        slice_ = target[len(prefix) :].partition('.')[2].split('.')[0]
+        if slice_ == EXT_CLIENT_SLICE:
+            yield (
+                f'{target}: only a repository may call a vendor client;'
+                f' move the call into {sorted(EXT_CLIENT_HOSTS)}'
+                f' or reach the vendor through an app.ports contract instead'
+            )
 
 
 def _unknown_ext_name(relative: Path) -> str | None:
@@ -528,6 +555,52 @@ def test_feature_and_ext_files_avoid_banned_names() -> None:
     ]
 
     assert not violations, 'banned file names:\n' + '\n'.join(violations)
+
+
+def test_features_call_vendor_clients_only_from_a_repository() -> None:
+    root = _features_dir()
+    violations = []
+
+    for path in sorted(root.rglob('*.py')):
+        relative = path.relative_to(root)
+        targets = _import_targets(
+            path.read_text(),
+            _package_of(path, root, FEATURES_PACKAGE),
+        )
+        violations.extend(
+            f'{relative}: {message}' for message in _ext_client_reach(relative, targets)
+        )
+
+    assert not violations, 'vendor clients called outside a repository:\n' + '\n'.join(
+        violations,
+    )
+
+
+def test_ext_client_reach_check_separates_data_sources_from_transports() -> None:
+    client = ('app.exts.felo.clients',)
+    transport = ('app.exts.telegram.gateways', 'app.exts.telegram.endpoints')
+
+    # a data source is a repository's to call, whichever shape repositories takes
+    assert not list(_ext_client_reach(Path('tools/websearch/repositories.py'), client))
+    assert not list(
+        _ext_client_reach(Path('conversations/repositories/repository.py'), client),
+    )
+    assert not list(_ext_client_reach(Path('skills/sources/muninn.py'), client))
+    # a transport is handed to the feature through a port, so wiring may name it
+    assert not list(_ext_client_reach(Path('channels/telegram/service.py'), transport))
+    assert not list(
+        _ext_client_reach(Path('channels/telegram/providers.py'), transport),
+    )
+    # our own vocabulary is nobody's business here
+    assert not list(_ext_client_reach(Path('tools/websearch/tool.py'), ('lib.http',)))
+
+    assert list(_ext_client_reach(Path('tools/websearch/tool.py'), client))
+    assert list(
+        _ext_client_reach(
+            Path('channels/telegram/service.py'),
+            ('app.exts.telegram.clients',),
+        ),
+    )
 
 
 def test_ext_files_use_ext_vocabulary() -> None:

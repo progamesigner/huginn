@@ -4,8 +4,7 @@ from typing import override
 from pydantic import ValidationError
 
 from app.core.config.registry import HuginnConfig
-from app.exts.telegram.clients import TelegramClient
-from app.exts.telegram.gateways import TelegramGateway
+from app.exts.telegram.gateways import build_gateway
 from app.exts.telegram.types import Update
 from app.features.channels.config import CHANNELS
 from app.ports.channels import (
@@ -51,8 +50,7 @@ class TelegramMessageHandler(ChannelMessageHandlerContract):
         self.redis = redis
 
     def gateway(self, channel: TelegramChannelConfig) -> ChannelGatewayContract:
-        client = TelegramClient(http=self.http, bot_token=channel.token)
-        return TelegramGateway(client, self.clock)
+        return build_gateway(self.http, channel.token, self.clock)
 
     @override
     async def handle(self, message: InboundMessage) -> None:

@@ -2,13 +2,14 @@ import logging
 from datetime import timedelta
 from typing import override
 
-from pydantic import ValidationError
+from pydantic import SecretStr, ValidationError
 
 from app.ports.channels import (
     ChannelGatewayContract,
     ChannelReplyContract,
     InboundMessage,
 )
+from lib.http import HTTPClientContract
 from lib.temporal import ClockContract, Timer
 
 from .clients import TelegramClient
@@ -128,3 +129,11 @@ class TelegramGateway(ChannelGatewayContract):
     @override
     def reply(self, message: InboundMessage) -> ChannelReplyContract:
         return TelegramReply(self.client, message.chat, self.clock)
+
+
+def build_gateway(
+    http: HTTPClientContract,
+    bot_token: SecretStr,
+    clock: ClockContract,
+) -> ChannelGatewayContract:
+    return TelegramGateway(TelegramClient(http=http, bot_token=bot_token), clock)
