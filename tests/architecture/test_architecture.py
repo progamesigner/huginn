@@ -63,6 +63,10 @@ EXT_SLICE_NAMES = frozenset(
 # survives here: it would demand a repository for a vendor that answers no queries.
 EXT_CLIENT_SLICE = 'clients'
 EXT_CLIENT_HOSTS = frozenset({'repositories', 'sources'})
+# Whichever direction it reaches, a feature never names a vendor's payload types. Those
+# are the vendor's own wire shapes: an ext parses them at its edge and hands over the
+# app's own vocabulary, so a payload type in a feature means the boundary leaked.
+EXT_VENDOR_TYPES_SLICE = 'types'
 BANNED_MODULE_NAMES = frozenset({'models', 'utils'})
 
 
@@ -198,6 +202,20 @@ def _ext_client_reach(relative: Path, targets: Iterable[str]) -> Iterator[str]:
                 f'{target}: only a repository may call a vendor client;'
                 f' move the call into {sorted(EXT_CLIENT_HOSTS)}'
                 f' or reach the vendor through an app.ports contract instead'
+            )
+
+
+def _vendor_types_reach(targets: Iterable[str]) -> Iterator[str]:
+    prefix = f'{EXTS_PACKAGE}.'
+    for target in targets:
+        if not target.startswith(prefix):
+            continue
+
+        slice_ = target[len(prefix) :].partition('.')[2].split('.')[0]
+        if slice_ == EXT_VENDOR_TYPES_SLICE:
+            yield (
+                f'{target}: a vendor payload type stops at the ext;'
+                f' have the adapter hand over an app.ports type instead'
             )
 
 
@@ -574,6 +592,34 @@ def test_features_call_vendor_clients_only_from_a_repository() -> None:
     assert not violations, 'vendor clients called outside a repository:\n' + '\n'.join(
         violations,
     )
+
+
+def test_features_never_name_a_vendor_payload_type() -> None:
+    root = _features_dir()
+    violations = [
+        f'{path.relative_to(root)}: {message}'
+        for path in sorted(root.rglob('*.py'))
+        for message in _vendor_types_reach(
+            _import_targets(
+                path.read_text(),
+                _package_of(path, root, FEATURES_PACKAGE),
+            ),
+        )
+    ]
+
+    assert not violations, 'vendor payload types inside a feature:\n' + '\n'.join(
+        violations,
+    )
+
+
+def test_vendor_types_check_flags_only_the_vendor_payload_slice() -> None:
+    assert not list(_vendor_types_reach(('app.exts.telegram.gateways',)))
+    assert not list(_vendor_types_reach(('app.exts.felo.clients',)))
+    assert not list(_vendor_types_reach(('app.ports.channels',)))
+    # our own types slice is a feature's own business
+    assert not list(_vendor_types_reach(('app.features.agents.types',)))
+
+    assert list(_vendor_types_reach(('app.exts.telegram.types',)))
 
 
 def test_ext_client_reach_check_separates_data_sources_from_transports() -> None:

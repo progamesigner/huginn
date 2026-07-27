@@ -2,7 +2,7 @@ import logging
 from datetime import timedelta
 from typing import override
 
-from pydantic import SecretStr, ValidationError
+from pydantic import SecretStr
 
 from app.ports.channels import (
     ChannelGatewayContract,
@@ -13,21 +13,12 @@ from lib.http import HTTPClientContract
 from lib.temporal import ClockContract, Timer
 
 from .clients import TelegramClient
-from .types import MESSAGE, Update
+from .types import MESSAGE
 
 logger = logging.getLogger(__name__)
 
 # NOTE: telegram only accepts reactions from its own allowed set
 _ACK_EMOJI = '👀'
-
-
-def _message_id(raw: bytes) -> int | None:
-    try:
-        update = Update.model_validate_json(raw)
-    except ValidationError:
-        return None
-
-    return None if update.message is None else update.message.message_id
 
 
 def _split(text: str, limit: int) -> tuple[str, str]:
@@ -119,12 +110,7 @@ class TelegramGateway(ChannelGatewayContract):
 
     @override
     async def acknowledge(self, message: InboundMessage) -> None:
-        # NOTE: the vendor's own bytes, so the vendor's adapter reads them
-        if (message_id := _message_id(message.raw)) is None:
-            logger.info('Nothing to acknowledge in event %s', message.event)
-            return
-
-        await self.client.set_message_reaction(message.chat, message_id, _ACK_EMOJI)
+        await self.client.set_message_reaction(message.chat, message.id, _ACK_EMOJI)
 
     @override
     def reply(self, message: InboundMessage) -> ChannelReplyContract:

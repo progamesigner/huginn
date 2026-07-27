@@ -10,10 +10,10 @@ from fastapi import FastAPI
 from pydantic import SecretStr
 
 from app.core.config.registry import HuginnConfig
-from app.exts.telegram.types import Update
 from app.features.channels.config import ChannelConfigList
 from app.features.channels.telegram.actor import TelegramChatActor
 from app.features.channels.telegram.config import TelegramChannelConfig
+from app.ports.channels import InboundMessage
 from bin.server import build
 from lib.mcp import MCPClientContract
 from lib.redis import RedisContract
@@ -40,7 +40,7 @@ def update(update_id: int, *, chat_id: int = _CHAT_ID) -> dict[str, object]:
 
 class RecordingActor(TelegramChatActor):
     names: list[str]
-    calls: list[int]
+    calls: list[str]
     started: asyncio.Event
     finished: asyncio.Event
     release: asyncio.Event
@@ -57,13 +57,11 @@ class RecordingActor(TelegramChatActor):
     @override
     async def handle(
         self,
-        name: str,
         channel: TelegramChannelConfig,
-        update: Update,
-        body: bytes,
+        message: InboundMessage,
     ) -> None:
-        self.names.append(name)
-        self.calls.append(update.update_id)
+        self.names.append(message.channel)
+        self.calls.append(message.event)
         self.started.set()
         if self.block:
             await self.release.wait()
@@ -181,7 +179,7 @@ async def test_accepts_and_dispatches_to_the_handler() -> None:
         async with asyncio.timeout(1):
             await handler.finished.wait()
 
-    assert handler.calls == [7]
+    assert handler.calls == ['7']
     assert 'telegram:support_bot:7' in store
 
 
@@ -206,7 +204,7 @@ async def test_routes_to_the_instance_matching_the_secret() -> None:
             await handler.finished.wait()
 
     assert handler.names == ['research_bot']
-    assert handler.calls == [9]
+    assert handler.calls == ['9']
 
 
 @respx.mock
@@ -233,7 +231,7 @@ async def test_deduplicates_repeated_update_id() -> None:
 
     assert first.status_code == 200
     assert second.status_code == 200
-    assert handler.calls == [7]
+    assert handler.calls == ['7']
 
 
 @respx.mock
@@ -257,7 +255,7 @@ async def test_returns_200_before_handler_completes() -> None:
         async with asyncio.timeout(1):
             await handler.finished.wait()
 
-    assert handler.calls == [7]
+    assert handler.calls == ['7']
 
 
 @respx.mock
@@ -275,7 +273,7 @@ async def test_processes_when_dedupe_is_unavailable() -> None:
         async with asyncio.timeout(1):
             await handler.finished.wait()
 
-    assert handler.calls == [7]
+    assert handler.calls == ['7']
 
 
 @respx.mock

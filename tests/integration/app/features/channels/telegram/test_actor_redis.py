@@ -6,9 +6,9 @@ from datetime import timedelta
 import pytest
 from pydantic import SecretStr
 
-from app.exts.telegram.types import Chat, Message, Update
 from app.features.channels.telegram.actor import TelegramChatActor
 from app.features.channels.telegram.config import TelegramChannelConfig
+from app.ports.channels import InboundMessage
 from lib.redis import RedisManager
 
 pytestmark = pytest.mark.integration
@@ -30,20 +30,18 @@ async def redis(redis_url: str) -> AsyncIterator[RedisManager]:
         await manager.dispose()
 
 
-def message(update_id: int, chat_id: int) -> tuple[Update, bytes]:
-    update = Update(
-        update_id=update_id,
-        message=Message(
-            message_id=update_id,
-            date=0,
-            chat=Chat(id=chat_id, type='private'),
-        ),
+def message(event: int, chat: int) -> InboundMessage:
+    return InboundMessage(
+        channel='support_bot',
+        chat=str(chat),
+        event=str(event),
+        id=str(event),
+        text=f'message {event}',
     )
-    return update, update.model_dump_json().encode()
 
 
 class SettlingProcessor:
-    rounds: list[tuple[int, ...]]
+    rounds: list[tuple[str, ...]]
     settle: float
     calls: int
 
@@ -54,15 +52,14 @@ class SettlingProcessor:
 
     async def __call__(
         self,
-        name: str,
         channel: TelegramChannelConfig,
-        updates: tuple[Update, ...],
+        messages: tuple[InboundMessage, ...],
     ) -> None:
         self.calls += 1
         if self.calls == 1:
             # NOTE: hold the first round open so the other concurrent claims queue
             await asyncio.sleep(self.settle)
-        self.rounds.append(tuple(update.update_id for update in updates))
+        self.rounds.append(tuple(message.event for message in messages))
 
 
 async def test_concurrent_messages_to_one_chat_all_process_within_two_rounds(
@@ -72,17 +69,12 @@ async def test_concurrent_messages_to_one_chat_all_process_within_two_rounds(
     actor = TelegramChatActor(redis, processor, ttl=_TTL)
     chat_id = 12345
 
-    pairs = [message(i, chat_id) for i in range(1, 6)]
-    await asyncio.gather(
-        *(
-            actor.handle('support_bot', _CHANNEL, update, body)
-            for update, body in pairs
-        ),
-    )
+    messages = [message(i, chat_id) for i in range(1, 6)]
+    await asyncio.gather(*(actor.handle(_CHANNEL, item) for item in messages))
 
     assert len(processor.rounds) <= 2
-    processed = sorted(i for round_ in processor.rounds for i in round_)
-    assert processed == [1, 2, 3, 4, 5]
+    processed = sorted(event for round_ in processor.rounds for event in round_)
+    assert processed == ['1', '2', '3', '4', '5']
 
 
 async def test_two_chats_process_concurrently_without_blocking_each_other(
@@ -93,17 +85,14 @@ async def test_two_chats_process_concurrently_without_blocking_each_other(
     actor_a = TelegramChatActor(redis, a, ttl=_TTL)
     actor_b = TelegramChatActor(redis, b, ttl=_TTL)
 
-    update_a, body_a = message(1, chat_id=111)
-    update_b, body_b = message(2, chat_id=222)
-
     started = time.perf_counter()
     await asyncio.gather(
-        actor_a.handle('support_bot', _CHANNEL, update_a, body_a),
-        actor_b.handle('support_bot', _CHANNEL, update_b, body_b),
+        actor_a.handle(_CHANNEL, message(1, chat=111)),
+        actor_b.handle(_CHANNEL, message(2, chat=222)),
     )
     elapsed = time.perf_counter() - started
 
     # NOTE: serialized processing would take ~2x settle; concurrent stays near 1x
     assert elapsed < 0.35
-    assert a.rounds == [(1,)]
-    assert b.rounds == [(2,)]
+    assert a.rounds == [('1',)]
+    assert b.rounds == [('2',)]

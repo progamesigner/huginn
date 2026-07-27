@@ -38,8 +38,31 @@ async def test_reply_port_is_usable_as_the_agent_text_sink() -> None:
     assert reply.finished
 
 
+def inbound() -> InboundMessage:
+    return InboundMessage(
+        channel='ops',
+        chat='42',
+        event='7',
+        id='31',
+        text='hello',
+    )
+
+
+# NOTE: ty rejects an assignment to a frozen field outright, so the runtime half of
+# the check is hashability -- the property that frozen buys and that a reader can lose
 def test_inbound_message_is_frozen() -> None:
-    message = InboundMessage(channel='ops', chat='42', event='7', raw=b'{}')
+    message = inbound()
 
     assert message.channel == 'ops'
-    assert message.raw == b'{}'
+    assert message.text == 'hello'
+    assert hash(message) == hash(inbound())
+
+
+# NOTE: an adapter queues one of these and its feature drains it, so a round trip
+# through bytes is part of the contract rather than an implementation detail
+def test_inbound_message_survives_a_round_trip_through_bytes() -> None:
+    message = inbound()
+
+    restored = InboundMessage.model_validate_json(message.model_dump_json())
+
+    assert restored == message

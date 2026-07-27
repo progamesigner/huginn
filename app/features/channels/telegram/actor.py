@@ -4,7 +4,7 @@ from datetime import timedelta
 
 from pydantic import ValidationError
 
-from app.exts.telegram.types import Update
+from app.ports.channels import InboundMessage
 from lib.redis import RedisContract, RedisLock, RedisMailbox
 
 from .config import TelegramChannelConfig
@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 _LOCK_TTL = timedelta(seconds=30)
 
 TurnProcessor = Callable[
-    [str, TelegramChannelConfig, tuple[Update, ...]],
+    [TelegramChannelConfig, tuple[InboundMessage, ...]],
     Awaitable[None],
 ]
 
@@ -37,45 +37,39 @@ class TelegramChatActor:
 
     async def handle(
         self,
-        name: str,
         channel: TelegramChannelConfig,
-        update: Update,
-        body: bytes,
+        message: InboundMessage,
     ) -> None:
-        message = update.message
-        if message is None:
-            return
+        lock = RedisLock(self.redis, self._key(message, 'lock'), ttl=self.ttl)
+        mailbox = RedisMailbox(lock, self._key(message, 'mailbox'))
 
-        chat_id = message.chat.id
-        lock = RedisLock(self.redis, self._key(name, chat_id, 'lock'), ttl=self.ttl)
-        mailbox = RedisMailbox(lock, self._key(name, chat_id, 'mailbox'))
-
-        if not await mailbox.claim(body):
+        # NOTE: the queue carries the port's own serialization, so a drained round is
+        # read back as our vocabulary and the vendor's payload never reaches the feature
+        if not await mailbox.claim(message.model_dump_json().encode()):
             return
 
         async with lock.renew():
-            await self.process(name, channel, _parse(name, (body,)))
+            await self.process(channel, (message,))
             while batch := await mailbox.drain():
-                await self.process(name, channel, _parse(name, batch))
+                await self.process(channel, _parse(message.channel, batch))
 
-    def _key(self, name: str, chat_id: int, kind: str) -> str:
-        return f'telegram:{name}:{kind}:{chat_id}'
+    def _key(self, message: InboundMessage, kind: str) -> str:
+        return f'telegram:{message.channel}:{kind}:{message.chat}'
 
 
-def _parse(name: str, batch: tuple[bytes, ...]) -> tuple[Update, ...]:
-    updates = []
+def _parse(name: str, batch: tuple[bytes, ...]) -> tuple[InboundMessage, ...]:
+    messages = []
     for raw in batch:
         try:
-            updates.append(Update.model_validate_json(raw))
+            messages.append(InboundMessage.model_validate_json(raw))
         except ValidationError:
-            logger.warning('Discarding unparseable queued telegram update for %s', name)
-    return tuple(updates)
+            logger.warning('Discarding unreadable queued message for %s', name)
+    return tuple(messages)
 
 
 async def log_turn_batch(
-    name: str,
     channel: TelegramChannelConfig,
-    updates: tuple[Update, ...],
+    messages: tuple[InboundMessage, ...],
 ) -> None:
     # NOTE: placeholder — replaces this with the real agent turn
-    logger.info('Processing %d coalesced update(s) for %s', len(updates), name)
+    logger.info('Processing %d coalesced message(s)', len(messages))

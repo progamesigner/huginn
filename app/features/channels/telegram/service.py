@@ -1,11 +1,8 @@
 import logging
 from typing import override
 
-from pydantic import ValidationError
-
 from app.core.config.registry import HuginnConfig
 from app.exts.telegram.gateways import build_gateway
-from app.exts.telegram.types import Update
 from app.features.channels.config import CHANNELS
 from app.ports.channels import (
     ChannelGatewayContract,
@@ -78,14 +75,8 @@ class TelegramMessageHandler(ChannelMessageHandlerContract):
         message: InboundMessage,
         channel: TelegramChannelConfig,
     ) -> None:
-        try:
-            update = Update.model_validate_json(message.raw)
-        except ValidationError as error:
-            logger.error('Discarding unparseable telegram update: %s', error)
-            return
-
         await self.gateway(channel).acknowledge(message)
-        await self.actor.handle(message.channel, channel, update, message.raw)
+        await self.actor.handle(channel, message)
 
     async def _reserve(self, message: InboundMessage) -> bool:
         key = f'telegram:{message.channel}:{message.event}'

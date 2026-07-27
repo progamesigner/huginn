@@ -1,13 +1,16 @@
 from abc import ABC, abstractmethod
-from dataclasses import dataclass
+
+from pydantic import BaseModel, ConfigDict
 
 
-@dataclass(frozen=True)
-class InboundMessage:
+class InboundMessage(BaseModel):
+    model_config = ConfigDict(strict=True, frozen=True, extra='forbid')
+
     channel: str
     chat: str
     event: str
-    raw: bytes
+    id: str
+    text: str
 
 
 class ChannelMessageHandlerContract(ABC):

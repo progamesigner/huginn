@@ -199,8 +199,14 @@ async def test_keeps_editing_the_continuation_message_after_a_rollover() -> None
     }
 
 
-def make_message(raw: bytes) -> InboundMessage:
-    return InboundMessage(channel='support_bot', chat=str(_CHAT_ID), event='7', raw=raw)
+def make_message(message_id: int = 31) -> InboundMessage:
+    return InboundMessage(
+        channel='support_bot',
+        chat=str(_CHAT_ID),
+        event='7',
+        id=str(message_id),
+        text='hello',
+    )
 
 
 def make_gateway(clock: FakeClock) -> TelegramGateway:
@@ -212,43 +218,22 @@ async def test_acknowledge_reacts_to_the_incoming_message() -> None:
     route = respx.post(f'{_BASE_URL}/setMessageReaction').mock(
         return_value=httpx.Response(200, json={'ok': True, 'result': True}),
     )
-    raw = json.dumps(
-        {
-            'update_id': 7,
-            'message': {
-                'message_id': 31,
-                'date': 1_721_600_000,
-                'chat': {'id': _CHAT_ID, 'type': 'private'},
-                'text': 'hello',
-            },
-        },
-    ).encode()
 
-    await make_gateway(FakeClock()).acknowledge(make_message(raw))
+    # NOTE: the port carries the message id, so there is no longer an unparseable
+    # payload for the gateway to guard against; the adapter discards those at its edge
+    await make_gateway(FakeClock()).acknowledge(make_message())
 
     assert json.loads(route.calls.last.request.content) == {
         'chat_id': str(_CHAT_ID),
-        'message_id': 31,
+        'message_id': '31',
         'reaction': [{'type': 'emoji', 'emoji': '\N{EYES}'}],
     }
 
 
 @respx.mock
-async def test_acknowledge_skips_a_payload_with_nothing_to_react_to() -> None:
-    route = respx.post(f'{_BASE_URL}/setMessageReaction').mock(
-        return_value=httpx.Response(200, json={'ok': True, 'result': True}),
-    )
-
-    await make_gateway(FakeClock()).acknowledge(make_message(b'{"update_id": 7}'))
-    await make_gateway(FakeClock()).acknowledge(make_message(b'not json'))
-
-    assert not route.called
-
-
-@respx.mock
 async def test_reply_streams_into_the_inbound_chat() -> None:
     send = respx.post(f'{_BASE_URL}/sendMessage').mock(return_value=message(7))
-    reply = make_gateway(FakeClock()).reply(make_message(b'{"update_id": 7}'))
+    reply = make_gateway(FakeClock()).reply(make_message())
 
     await reply.on_text('hello')
     await reply.finish()

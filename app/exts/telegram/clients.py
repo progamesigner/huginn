@@ -39,7 +39,7 @@ class TelegramClient:
     async def set_message_reaction(
         self,
         chat_id: int | str,
-        message_id: int,
+        message_id: int | str,
         emoji: str,
     ) -> bool:
         reaction = ReactionTypeEmoji(emoji=emoji)

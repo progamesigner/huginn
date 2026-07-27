@@ -37,7 +37,8 @@ def _inbound(channel: str, body: bytes) -> InboundMessage | None:
         channel=channel,
         chat=str(message.chat.id),
         event=str(update.update_id),
-        raw=body,
+        id=str(message.message_id),
+        text=message.text or message.caption or '',
     )
 
 
