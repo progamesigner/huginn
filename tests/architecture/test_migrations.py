@@ -1,19 +1,17 @@
-import re
-
 import pytest
 from alembic import command
 from alembic.autogenerate import compare_metadata
 from alembic.config import Config
 from alembic.migration import MigrationContext
 from alembic.script import ScriptDirectory
-from sqlalchemy import text
-from sqlalchemy.dialects import postgresql
+from sqlalchemy import MetaData, text
 from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
-from sqlalchemy.schema import CreateTable
 
 from app.core.records import AppRecord
 from tests.helpers.schemas import mapped_tables
+
+type Constraint = tuple[str, str, str, str]
 
 # NOTE: the history check reads the revision files only, so it is marked per test
 # rather than for the module and still runs where there is no database
@@ -22,13 +20,17 @@ _integration = pytest.mark.integration
 # NOTE: mirrors _VERSION_TABLE in migrations/default/env.py, which cannot be imported
 # because importing it runs the migrations
 _VERSION_TABLE = 'migrations'
-_CONSTRAINT = re.compile(r'CONSTRAINT (\S+) (FOREIGN KEY|PRIMARY KEY|UNIQUE|CHECK)')
-_KINDS = {'FOREIGN KEY': 'f', 'PRIMARY KEY': 'p', 'UNIQUE': 'u', 'CHECK': 'c'}
+# Alembic compares a CHECK constraint's name but never its expression, so a rewritten
+# predicate is invisible to autogenerate. Rather than diff expression text -- which
+# PostgreSQL rewrites on the way in, casts and parentheses and all -- build the declared
+# model into a throwaway schema and let the server normalise both sides for us.
+_MIRROR_SCHEMA = 'declared'
 # NOTE: cast contype because asyncpg hands PostgreSQL's "char" back as bytes
 _CONSTRAINTS = """
-select conrelid::regclass::text, conname, contype::text
-from pg_constraint
-where connamespace = 'public'::regnamespace and contype in ('c', 'f', 'p', 'u')
+select n.nspname, c.conrelid::regclass::text, c.conname, c.contype::text,
+       pg_get_constraintdef(c.oid)
+from pg_constraint c join pg_namespace n on n.oid = c.connamespace
+where n.nspname = any(:schemas) and c.contype in ('c', 'f', 'p', 'u')
 """
 
 
@@ -70,40 +72,67 @@ async def _public_tables(engine: AsyncEngine) -> set[str]:
         return {row[0] for row in result}
 
 
-async def _live_constraints(
-    engine: AsyncEngine,
+def _build_mirror(connection: Connection) -> None:
+    connection.execute(text(f'create schema {_MIRROR_SCHEMA}'))
+    # NOTE: the convention has to come along or every unnamed constraint is renamed
+    mirror = MetaData(
+        schema=_MIRROR_SCHEMA,
+        naming_convention=AppRecord.metadata.naming_convention,
+    )
+    for table in AppRecord.metadata.tables.values():
+        table.to_metadata(mirror, schema=_MIRROR_SCHEMA)
+    mirror.create_all(connection)
+
+
+def _read_constraints(
+    connection: Connection,
     tables: frozenset[str],
-) -> set[tuple[str, str, str]]:
-    async with engine.connect() as connection:
-        result = await connection.execute(text(_CONSTRAINTS))
-        return {(row[0], row[1], row[2]) for row in result if row[0] in tables}
-
-
-def _declared_constraints() -> set[tuple[str, str, str]]:
-    # NOTE: read the names off the DDL SQLAlchemy would emit rather than off
-    # constraint.name — only rendering makes the naming convention materialise
-    return {
-        (table.name, name.strip('"'), _KINDS[kind])
-        for table in AppRecord.metadata.tables.values()
-        for name, kind in _CONSTRAINT.findall(
-            str(CreateTable(table).compile(dialect=postgresql.dialect())),
-        )
-    }
+) -> dict[str, set[Constraint]]:
+    rows = connection.execute(
+        text(_CONSTRAINTS).bindparams(schemas=['public', _MIRROR_SCHEMA]),
+    ).all()
+    sides: dict[str, set[Constraint]] = {'public': set(), _MIRROR_SCHEMA: set()}
+    for schema, relation, name, kind, definition in rows:
+        table = relation.removeprefix(f'{_MIRROR_SCHEMA}.').strip('"')
+        if table in tables:
+            sides[schema].add(
+                (table, name, kind, definition.replace(f'{_MIRROR_SCHEMA}.', '')),
+            )
+    return sides
 
 
 @_integration
-async def test_declared_constraints_match_the_migrated_schema(
+async def test_declared_constraint_definitions_match_the_migrated_schema(
     database_url: str,
 ) -> None:
     tables = mapped_tables()
     engine = create_async_engine(database_url)
     try:
         await _drive(engine, 'up', 'default@head')
-        live = await _live_constraints(engine, tables)
+        async with engine.begin() as connection:
+            await connection.run_sync(_build_mirror)
+        try:
+            async with engine.connect() as connection:
+                sides = await connection.run_sync(_read_constraints, tables)
+        finally:
+            async with engine.begin() as connection:
+                await connection.execute(
+                    text(f'drop schema {_MIRROR_SCHEMA} cascade'),
+                )
     finally:
         await engine.dispose()
 
-    assert _declared_constraints() == live
+    migrated, declared = sides['public'], sides[_MIRROR_SCHEMA]
+
+    assert declared, 'the mirror declared no constraint; the check would be vacuous'
+    assert migrated - declared == set(), (
+        'the migrated schema has constraints the ORM does not declare:\n'
+        + '\n'.join(repr(entry) for entry in sorted(migrated - declared))
+    )
+    assert declared - migrated == set(), (
+        'the ORM declares constraints the migrated schema does not have:\n'
+        + '\n'.join(repr(entry) for entry in sorted(declared - migrated))
+    )
 
 
 @_integration
