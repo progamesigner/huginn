@@ -1,8 +1,8 @@
 from typing import override
 
-from app.core.channels.contracts import ChannelResolverContract
 from app.core.config.registry import HuginnConfig, SectionRegistry
 from app.core.providers.config import ConfigProvider
+from app.ports.channels import ChannelResolverContract
 from lib.container import ContainerContract, ProviderContract
 
 from .config import build_sections

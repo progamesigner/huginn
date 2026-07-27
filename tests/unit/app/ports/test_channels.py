@@ -1,8 +1,7 @@
 from typing import override
 
-from app.core.channels.contracts import ChannelReplyContract
-from app.core.channels.types import InboundMessage
 from app.features.agents.contracts import TextSink
+from app.ports.channels import ChannelReplyContract, InboundMessage
 
 
 class FakeReply(ChannelReplyContract):

@@ -1,6 +1,13 @@
 from abc import ABC, abstractmethod
+from dataclasses import dataclass
 
-from .types import InboundMessage
+
+@dataclass(frozen=True)
+class InboundMessage:
+    channel: str
+    chat: str
+    event: str
+    raw: bytes
 
 
 class ChannelMessageHandlerContract(ABC):

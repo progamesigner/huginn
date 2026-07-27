@@ -3,16 +3,16 @@ from typing import override
 
 from pydantic import ValidationError
 
-from app.core.channels.contracts import (
-    ChannelGatewayContract,
-    ChannelMessageHandlerContract,
-)
-from app.core.channels.types import InboundMessage
 from app.core.config.registry import HuginnConfig
 from app.exts.telegram.client import TelegramClient
 from app.exts.telegram.gateway import TelegramGateway
 from app.exts.telegram.types import Update
 from app.features.channels.config import CHANNELS
+from app.ports.channels import (
+    ChannelGatewayContract,
+    ChannelMessageHandlerContract,
+    InboundMessage,
+)
 from lib.http import HTTPClientContract
 from lib.redis import RedisContract
 from lib.temporal import ClockContract

@@ -1,12 +1,12 @@
 from typing import override
 
-from app.core.channels.contracts import ChannelMessageHandlerContract
 from app.core.config.registry import HuginnConfig
 from app.core.providers.config import ConfigProvider
 from app.core.providers.http import HTTPClientProvider
 from app.core.providers.redis import RedisProvider
 from app.core.providers.router import RouterProvider
 from app.core.providers.temporal import ClockProvider
+from app.ports.channels import ChannelMessageHandlerContract
 from lib.container import ContainerContract, ProviderContract
 from lib.http import HTTPClientContract
 from lib.redis import RedisContract

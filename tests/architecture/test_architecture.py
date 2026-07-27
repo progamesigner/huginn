@@ -39,9 +39,10 @@ SHARED_SLICES = frozenset(
 ROOT_PACKAGES = ('app', 'bin', 'lib')
 FEATURES_PACKAGE = 'app.features'
 EXTS_PACKAGE = 'app.exts'
+PORTS_PACKAGE = 'app.ports'
 # An ext may expose a vendor's transport as well as its client: `endpoints` for what
 # the vendor calls inbound, `gateway` for what we call outbound. Both talk to the app
-# only through app.core.channels ports, so an ext still never imports a feature.
+# only through app.ports ports, so an ext still never imports a feature.
 EXT_SLICE_NAMES = frozenset(
     {
         'client',
@@ -64,6 +65,12 @@ def _exts_dir() -> Path:
     import app
 
     return Path(app.__file__).parent / 'exts'
+
+
+def _ports_dir() -> Path:
+    import app
+
+    return Path(app.__file__).parent / 'ports'
 
 
 def _source_dirs(package: str) -> set[Path]:
@@ -248,6 +255,37 @@ def _retyped_facts(
             yield f'line {node.lineno}: {node.value!r} is a vendor fact; read the spec'
 
 
+# A port is the seam a lower layer uses to call back into a higher one, so it is the
+# one place the layer rules cannot police by direction alone. These two checks are
+# what keep it from becoming a dumping ground: a port declares a boundary and knows
+# nothing about the app on either side of it, which leaves no room for an
+# implementation to hide here.
+def _implemented(source: str) -> Iterator[str]:
+    for node in ast.walk(ast.parse(source)):
+        if not isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef):
+            continue
+
+        body = [
+            statement
+            for statement in node.body
+            # NOTE: `...` and a docstring are both bare Expr(Constant) nodes
+            if not (
+                isinstance(statement, ast.Expr)
+                and isinstance(statement.value, ast.Constant)
+            )
+        ]
+        if body:
+            yield f'line {node.lineno}: {node.name} has a body; a port only declares'
+
+
+def _reaches_the_app(source: str, package: str) -> Iterator[str]:
+    for target in _import_targets(source, package):
+        if (target == 'app' or target.startswith('app.')) and not target.startswith(
+            f'{PORTS_PACKAGE}.',
+        ):
+            yield f'{target}: a port must not import the app whose boundary it declares'
+
+
 def _attribute_reads(source: str) -> Iterator[tuple[str, str]]:
     for node in ast.walk(ast.parse(source)):
         if isinstance(node, ast.Attribute) and isinstance(node.value, ast.Name):
@@ -414,6 +452,68 @@ def test_exts_never_import_a_feature() -> None:
 
     assert not violations, 'an ext must not import a feature:\n' + '\n'.join(
         violations,
+    )
+
+
+def test_ports_only_declare_their_boundary() -> None:
+    root = _ports_dir()
+    modules = sorted(path for path in root.rglob('*.py') if path.name != '__init__.py')
+
+    assert modules, 'no port module found; the check would pass vacuously'
+
+    violations = [
+        f'{path.relative_to(root)}: {message}'
+        for path in modules
+        for message in _implemented(path.read_text())
+    ]
+
+    assert not violations, 'ports must not implement anything:\n' + '\n'.join(
+        violations,
+    )
+
+
+def test_ports_never_reach_back_into_the_app() -> None:
+    root = _ports_dir()
+    violations = [
+        f'{path.relative_to(root)}: {message}'
+        for path in sorted(root.rglob('*.py'))
+        for message in _reaches_the_app(
+            path.read_text(),
+            _package_of(path, root, PORTS_PACKAGE),
+        )
+    ]
+
+    assert not violations, 'ports must stay ignorant of the app:\n' + '\n'.join(
+        violations,
+    )
+
+
+def test_port_declaration_check_flags_a_body() -> None:
+    assert not list(_implemented('class Port:\n    def read(self) -> int: ...\n'))
+    assert not list(_implemented('def read() -> None:\n    """Doc."""\n'))
+    assert not list(_implemented('MAX = 3\n'))
+
+    assert list(_implemented('def read() -> int:\n    return 1\n'))
+    assert list(
+        _implemented('class Port:\n    def read(self) -> None:\n        pass\n'),
+    )
+
+
+def test_port_import_check_flags_app_imports() -> None:
+    assert not list(_reaches_the_app('from lib.router import Router\n', PORTS_PACKAGE))
+    assert not list(
+        _reaches_the_app('from dataclasses import dataclass\n', PORTS_PACKAGE),
+    )
+    # a port may lean on a sibling port's vocabulary
+    assert not list(
+        _reaches_the_app('from .channels import InboundMessage\n', PORTS_PACKAGE),
+    )
+
+    assert list(
+        _reaches_the_app('from app.features.agents.types import Tool\n', PORTS_PACKAGE),
+    )
+    assert list(
+        _reaches_the_app('from app.core.settings import Settings\n', PORTS_PACKAGE),
     )
 
 

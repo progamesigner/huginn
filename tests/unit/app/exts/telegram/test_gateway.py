@@ -5,10 +5,10 @@ import httpx
 import respx
 from pydantic import SecretStr
 
-from app.core.channels.types import InboundMessage
 from app.exts.telegram.client import TelegramClient
 from app.exts.telegram.gateway import TelegramGateway, TelegramReply
 from app.features.agents.contracts import TextSink
+from app.ports.channels import InboundMessage
 from lib.http import HTTPClientManager
 from tests.helpers.clock import FakeClock
 

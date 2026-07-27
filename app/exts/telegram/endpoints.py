@@ -3,12 +3,12 @@ from typing import Annotated
 
 from pydantic import ValidationError
 
-from app.core.channels.contracts import (
+from app.core.dependencies import Provide
+from app.ports.channels import (
     ChannelMessageHandlerContract,
     ChannelResolverContract,
+    InboundMessage,
 )
-from app.core.channels.types import InboundMessage
-from app.core.dependencies import Provide
 from lib.router import Depends, Header, Request, Response, Router
 
 from .types import WEBHOOK, Update

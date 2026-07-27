@@ -6,10 +6,6 @@ from fastapi import FastAPI
 from typer.testing import CliRunner
 
 from app.core.application import App
-from app.core.channels.contracts import (
-    ChannelMessageHandlerContract,
-    ChannelResolverContract,
-)
 from app.core.config.exceptions import UnknownSectionError
 from app.core.config.registry import HuginnConfig, SectionRegistry
 from app.core.providers.bootstrap import BootstrapProvider
@@ -19,6 +15,10 @@ from app.features.auditor.services import RedisAuditor
 from app.features.channels.telegram.providers import TelegramProvider
 from app.features.channels.telegram.service import TelegramMessageHandler
 from app.features.tools.registry import ToolRegistry
+from app.ports.channels import (
+    ChannelMessageHandlerContract,
+    ChannelResolverContract,
+)
 from app.providers import HuginnCommandProvider, HuginnEndpointProvider, HuginnProvider
 from lib.command import CommandContract
 from lib.mcp import MCPClientContract

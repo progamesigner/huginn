@@ -4,8 +4,11 @@ from typing import override
 
 from pydantic import ValidationError
 
-from app.core.channels.contracts import ChannelGatewayContract, ChannelReplyContract
-from app.core.channels.types import InboundMessage
+from app.ports.channels import (
+    ChannelGatewayContract,
+    ChannelReplyContract,
+    InboundMessage,
+)
 from lib.temporal import ClockContract, Timer
 
 from .client import TelegramClient
