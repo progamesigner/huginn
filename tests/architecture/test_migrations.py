@@ -32,6 +32,25 @@ select n.nspname, c.conrelid::regclass::text, c.conname, c.contype::text,
 from pg_constraint c join pg_namespace n on n.oid = c.connamespace
 where n.nspname = any(:schemas) and c.contype in ('c', 'f', 'p', 'u')
 """
+# Everything a migration can leave behind, not just tables. Naming no object and no
+# kind is the point: an enum, a sequence, a view or a function that upgrade creates and
+# downgrade forgets shows up as an addition to this set whatever it is called. Indexes
+# and TOAST tables are omitted because they only ever exist as part of a table.
+_OBJECTS = """
+select 'relation:' || c.relkind::text, c.relname
+from pg_class c join pg_namespace n on n.oid = c.relnamespace
+where n.nspname = 'public' and c.relkind in ('r', 'p', 'v', 'm', 'S', 'c', 'f')
+union all
+select 'type:' || t.typtype::text, t.typname
+from pg_type t join pg_namespace n on n.oid = t.typnamespace
+where n.nspname = 'public' and t.typtype in ('e', 'd')
+union all
+select 'routine', p.proname
+from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+where n.nspname = 'public'
+union all
+select 'extension', extname from pg_extension
+"""
 
 
 def _drift(connection: Connection) -> list[object]:
@@ -62,6 +81,12 @@ async def _drive(engine: AsyncEngine, direction: str, revision: str) -> None:
 async def _drifted(engine: AsyncEngine) -> list[object]:
     async with engine.connect() as connection:
         return await connection.run_sync(_drift)
+
+
+async def _public_objects(engine: AsyncEngine) -> set[tuple[str, str]]:
+    async with engine.connect() as connection:
+        result = await connection.execute(text(_OBJECTS))
+        return {(row[0], row[1]) for row in result if row[1] != _VERSION_TABLE}
 
 
 async def _public_tables(engine: AsyncEngine) -> set[str]:
@@ -156,16 +181,25 @@ async def test_migration_upgrade_downgrade_upgrade_roundtrip(database_url: str) 
     tables = mapped_tables()
     engine = create_async_engine(database_url)
     try:
+        # NOTE: the database is shared across the suite and may already be at head, so
+        # reach base first; only then does a snapshot mean "what upgrade did not create"
+        await _drive(engine, 'down', 'default@base')
+        baseline = await _public_objects(engine)
+
         await _drive(engine, 'up', 'default@head')
         assert tables <= await _public_tables(engine)
 
         await _drive(engine, 'down', 'default@base')
         remaining = await _public_tables(engine)
+        leftovers = await _public_objects(engine) - baseline
 
         # NOTE: naming no table keeps this honest as schemas are added; the version
         # table is alembic's own and downgrading to base deliberately leaves it
         assert not (tables & remaining)
         assert remaining <= {_VERSION_TABLE}
+        assert not leftovers, 'downgrade left objects behind:\n' + '\n'.join(
+            f'{kind} {name}' for kind, name in sorted(leftovers)
+        )
 
         await _drive(engine, 'up', 'default@head')
         assert tables <= await _public_tables(engine)
