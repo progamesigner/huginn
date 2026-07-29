@@ -1,0 +1,160 @@
+import logging
+from collections.abc import AsyncIterator, Iterator, Mapping, Sequence
+from contextlib import AbstractAsyncContextManager, asynccontextmanager
+from typing import override
+
+from pydantic import JsonValue
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.features.agents.contracts import (
+    TranscriptContract,
+    TranscriptStoreContract,
+)
+from app.features.agents.types import TurnPrompt
+from lib.database import DatabaseContract
+from lib.guid import GUIDContract
+from lib.llm import LLMContract, Message, TextSegment
+from lib.temporal import ClockContract
+
+from .compaction import CompactionService
+from .repositories import ConversationRepository
+from .types import Conversation, Part, Turn
+
+logger = logging.getLogger(__name__)
+
+_TEXT = 'text'
+
+
+def _messages(turns: Sequence[Turn]) -> Iterator[Message]:
+    for turn in turns:
+        for part in turn.parts:
+            # NOTE: role is a constrained column, not a literal type, so replaying it
+            # into a model turn has to narrow it back to the two roles that can speak
+            if (text := _text_of(part)) is None:
+                continue
+
+            if part.role == 'assistant':
+                yield Message(role='assistant', segments=(TextSegment(text=text),))
+            elif part.role == 'user':
+                yield Message(role='user', segments=(TextSegment(text=text),))
+
+
+def _summary_message(summary: Mapping[str, JsonValue]) -> Message | None:
+    text = summary.get('summary')
+    if not isinstance(text, str) or not text:
+        return None
+
+    return Message(
+        role='user',
+        segments=(TextSegment(text=f'Summary of the conversation so far: {text}'),),
+        cacheable=True,
+    )
+
+
+def _text_of(part: Part) -> str | None:
+    if part.kind != _TEXT:
+        return None
+
+    text = part.payload.get('text')
+    return text if isinstance(text, str) and text else None
+
+
+class ConversationTranscript(TranscriptContract):
+    conversation: Conversation
+    repository: ConversationRepository
+
+    def __init__(
+        self,
+        repository: ConversationRepository,
+        conversation: Conversation,
+    ) -> None:
+        self.conversation = conversation
+        self.repository = repository
+
+    @override
+    async def history(self) -> tuple[Message, ...]:
+        summary = await self.repository.load_current_summary(self.conversation)
+        turns = await self.repository.load_turns_since_summary(self.conversation)
+        opening = None if summary is None else _summary_message(summary)
+
+        return (
+            *(() if opening is None else (opening,)),
+            *_messages(turns),
+        )
+
+    @override
+    async def record(self, prompts: Sequence[TurnPrompt], answer: str) -> None:
+        parts = [
+            Part(
+                role='user',
+                kind=_TEXT,
+                payload={'text': prompt.text, 'actor': prompt.actor},
+            )
+            for prompt in prompts
+        ]
+        if answer:
+            parts.append(Part(role='assistant', kind=_TEXT, payload={'text': answer}))
+
+        await self.repository.append_turn(self.conversation, parts)
+
+
+class ConversationTranscriptStore(TranscriptStoreContract):
+    clock: ClockContract
+    database: DatabaseContract
+    guid: GUIDContract
+    llm: LLMContract
+
+    def __init__(
+        self,
+        database: DatabaseContract,
+        guid: GUIDContract,
+        clock: ClockContract,
+        llm: LLMContract,
+    ) -> None:
+        self.clock = clock
+        self.database = database
+        self.guid = guid
+        self.llm = llm
+
+    @override
+    def open(
+        self,
+        channel: str,
+        chat: str,
+        agent: str,
+    ) -> AbstractAsyncContextManager[TranscriptContract]:
+        return self._open(channel, chat, agent)
+
+    @override
+    async def maintain(
+        self,
+        channel: str,
+        chat: str,
+        agent: str,
+        model: str,
+    ) -> None:
+        async with self.database.session() as session, session.begin():
+            repository = self._repository(session)
+            conversation = await repository.get_or_create(channel, chat, agent)
+            result = await CompactionService(self.llm, repository).maybe_compact(
+                conversation,
+                model,
+            )
+
+        if result.compacted:
+            logger.info('Compacted conversation %s', conversation.id)
+
+    @asynccontextmanager
+    async def _open(
+        self,
+        channel: str,
+        chat: str,
+        agent: str,
+    ) -> AsyncIterator[TranscriptContract]:
+        async with self.database.session() as session, session.begin():
+            repository = self._repository(session)
+            conversation = await repository.get_or_create(channel, chat, agent)
+            yield ConversationTranscript(repository, conversation)
+
+    def _repository(self, session: AsyncSession) -> ConversationRepository:
+        return ConversationRepository(session, self.guid, self.clock)
