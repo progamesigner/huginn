@@ -1,0 +1,176 @@
+import asyncio
+import json
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
+from typing import override
+from unittest.mock import AsyncMock, MagicMock
+
+import httpx
+import respx
+from fastapi import FastAPI
+from pydantic import SecretStr
+
+from app.core.config.registry import HuginnConfig
+from app.features.agents.config import AgentConfig, AgentConfigList
+from app.features.agents.contracts import TurnHandlerContract
+from app.features.agents.types import TurnRequest
+from app.features.channels.config import ChannelConfigList
+from app.features.channels.telegram.config import TelegramChannelConfig
+from app.features.identities.contracts import IdentityResolverContract
+from app.features.identities.types import AnonymousPrincipal, Principal
+from app.ports.channels import ChannelReplyContract
+from bin.server import build
+from lib.mcp import MCPClientContract
+from lib.redis import RedisContract
+from lib.router import RouterContract
+from tests.helpers.redis import FakeClient
+
+_BASE_URL = 'https://api.telegram.org/botbot-token'
+_CHAT_ID = 4242
+_HEADER = 'X-Telegram-Bot-Api-Secret-Token'
+_PATH = '/webhooks/telegram'
+
+
+class StreamingTurns(TurnHandlerContract):
+    done: asyncio.Event
+    requests: list[TurnRequest]
+
+    def __init__(self) -> None:
+        self.done = asyncio.Event()
+        self.requests = []
+
+    @override
+    async def handle(
+        self,
+        request: TurnRequest,
+        reply: ChannelReplyContract,
+    ) -> None:
+        self.requests.append(request)
+        try:
+            await reply.on_text('the ')
+            await reply.on_text('answer')
+            await reply.finish()
+        finally:
+            self.done.set()
+
+
+class FakeIdentities(IdentityResolverContract):
+    @override
+    async def resolve(
+        self,
+        provider: str,
+        realm: str,
+        external_user_id: str,
+    ) -> Principal:
+        return AnonymousPrincipal(provider, realm, external_user_id)
+
+
+def update(update_id: int) -> dict[str, object]:
+    return {
+        'update_id': update_id,
+        'message': {
+            'message_id': update_id,
+            'date': 1_721_600_000,
+            'chat': {'id': _CHAT_ID, 'type': 'private'},
+            'from': {'id': 77, 'is_bot': False, 'first_name': 'Han'},
+            'text': 'hello',
+        },
+    }
+
+
+def make_config() -> HuginnConfig:
+    channel = TelegramChannelConfig(
+        kind='telegram',
+        agent='scout',
+        token=SecretStr('bot-token'),
+        secret_token=SecretStr('sekret'),
+    )
+    return HuginnConfig(
+        sections={
+            'agents': AgentConfigList(
+                {'scout': AgentConfig(description='scouts', instructions='be helpful')},
+            ),
+            'channels': ChannelConfigList({'support_bot': channel}),
+        },
+    )
+
+
+def make_redis() -> MagicMock:
+    # NOTE: the real actor runs here, so the double has to answer its lua as well as the
+    # dedupe write: claim once, then drain nothing
+    connection = MagicMock()
+    connection.__aenter__ = AsyncMock(return_value=FakeClient(outcomes=[1, []]))
+    connection.__aexit__ = AsyncMock(return_value=False)
+
+    redis = MagicMock(spec=RedisContract)
+    redis.connect.return_value = connection
+    return redis
+
+
+def message(message_id: int) -> httpx.Response:
+    return httpx.Response(
+        200,
+        json={
+            'ok': True,
+            'result': {
+                'message_id': message_id,
+                'date': 1_721_600_000,
+                'chat': {'id': _CHAT_ID, 'type': 'private'},
+            },
+        },
+    )
+
+
+@asynccontextmanager
+async def pipeline(turns: TurnHandlerContract) -> AsyncIterator[httpx.AsyncClient]:
+    application = build()
+    with (
+        application.use(HuginnConfig, make_config()),
+        application.use(MCPClientContract, MagicMock(spec=MCPClientContract)),
+        application.use(RedisContract, make_redis()),
+        application.use(TurnHandlerContract, turns),
+        application.use(IdentityResolverContract, FakeIdentities()),
+    ):
+        app = application.resolve(RouterContract).app
+        assert isinstance(app, FastAPI)
+        async with app.router.lifespan_context(app):
+            transport = httpx.ASGITransport(app=app)
+            async with httpx.AsyncClient(
+                transport=transport,
+                base_url='http://huginn',
+            ) as client:
+                yield client
+
+
+@respx.mock
+async def test_a_webhook_message_reaches_the_agent_turn_and_answers_in_chat() -> None:
+    # NOTE: everything between the webhook and the vendor is real here -- dedupe, ack,
+    # claim, the owner loop, the turn processor, routing policy and the streaming reply.
+    # Only the model turn itself and the principal lookup are doubles.
+    respx.post(f'{_BASE_URL}/setMessageReaction').mock(
+        return_value=httpx.Response(200, json={'ok': True, 'result': True}),
+    )
+    send = respx.post(f'{_BASE_URL}/sendMessage').mock(return_value=message(7))
+    edit = respx.post(f'{_BASE_URL}/editMessageText').mock(return_value=message(7))
+    turns = StreamingTurns()
+
+    async with pipeline(turns) as client:
+        response = await client.post(
+            _PATH,
+            headers={_HEADER: 'sekret'},
+            json=update(7),
+        )
+        assert response.status_code == 200
+        async with asyncio.timeout(1):
+            await turns.done.wait()
+
+    assert json.loads(send.calls.last.request.content) == {
+        'chat_id': str(_CHAT_ID),
+        'text': 'the ',
+    }
+    assert json.loads(edit.calls.last.request.content)['text'] == 'the answer'
+
+    request = turns.requests[0]
+    assert [prompt.text for prompt in request.prompts] == ['hello']
+    assert request.policy.agent == 'scout'
+    assert request.prompts[0].actor.startswith('anonymous:')

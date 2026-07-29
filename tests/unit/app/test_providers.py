@@ -11,9 +11,15 @@ from app.core.config.registry import HuginnConfig, SectionRegistry
 from app.core.providers.bootstrap import BootstrapProvider
 from app.core.providers.router import RouterProvider
 from app.core.providers.settings import SettingsProvider
+from app.features.agents.contracts import (
+    TranscriptStoreContract,
+    TurnHandlerContract,
+)
+from app.features.agents.router import Router
 from app.features.auditor.services import RedisAuditor
 from app.features.channels.telegram.providers import TelegramProvider
 from app.features.channels.telegram.service import TelegramMessageHandler
+from app.features.identities.contracts import IdentityResolverContract
 from app.features.tools.registry import ToolRegistry
 from app.ports.channels import (
     ChannelMessageHandlerContract,
@@ -55,6 +61,17 @@ def test_base_provider_binds_services_without_any_endpoint() -> None:
     assert container.bound(ChannelResolverContract)
     assert container.bound(RedisAuditor)
     assert container.bound(MCPClientContract)
+
+
+def test_base_provider_binds_the_turn_pipeline_end_to_end() -> None:
+    container = base()
+
+    # NOTE: the turn crosses three features and none of them may import the next one, so
+    # what proves the pipeline exists is that every seam has an implementation bound
+    assert container.bound(TurnHandlerContract)
+    assert container.bound(TranscriptStoreContract)
+    assert container.bound(IdentityResolverContract)
+    assert container.bound(Router)
 
 
 def test_endpoint_provider_mounts_every_route() -> None:

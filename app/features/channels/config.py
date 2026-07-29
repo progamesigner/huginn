@@ -79,7 +79,7 @@ def _describe_channels(config: HuginnConfig) -> list[str]:
     return [f'channels: {entries}']
 
 
-def _routing_policy(channel: ChannelConfig) -> RoutingPolicy:
+def routing_policy(channel: ChannelConfig) -> RoutingPolicy:
     return RoutingPolicy(
         bindings=channel.bindings,
         agent=channel.agent,

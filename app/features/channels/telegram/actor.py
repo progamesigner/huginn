@@ -65,11 +65,3 @@ def _parse(name: str, batch: tuple[bytes, ...]) -> tuple[InboundMessage, ...]:
         except ValidationError:
             logger.warning('Discarding unreadable queued message for %s', name)
     return tuple(messages)
-
-
-async def log_turn_batch(
-    channel: TelegramChannelConfig,
-    messages: tuple[InboundMessage, ...],
-) -> None:
-    # NOTE: placeholder — replaces this with the real agent turn
-    logger.info('Processing %d coalesced message(s)', len(messages))
