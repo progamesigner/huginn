@@ -11,6 +11,7 @@ class InboundMessage(BaseModel):
     event: str
     id: str
     text: str
+    user: str | None = None
 
 
 class ChannelMessageHandlerContract(ABC):

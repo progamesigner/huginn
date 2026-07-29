@@ -39,6 +39,7 @@ def _inbound(channel: str, body: bytes) -> InboundMessage | None:
         event=str(update.update_id),
         id=str(message.message_id),
         text=message.text or message.caption or '',
+        user=None if message.from_ is None else str(message.from_.id),
     )
 
 
