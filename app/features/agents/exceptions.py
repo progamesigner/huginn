@@ -17,6 +17,10 @@ class UnroutableError(AgentError):
     pass
 
 
+class UnservableModelError(AgentError):
+    pass
+
+
 class AmbiguousInstructionsError(ConfigError):
     pass
 

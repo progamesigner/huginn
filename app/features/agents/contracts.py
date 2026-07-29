@@ -1,8 +1,12 @@
 from abc import ABC, abstractmethod
 from collections.abc import Awaitable, Callable, Sequence
+from contextlib import AbstractAsyncContextManager
+
+from app.ports.channels import ChannelReplyContract
+from lib.llm import Message
 
 from .config import AgentConfig
-from .types import Tool
+from .types import Tool, TurnPrompt, TurnRequest
 
 type NamedTool = tuple[str, Tool]
 type TextSink = Callable[[str], Awaitable[None]]
@@ -12,6 +16,42 @@ type ToolSourceFactory = Callable[[], ToolSource]
 class ToolSource(ABC):
     @abstractmethod
     async def collect(self, agent: AgentConfig) -> Sequence[NamedTool]: ...
+
+
+class TranscriptContract(ABC):
+    @abstractmethod
+    async def history(self) -> tuple[Message, ...]: ...
+
+    @abstractmethod
+    async def record(self, prompts: Sequence[TurnPrompt], answer: str) -> None: ...
+
+
+class TranscriptStoreContract(ABC):
+    @abstractmethod
+    def open(
+        self,
+        channel: str,
+        chat: str,
+        agent: str,
+    ) -> AbstractAsyncContextManager[TranscriptContract]: ...
+
+    @abstractmethod
+    async def maintain(
+        self,
+        channel: str,
+        chat: str,
+        agent: str,
+        model: str,
+    ) -> None: ...
+
+
+class TurnHandlerContract(ABC):
+    @abstractmethod
+    async def handle(
+        self,
+        request: TurnRequest,
+        reply: ChannelReplyContract,
+    ) -> None: ...
 
 
 class ToolSourceRegistry:

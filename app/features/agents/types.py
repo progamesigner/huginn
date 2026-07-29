@@ -41,6 +41,20 @@ class RoutedAgent:
 
 
 @dataclass(frozen=True)
+class TurnPrompt:
+    text: str
+    actor: str
+
+
+@dataclass(frozen=True)
+class TurnRequest:
+    channel: str
+    chat: str
+    policy: RoutingPolicy
+    prompts: tuple[TurnPrompt, ...]
+
+
+@dataclass(frozen=True)
 class ToolExecution:
     name: str
     duration: float
