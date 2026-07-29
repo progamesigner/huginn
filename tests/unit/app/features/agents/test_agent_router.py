@@ -83,7 +83,10 @@ async def test_resolve_returns_bound_agent_without_calling_the_llm() -> None:
 
     agent = await Router(agents, llm, 'default-model').resolve(policy, '123', 'hello')
 
-    assert agent is agents['scout']
+    assert agent.config is agents['scout']
+    # NOTE: the name is half the answer -- a conversation is keyed by it, and an
+    # AgentConfig cannot report the config key it was read from
+    assert agent.name == 'scout'
     assert llm.calls == 0
 
 
@@ -97,7 +100,7 @@ async def test_resolve_uses_router_llm_choice_when_valid() -> None:
         'research this',
     )
 
-    assert agent is agents['scout']
+    assert agent.config is agents['scout']
 
 
 async def test_resolve_parses_choice_from_a_decorated_reply() -> None:
@@ -110,7 +113,7 @@ async def test_resolve_parses_choice_from_a_decorated_reply() -> None:
         'hi',
     )
 
-    assert agent is agents['scout']
+    assert agent.config is agents['scout']
 
 
 async def test_resolve_falls_back_when_llm_picks_unknown_agent() -> None:
@@ -123,7 +126,7 @@ async def test_resolve_falls_back_when_llm_picks_unknown_agent() -> None:
         'hi',
     )
 
-    assert agent is agents['concierge']
+    assert agent.config is agents['concierge']
 
 
 async def test_resolve_falls_back_when_reply_is_ambiguous() -> None:
@@ -136,7 +139,7 @@ async def test_resolve_falls_back_when_reply_is_ambiguous() -> None:
         'hi',
     )
 
-    assert agent is agents['concierge']
+    assert agent.config is agents['concierge']
 
 
 async def test_resolve_falls_back_when_llm_call_errors() -> None:
@@ -146,7 +149,7 @@ async def test_resolve_falls_back_when_llm_call_errors() -> None:
 
     agent = await Router(agents, FakeLLM(client), 'm').resolve(policy, '999', 'hi')
 
-    assert agent is agents['concierge']
+    assert agent.config is agents['concierge']
 
 
 async def test_resolve_falls_back_when_router_model_has_no_provider() -> None:
@@ -155,7 +158,7 @@ async def test_resolve_falls_back_when_router_model_has_no_provider() -> None:
 
     agent = await Router(agents, FakeLLM(None), 'm').resolve(policy, '999', 'hi')
 
-    assert agent is agents['concierge']
+    assert agent.config is agents['concierge']
 
 
 async def test_resolve_uses_router_model_for_selection() -> None:

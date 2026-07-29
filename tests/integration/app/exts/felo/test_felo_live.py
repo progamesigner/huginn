@@ -5,8 +5,8 @@ from pydantic import Field, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from app.exts.felo.clients import FeloClient
-from app.features.agents.services import AgentRunner, TurnInput
-from app.features.agents.types import ToolSet
+from app.features.agents.services import AgentRunner
+from app.features.agents.types import ToolSet, TurnInput
 from app.features.tools.websearch.repositories import WebSearchRepository
 from app.features.tools.websearch.tool import WebSearchTool
 from lib.http import HTTPClientManager
@@ -77,7 +77,7 @@ async def test_agent_loop_with_websearch_live() -> None:
         instructions=(
             'Use the websearch tool to find current information before answering.'
         ),
-        user_input="What is today's weather in Taipei? Answer briefly.",
+        prompts=("What is today's weather in Taipei? Answer briefly.",),
         model=_OPENAI_MODEL,
     )
 

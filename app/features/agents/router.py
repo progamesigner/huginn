@@ -13,7 +13,7 @@ from lib.llm import (
 
 from .config import AgentConfig, resolve_model
 from .exceptions import UnroutableError
-from .types import RoutingPolicy, SelectionPolicy
+from .types import RoutedAgent, RoutingPolicy, SelectionPolicy
 
 logger = logging.getLogger(__name__)
 
@@ -67,10 +67,10 @@ class Router:
         policy: RoutingPolicy,
         chat_id: str,
         message: str,
-    ) -> AgentConfig:
+    ) -> RoutedAgent:
         if (name := policy.bindings.get(chat_id)) is not None:
             logger.info('Routed chat %s to agent %r via binding', chat_id, name)
-            return self.agents[name]
+            return self._routed(name)
 
         if policy.agent is not None:
             logger.info(
@@ -78,14 +78,17 @@ class Router:
                 chat_id,
                 policy.agent,
             )
-            return self.agents[policy.agent]
+            return self._routed(policy.agent)
 
         if (selection := policy.selection) is None:
             raise UnroutableError(
                 f'chat {chat_id!r} has no binding and the channel defines no router',
             )
 
-        return self.agents[await self._select(selection, chat_id, message)]
+        return self._routed(await self._select(selection, chat_id, message))
+
+    def _routed(self, name: str) -> RoutedAgent:
+        return RoutedAgent(name=name, config=self.agents[name])
 
     async def _select(
         self,

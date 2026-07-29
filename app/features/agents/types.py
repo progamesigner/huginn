@@ -6,11 +6,16 @@ from typing import override
 
 from pydantic import BaseModel, ConfigDict, JsonValue, ValidationError
 
-from lib.llm import ToolCallSegment, ToolResultSegment
+from lib.llm import Message, ToolCallSegment, ToolResultSegment
 
+from .config import AgentConfig
 from .exceptions import DuplicateToolNameError
 
 logger = logging.getLogger(__name__)
+
+_DEFAULT_MAX_ITERATIONS = 10
+_DEFAULT_TURN_TIMEOUT = 300.0
+_DEFAULT_TOOL_TIMEOUT = 60.0
 
 type Instances = dict[str, Tool]
 type ToolOutput = str
@@ -27,6 +32,42 @@ class RoutingPolicy:
     bindings: Mapping[str, str] = field(default_factory=dict)
     agent: str | None = None
     selection: SelectionPolicy | None = None
+
+
+@dataclass(frozen=True)
+class RoutedAgent:
+    name: str
+    config: AgentConfig
+
+
+@dataclass(frozen=True)
+class ToolExecution:
+    name: str
+    duration: float
+    ok: bool
+
+
+@dataclass(frozen=True)
+class Step:
+    tools: tuple[ToolExecution, ...] = ()
+
+
+@dataclass(frozen=True)
+class TurnInput:
+    instructions: str
+    prompts: tuple[str, ...]
+    model: str
+    prior_turns: tuple[Message, ...] = ()
+    max_iterations: int = _DEFAULT_MAX_ITERATIONS
+    turn_timeout: float = _DEFAULT_TURN_TIMEOUT
+    tool_timeout: float = _DEFAULT_TOOL_TIMEOUT
+
+
+@dataclass(frozen=True)
+class TurnOutput:
+    text: str
+    completed: bool = True
+    steps: tuple[Step, ...] = ()
 
 
 class ToolParams(BaseModel):

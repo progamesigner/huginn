@@ -9,8 +9,14 @@ from pydantic import Field, JsonValue
 from structlog.contextvars import bound_contextvars, get_contextvars
 
 from app.features.agents.exceptions import TurnTimeoutError
-from app.features.agents.services import AgentRunner, TurnInput
-from app.features.agents.types import ToolOutput, ToolParams, ToolSet, TypedTool
+from app.features.agents.services import AgentRunner
+from app.features.agents.types import (
+    ToolOutput,
+    ToolParams,
+    ToolSet,
+    TurnInput,
+    TypedTool,
+)
 from lib.llm import (
     CompletionChunk,
     CompletionRequest,
@@ -120,7 +126,7 @@ def make_toolset() -> ToolSet:
 
 def make_turn(
     *,
-    user_input: str = 'hello',
+    prompts: tuple[str, ...] = ('hello',),
     model: str = 'test-model',
     prior_turns: tuple[Message, ...] = (),
     max_iterations: int = 10,
@@ -129,7 +135,7 @@ def make_turn(
 ) -> TurnInput:
     return TurnInput(
         instructions='be helpful',
-        user_input=user_input,
+        prompts=prompts,
         model=model,
         prior_turns=prior_turns,
         max_iterations=max_iterations,

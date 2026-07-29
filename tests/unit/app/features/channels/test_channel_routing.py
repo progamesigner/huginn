@@ -26,7 +26,7 @@ async def test_channel_instance_can_route_directly_to_its_agent() -> None:
         message='hello',
     )
 
-    assert resolved is scout
+    assert resolved.config is scout
 
 
 def test_routing_policy_carries_bindings_and_default_agent() -> None:

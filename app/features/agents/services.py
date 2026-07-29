@@ -1,7 +1,6 @@
 import asyncio
 import logging
 from collections.abc import AsyncIterator, Iterator, Sequence
-from dataclasses import dataclass
 from pathlib import Path
 from typing import cast
 from uuid import uuid4
@@ -26,43 +25,9 @@ from lib.temporal import ClockContract
 from .config import AgentConfig
 from .contracts import TextSink, ToolSource
 from .exceptions import AgentError, TurnTimeoutError
-from .types import ToolSet
+from .types import Step, ToolExecution, ToolSet, TurnInput, TurnOutput
 
 logger = logging.getLogger(__name__)
-
-_DEFAULT_MAX_ITERATIONS = 10
-_DEFAULT_TURN_TIMEOUT = 300.0
-_DEFAULT_TOOL_TIMEOUT = 60.0
-
-
-@dataclass(frozen=True)
-class ToolExecution:
-    name: str
-    duration: float
-    ok: bool
-
-
-@dataclass(frozen=True)
-class TurnInput:
-    instructions: str
-    user_input: str
-    model: str
-    prior_turns: tuple[Message, ...] = ()
-    max_iterations: int = _DEFAULT_MAX_ITERATIONS
-    turn_timeout: float = _DEFAULT_TURN_TIMEOUT
-    tool_timeout: float = _DEFAULT_TOOL_TIMEOUT
-
-
-@dataclass(frozen=True)
-class TurnOutput:
-    text: str
-    completed: bool = True
-    steps: tuple[Step, ...] = ()
-
-
-@dataclass(frozen=True)
-class Step:
-    tools: tuple[ToolExecution, ...] = ()
 
 
 class ToolCallBuilder:
@@ -79,7 +44,8 @@ class ToolCallBuilder:
 def _build_messages(turn: TurnInput) -> Iterator[Message]:
     yield Message(role='system', segments=(TextSegment(text=turn.instructions),))
     yield from turn.prior_turns
-    yield Message(role='user', segments=(TextSegment(text=turn.user_input),))
+    for prompt in turn.prompts:
+        yield Message(role='user', segments=(TextSegment(text=prompt),))
 
 
 def _assistant_message(text: str, tool_calls: tuple[ToolCallSegment, ...]) -> Message:

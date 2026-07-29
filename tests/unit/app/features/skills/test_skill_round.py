@@ -5,7 +5,8 @@ from typing import override
 from pydantic import JsonValue
 
 from app.features.agents.config import AgentConfig, SkillsConfig
-from app.features.agents.services import AgentRunner, TurnInput, build_tool_set
+from app.features.agents.services import AgentRunner, build_tool_set
+from app.features.agents.types import TurnInput
 from app.features.skills.repositories import SkillRepository
 from app.features.skills.sources.contracts import SkillSource
 from app.features.skills.tools import SkillToolSource
@@ -74,7 +75,7 @@ async def test_agent_loads_a_skill_through_the_tool_loop() -> None:
     runner = AgentRunner(llm, tools, ClockManager())
 
     output = await runner.run(
-        TurnInput(instructions='be helpful', user_input='help', model='test-model'),
+        TurnInput(instructions='be helpful', prompts=('help',), model='test-model'),
         discard,
     )
 
