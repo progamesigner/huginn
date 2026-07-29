@@ -1,12 +1,16 @@
 from collections.abc import Mapping
 from datetime import timedelta
+from typing import override
 from uuid import UUID
 
 from pydantic import JsonValue
 from sqlalchemy.exc import IntegrityError
 
+from lib.database import DatabaseContract
+from lib.guid import GUIDContract
 from lib.temporal import ClockContract
 
+from .contracts import IdentityResolverContract
 from .exceptions import InvalidIdentityLinkError
 from .repositories import IdentityRepository
 from .tokens import IdentityTokenCodec
@@ -175,6 +179,37 @@ class IdentityLinkingService:
             realm,
             metadata={'reason': reason},
         )
+
+
+class PrincipalResolver(IdentityResolverContract):
+    clock: ClockContract
+    database: DatabaseContract
+    guid: GUIDContract
+
+    def __init__(
+        self,
+        database: DatabaseContract,
+        guid: GUIDContract,
+        clock: ClockContract,
+    ) -> None:
+        self.clock = clock
+        self.database = database
+        self.guid = guid
+
+    @override
+    async def resolve(
+        self,
+        provider: str,
+        realm: str,
+        external_user_id: str,
+    ) -> Principal:
+        async with self.database.session() as session:
+            repository = IdentityRepository(session, self.guid, self.clock)
+            return await IdentityResolver(repository).resolve(
+                provider,
+                realm,
+                external_user_id,
+            )
 
 
 class IdentityResolver:
