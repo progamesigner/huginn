@@ -17,8 +17,13 @@ from .types import MESSAGE
 
 logger = logging.getLogger(__name__)
 
-# NOTE: telegram only accepts reactions from its own allowed set
+# NOTE: telegram only accepts reactions from its own allowed set, and a bot holds one
+# reaction per message, so the failure replaces the ack rather than joining it
 _ACK_EMOJI = '👀'
+_FAIL_EMOJI = '🤯'
+_FAIL_NOTE = (
+    '\n\nSomething went wrong before I could finish this reply. Please ask again.'
+)
 
 
 def _split(text: str, limit: int) -> tuple[str, str]:
@@ -61,6 +66,16 @@ class TelegramReply(ChannelReplyContract):
         self.sent = ''
         self.pending = ''
         self.timer = clock.timer()
+
+    @override
+    async def abandon(self) -> None:
+        # NOTE: with no draft out there is nothing to annotate, and the reaction on the
+        # incoming message already carries the whole signal
+        if self.draft is None:
+            return
+
+        self.pending += _FAIL_NOTE
+        await self._flush()
 
     @override
     async def finish(self) -> None:
@@ -107,6 +122,10 @@ class TelegramGateway(ChannelGatewayContract):
     def __init__(self, client: TelegramClient, clock: ClockContract) -> None:
         self.client = client
         self.clock = clock
+
+    @override
+    async def abandon(self, message: InboundMessage) -> None:
+        await self.client.set_message_reaction(message.chat, message.id, _FAIL_EMOJI)
 
     @override
     async def acknowledge(self, message: InboundMessage) -> None:

@@ -1,5 +1,8 @@
 import logging
 from typing import override
+from uuid import uuid4
+
+from structlog.contextvars import bound_contextvars
 
 from app.core.config.registry import HuginnConfig
 from app.exts.telegram.gateways import build_gateway
@@ -66,6 +69,26 @@ class TelegramMessageHandler(ChannelMessageHandlerContract):
 
         self.supervisor.spawn(self._process(message, channel))
 
+    async def _abandon(
+        self,
+        gateway: ChannelGatewayContract,
+        message: InboundMessage,
+    ) -> None:
+        try:
+            await gateway.abandon(message)
+        except Exception as error:
+            logger.error('Could not report the failed turn: %s', error)
+
+    async def _acknowledge(
+        self,
+        gateway: ChannelGatewayContract,
+        message: InboundMessage,
+    ) -> None:
+        try:
+            await gateway.acknowledge(message)
+        except Exception as error:
+            logger.warning('Could not acknowledge %s: %s', message.event, error)
+
     def _channel(self, name: str) -> TelegramChannelConfig | None:
         channel = self.config.section(CHANNELS).root.get(name)
         return channel if isinstance(channel, TelegramChannelConfig) else None
@@ -75,8 +98,14 @@ class TelegramMessageHandler(ChannelMessageHandlerContract):
         message: InboundMessage,
         channel: TelegramChannelConfig,
     ) -> None:
-        await self.gateway(channel).acknowledge(message)
-        await self.actor.handle(channel, message)
+        gateway = self.gateway(channel)
+        with bound_contextvars(turn_id=uuid4().hex):
+            await self._acknowledge(gateway, message)
+            try:
+                await self.actor.handle(channel, message)
+            except Exception:
+                logger.exception('Turn failed for %s', message.channel)
+                await self._abandon(gateway, message)
 
     async def _reserve(self, message: InboundMessage) -> bool:
         key = f'telegram:{message.channel}:{message.event}'

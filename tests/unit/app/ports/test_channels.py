@@ -6,11 +6,17 @@ from app.ports.channels import ChannelReplyContract, InboundMessage
 
 class FakeReply(ChannelReplyContract):
     fragments: list[str]
+    abandoned: bool
     finished: bool
 
     def __init__(self) -> None:
         self.fragments = []
+        self.abandoned = False
         self.finished = False
+
+    @override
+    async def abandon(self) -> None:
+        self.abandoned = True
 
     @override
     async def on_text(self, fragment: str) -> None:
@@ -36,6 +42,7 @@ async def test_reply_port_is_usable_as_the_agent_text_sink() -> None:
 
     assert reply.fragments == ['He', 'llo']
     assert reply.finished
+    assert not reply.abandoned
 
 
 def inbound() -> InboundMessage:

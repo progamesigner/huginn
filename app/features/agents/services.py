@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import cast
 from uuid import uuid4
 
-from structlog.contextvars import bound_contextvars
+from structlog.contextvars import bound_contextvars, get_contextvars
 
 from lib.llm import (
     CompletionChunk,
@@ -89,6 +89,13 @@ def _assistant_message(text: str, tool_calls: tuple[ToolCallSegment, ...]) -> Me
 
 def _tool_result_messages(results: tuple[ToolResultSegment, ...]) -> Iterator[Message]:
     return (Message(role='tool', segments=(result,)) for result in results)
+
+
+def _turn_id() -> str:
+    # NOTE: whoever opens the turn owns its id -- a channel binds one before the reply
+    # boundary it needs the id for, so minting here would give that turn a second name
+    bound = get_contextvars().get('turn_id')
+    return bound if isinstance(bound, str) else uuid4().hex
 
 
 async def _execute(
@@ -179,7 +186,7 @@ class AgentRunner:
         self.clock = clock
 
     async def run(self, turn: TurnInput, on_text: TextSink) -> TurnOutput:
-        with bound_contextvars(turn_id=uuid4().hex):
+        with bound_contextvars(turn_id=_turn_id()):
             return await self._process(turn, on_text)
 
     async def _process(self, turn: TurnInput, on_text: TextSink) -> TurnOutput:

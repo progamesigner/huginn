@@ -199,6 +199,32 @@ async def test_keeps_editing_the_continuation_message_after_a_rollover() -> None
     }
 
 
+@respx.mock
+async def test_abandon_annotates_the_draft_it_already_sent() -> None:
+    respx.post(f'{_BASE_URL}/sendMessage').mock(return_value=message(7))
+    edit = respx.post(f'{_BASE_URL}/editMessageText').mock(return_value=message(7))
+    streamer = make_reply(FakeClock())
+
+    await drive(streamer.on_text, 'Half an ans')
+    await streamer.abandon()
+
+    written = texts(edit)
+    assert len(written) == 1
+    assert written[0].startswith('Half an ans')
+    assert 'ask again' in written[0]
+
+
+@respx.mock
+async def test_abandon_writes_nothing_when_no_draft_went_out() -> None:
+    send = respx.post(f'{_BASE_URL}/sendMessage').mock(return_value=message(7))
+    edit = respx.post(f'{_BASE_URL}/editMessageText').mock(return_value=message(7))
+
+    await make_reply(FakeClock()).abandon()
+
+    assert not send.called
+    assert not edit.called
+
+
 def make_message(message_id: int = 31) -> InboundMessage:
     return InboundMessage(
         channel='support_bot',
@@ -227,6 +253,25 @@ async def test_acknowledge_reacts_to_the_incoming_message() -> None:
         'chat_id': str(_CHAT_ID),
         'message_id': '31',
         'reaction': [{'type': 'emoji', 'emoji': '\N{EYES}'}],
+    }
+
+
+@respx.mock
+async def test_abandon_replaces_the_ack_with_the_failure_reaction() -> None:
+    route = respx.post(f'{_BASE_URL}/setMessageReaction').mock(
+        return_value=httpx.Response(200, json={'ok': True, 'result': True}),
+    )
+    gateway = make_gateway(FakeClock())
+
+    await gateway.acknowledge(make_message())
+    await gateway.abandon(make_message())
+
+    assert json.loads(route.calls.last.request.content) == {
+        'chat_id': str(_CHAT_ID),
+        'message_id': '31',
+        'reaction': [
+            {'type': 'emoji', 'emoji': '\N{SHOCKED FACE WITH EXPLODING HEAD}'},
+        ],
     }
 
 

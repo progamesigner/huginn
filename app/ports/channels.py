@@ -20,6 +20,9 @@ class ChannelMessageHandlerContract(ABC):
 
 class ChannelReplyContract(ABC):
     @abstractmethod
+    async def abandon(self) -> None: ...
+
+    @abstractmethod
     async def on_text(self, fragment: str) -> None: ...
 
     @abstractmethod
@@ -32,6 +35,9 @@ class ChannelResolverContract(ABC):
 
 
 class ChannelGatewayContract(ABC):
+    @abstractmethod
+    async def abandon(self, message: InboundMessage) -> None: ...
+
     @abstractmethod
     async def acknowledge(self, message: InboundMessage) -> None: ...
 

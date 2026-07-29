@@ -6,7 +6,7 @@ from typing import Annotated, override
 
 import pytest
 from pydantic import Field, JsonValue
-from structlog.contextvars import get_contextvars
+from structlog.contextvars import bound_contextvars, get_contextvars
 
 from app.features.agents.exceptions import TurnTimeoutError
 from app.features.agents.services import AgentRunner, TurnInput
@@ -497,3 +497,20 @@ async def test_run_generates_unique_turn_id_per_turn() -> None:
     await runner.run(make_turn(), discard)
 
     assert probe.seen['turn_id'] != first
+
+
+# NOTE: a channel opens the turn before the runner sees it and needs the id for its own
+# failure boundary, so the runner joins that turn instead of naming it a second time
+async def test_run_joins_a_turn_id_its_caller_already_bound() -> None:
+    llm = FakeLLM(
+        [probe_response(), [TextChunk(text='done'), FinishChunk(reason='stop')]],
+    )
+    probe = ProbeTool()
+    tools = ToolSet()
+    tools.add('probe', probe)
+    runner = AgentRunner(llm, tools, ClockManager())
+
+    with bound_contextvars(turn_id='opened-by-the-channel'):
+        await runner.run(make_turn(), discard)
+
+    assert probe.seen['turn_id'] == 'opened-by-the-channel'
