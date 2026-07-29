@@ -1,4 +1,5 @@
 import pytest
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.features.conversations.repositories import ConversationRepository
@@ -74,6 +75,27 @@ async def test_load_recent_turns_orders_by_time_and_limits(
 
     payloads = [dict(turn.parts[0].payload) for turn in turns]
     assert payloads == [{'text': '1'}, {'text': '2'}]
+
+
+@pytest.mark.parametrize(
+    'part',
+    [
+        Part(role='narrator', kind='text'),
+        Part(role='user', kind='interpretive-dance'),
+    ],
+    ids=['role', 'kind'],
+)
+async def test_a_part_outside_the_declared_vocabulary_is_refused(
+    session: AsyncSession,
+    part: Part,
+) -> None:
+    repository = _repository(session)
+    conversation = await repository.get_or_create('telegram', '13', 'scout')
+
+    # NOTE: the reader branches on role and kind, so the database is where the vocabulary
+    # has to be closed -- a writer that invents one must not be able to persist it
+    with pytest.raises(IntegrityError):
+        await repository.append_turn(conversation, [part])
 
 
 async def test_turns_are_scoped_to_their_conversation(session: AsyncSession) -> None:

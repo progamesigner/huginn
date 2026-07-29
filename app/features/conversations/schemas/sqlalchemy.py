@@ -3,10 +3,12 @@ from uuid import UUID
 
 from pydantic import JsonValue
 from sqlalchemy import (
+    CheckConstraint,
     ForeignKey,
     ForeignKeyConstraint,
     Index,
     UniqueConstraint,
+    column,
     func,
     text,
 )
@@ -14,8 +16,6 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.records import AppRecord, TimestampRecordMixin
 
-# NOTE: pydantic's JsonValue admits None, so SQLAlchemy infers a nullable column from
-# the annotation alone; every JSON column here is NOT NULL and has to say so
 _EMPTY_JSON = text("'{}'::jsonb")
 
 
@@ -35,10 +35,7 @@ class TurnRecord(AppRecord):
     __table_args__ = (Index('ix_turns_conversation_id', 'conversation_id', 'id'),)
 
     conversation_id: Mapped[UUID] = mapped_column()
-    usage: Mapped[JsonValue] = mapped_column(
-        nullable=False,
-        server_default=_EMPTY_JSON,
-    )
+    usage: Mapped[JsonValue] = mapped_column(nullable=False, server_default=_EMPTY_JSON)
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())
     parts: Mapped[list[PartRecord]] = relationship(
         order_by=lambda: PartRecord.seq,
@@ -46,9 +43,17 @@ class TurnRecord(AppRecord):
     )
 
 
+_ROLES = ('assistant', 'system', 'tool', 'user')
+_KINDS = ('summary', 'text', 'tool_call', 'tool_result')
+
+
 class PartRecord(AppRecord):
     __tablename__ = 'parts'
-    __table_args__ = (Index('ix_parts_turn_id', 'turn_id', 'seq'),)
+    __table_args__ = (
+        CheckConstraint(column('role').in_(_ROLES), name='role_known'),
+        CheckConstraint(column('kind').in_(_KINDS), name='kind_known'),
+        Index('ix_parts_turn_id', 'turn_id', 'seq'),
+    )
 
     turn_id: Mapped[UUID] = mapped_column(
         ForeignKey(TurnRecord.id, ondelete='CASCADE'),
