@@ -1,20 +1,63 @@
 from typing import override
 
-from app.core.config.registry import SectionRegistry
+from app.core.config.registry import HuginnConfig, SectionRegistry
 from app.core.providers.config import ConfigProvider
+from app.core.providers.llm import LLMProvider
+from app.core.providers.temporal import ClockProvider
 from lib.container import ContainerContract, ProviderContract
+from lib.llm import LLMContract
+from lib.temporal import ClockContract
 
-from .config import build_sections
-from .contracts import ToolSourceRegistry
+from .config import AGENTS, DEFAULTS, build_sections
+from .contracts import (
+    ToolSourceRegistry,
+    TranscriptStoreContract,
+    TurnHandlerContract,
+)
+from .router import Router
+from .services import TurnHandler
+
+
+def _default_model(container: ContainerContract) -> str | None:
+    return container.resolve(HuginnConfig).section(DEFAULTS).model
+
+
+def _router(container: ContainerContract) -> Router:
+    config = container.resolve(HuginnConfig)
+    return Router(
+        config.section(AGENTS).root,
+        container.resolve(LLMContract),
+        _default_model(container),
+    )
+
+
+def _turns(container: ContainerContract) -> TurnHandler:
+    return TurnHandler(
+        llm=container.resolve(LLMContract),
+        router=container.resolve(Router),
+        sources=container.resolve(ToolSourceRegistry),
+        store=container.resolve(TranscriptStoreContract),
+        clock=container.resolve(ClockContract),
+        default_model=_default_model(container),
+    )
 
 
 class AgentProvider(ProviderContract):
-    dependencies = (ConfigProvider,)
+    dependencies = (ClockProvider, ConfigProvider, LLMProvider)
 
     @override
     def __call__(self, container: ContainerContract) -> None:
         container.bind(ToolSourceRegistry, instance=ToolSourceRegistry())
+        container.bind(Router, factory=_router)
 
         sections = container.resolve(SectionRegistry)
         for spec in build_sections():
             sections.register(spec)
+
+
+class TurnProvider(ProviderContract):
+    dependencies = (AgentProvider,)
+
+    @override
+    def __call__(self, container: ContainerContract) -> None:
+        container.bind(TurnHandlerContract, factory=_turns)

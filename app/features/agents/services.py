@@ -2,16 +2,18 @@ import asyncio
 import logging
 from collections.abc import AsyncIterator, Iterator, Sequence
 from pathlib import Path
-from typing import cast
+from typing import cast, override
 from uuid import uuid4
 
 from structlog.contextvars import bound_contextvars, get_contextvars
 
+from app.ports.channels import ChannelReplyContract
 from lib.llm import (
     CompletionChunk,
     CompletionRequest,
     FinishChunk,
     LLMClient,
+    LLMContract,
     Message,
     TextChunk,
     TextSegment,
@@ -22,10 +24,25 @@ from lib.llm import (
 )
 from lib.temporal import ClockContract
 
-from .config import AgentConfig
-from .contracts import TextSink, ToolSource
-from .exceptions import AgentError, TurnTimeoutError
-from .types import Step, ToolExecution, ToolSet, TurnInput, TurnOutput
+from .config import AgentConfig, resolve_model
+from .contracts import (
+    TextSink,
+    ToolSource,
+    ToolSourceRegistry,
+    TranscriptStoreContract,
+    TurnHandlerContract,
+)
+from .exceptions import AgentError, TurnTimeoutError, UnservableModelError
+from .router import Router
+from .types import (
+    RoutedAgent,
+    Step,
+    ToolExecution,
+    ToolSet,
+    TurnInput,
+    TurnOutput,
+    TurnRequest,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -202,6 +219,82 @@ class AgentRunner:
             turn.max_iterations,
         )
         return TurnOutput(text=text, completed=False, steps=tuple(steps))
+
+
+class TurnHandler(TurnHandlerContract):
+    clock: ClockContract
+    llm: LLMContract
+    router: Router
+    sources: ToolSourceRegistry
+    store: TranscriptStoreContract
+    default_model: str | None
+
+    def __init__(
+        self,
+        llm: LLMContract,
+        router: Router,
+        sources: ToolSourceRegistry,
+        store: TranscriptStoreContract,
+        clock: ClockContract,
+        default_model: str | None = None,
+    ) -> None:
+        self.clock = clock
+        self.default_model = default_model
+        self.llm = llm
+        self.router = router
+        self.sources = sources
+        self.store = store
+
+    @override
+    async def handle(self, request: TurnRequest, reply: ChannelReplyContract) -> None:
+        if not request.prompts:
+            logger.info('Nothing to answer for chat %s', request.chat)
+            return
+
+        agent = await self.router.resolve(
+            request.policy,
+            request.chat,
+            request.prompts[-1].text,
+        )
+        model = resolve_model(agent.config.model, self.default_model)
+        client = self.llm.client_for(model)
+        if client is None:
+            raise UnservableModelError(f'model {model!r} has no configured provider')
+
+        await self._run(request, reply, agent, model, client)
+        # NOTE: after the turn's transaction, and never a reason to fail a delivered
+        # answer -- compaction is housekeeping the next turn benefits from
+        try:
+            await self.store.maintain(request.channel, request.chat, agent.name, model)
+        except Exception:
+            logger.exception('Could not compact the conversation for %s', request.chat)
+
+    async def _run(
+        self,
+        request: TurnRequest,
+        reply: ChannelReplyContract,
+        agent: RoutedAgent,
+        model: str,
+        client: LLMClient,
+    ) -> None:
+        async with self.store.open(request.channel, request.chat, agent.name) as store:
+            history = await store.history()
+            runner = AgentRunner(
+                client,
+                await build_tool_set(self.sources.sources(), agent.config),
+                self.clock,
+            )
+            output = await runner.run(
+                TurnInput(
+                    instructions=load_instructions(agent.config),
+                    prompts=tuple(prompt.text for prompt in request.prompts),
+                    model=model,
+                    prior_turns=history,
+                ),
+                reply.on_text,
+            )
+            await reply.finish()
+            await store.record(request.prompts, output.text)
 
 
 async def build_tool_set(
