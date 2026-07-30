@@ -3,12 +3,18 @@ from typing import override
 from app.core.config.registry import HuginnConfig, SectionRegistry
 from app.core.providers.config import ConfigProvider
 from app.core.providers.http import HTTPClientProvider
+from app.features.identities.contracts import (
+    IdentityLinkingContract,
+    IdentityResolverContract,
+)
+from app.features.identities.providers import IdentityProvider
 from app.ports.channels import ChannelResolverContract
 from lib.container import ContainerContract, ProviderContract
 from lib.http import HTTPClientContract
 
 from .config import TRANSCRIPTION, build_sections
 from .contracts import TranscriptionContract
+from .handlers import CommandHandlers
 from .registry import ChannelRegistry, CommandRegistry
 from .repositories import TranscriptionRepository
 from .resolver import ChannelSecretResolver
@@ -18,6 +24,17 @@ from .telegram.providers import TelegramEndpointProvider
 
 def _resolver(container: ContainerContract) -> ChannelSecretResolver:
     return ChannelSecretResolver(container.resolve(HuginnConfig))
+
+
+def _commands(container: ContainerContract) -> None:
+    registry = container.resolve(CommandRegistry)
+    handlers = CommandHandlers(
+        lambda: container.resolve(IdentityResolverContract),
+        lambda: container.resolve(IdentityLinkingContract),
+        registry,
+    )
+    for name, description, handler in handlers.commands():
+        registry.register(name, description, handler)
 
 
 def _transcription(container: ContainerContract) -> TranscriptionRepository:
@@ -35,12 +52,18 @@ class ChannelRegistryProvider(ProviderContract):
 
 
 class ChannelProvider(ProviderContract):
-    dependencies = (ChannelRegistryProvider, ConfigProvider, HTTPClientProvider)
+    dependencies = (
+        ChannelRegistryProvider,
+        ConfigProvider,
+        HTTPClientProvider,
+        IdentityProvider,
+    )
 
     @override
     def __call__(self, container: ContainerContract) -> None:
         container.bind(ChannelResolverContract, factory=_resolver)
         container.bind(TranscriptionContract, factory=_transcription, shared=True)
+        _commands(container)
 
         registry = container.resolve(ChannelRegistry)
         registry.register('telegram', TelegramChannelConfig)

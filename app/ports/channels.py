@@ -33,6 +33,7 @@ class InboundMessage(BaseModel):
     chat: str
     event: str
     id: str
+    kind: str
     text: str
     attachments: tuple[InboundAttachment, ...] = ()
     command: InboundCommand | None = None

@@ -94,6 +94,7 @@ def _inbound(channel: str, body: bytes) -> InboundMessage | None:
         chat=str(message.chat.id),
         event=str(update.update_id),
         id=str(message.message_id),
+        kind=_KIND,
         text=message.text or message.caption or '',
         attachments=tuple(_attachments(message)),
         command=_command(message),

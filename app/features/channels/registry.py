@@ -1,4 +1,5 @@
 from collections.abc import Awaitable, Callable
+from dataclasses import dataclass
 
 from pydantic import BaseModel
 
@@ -13,6 +14,13 @@ from .exceptions import (
 type CommandHandler = Callable[[InboundCommand, InboundMessage], Awaitable[str]]
 
 
+@dataclass(frozen=True)
+class Command:
+    name: str
+    description: str
+    handler: CommandHandler
+
+
 def _unknown(name: str, known: tuple[str, ...]) -> str:
     if not known:
         return f'/{name} is not a command I know.'
@@ -23,26 +31,29 @@ def _unknown(name: str, known: tuple[str, ...]) -> str:
 
 
 class CommandRegistry:
-    handlers: dict[str, CommandHandler]
+    commands: dict[str, Command]
 
     def __init__(self) -> None:
-        self.handlers = {}
+        self.commands = {}
 
     async def dispatch(self, command: InboundCommand, message: InboundMessage) -> str:
-        handler = self.handlers.get(command.name)
-        if handler is None:
+        registered = self.commands.get(command.name)
+        if registered is None:
             return _unknown(command.name, self.names())
 
-        return await handler(command, message)
+        return await registered.handler(command, message)
+
+    def listing(self) -> tuple[Command, ...]:
+        return tuple(self.commands[name] for name in self.names())
 
     def names(self) -> tuple[str, ...]:
-        return tuple(sorted(self.handlers))
+        return tuple(sorted(self.commands))
 
-    def register(self, name: str, handler: CommandHandler) -> None:
-        if name in self.handlers:
+    def register(self, name: str, description: str, handler: CommandHandler) -> None:
+        if name in self.commands:
             raise DuplicateCommandError(f'command {name!r} is already registered')
 
-        self.handlers[name] = handler
+        self.commands[name] = Command(name, description, handler)
 
 
 class ChannelRegistry:

@@ -195,6 +195,7 @@ def inbound(
         chat='4242',
         event=str(event),
         id=str(event),
+        kind='telegram',
         text=text,
         attachments=attachments,
         command=command,
@@ -215,7 +216,7 @@ def registry(answer: str = 'done') -> CommandRegistry:
         return f'{answer}:{command.name}'
 
     built = CommandRegistry()
-    built.register('new', handle)
+    built.register('new', 'Start over.', handle)
 
     return built
 
@@ -542,7 +543,7 @@ async def test_a_failed_command_reports_on_its_own_message_and_nothing_else() ->
         raise RuntimeError('the service is down')
 
     commands = CommandRegistry()
-    commands.register('new', raising)
+    commands.register('new', 'Start over.', raising)
     gateway = FakeGateway()
     turns = FakeTurns()
 

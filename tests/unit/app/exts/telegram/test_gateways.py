@@ -232,6 +232,7 @@ def make_message(message_id: int = 31) -> InboundMessage:
         chat=str(_CHAT_ID),
         event='7',
         id=str(message_id),
+        kind='telegram',
         text='hello',
     )
 

@@ -58,6 +58,7 @@ def inbound(event: int = 7) -> InboundMessage:
         chat='4242',
         event=str(event),
         id=str(event),
+        kind='telegram',
         text='hello',
     )
 

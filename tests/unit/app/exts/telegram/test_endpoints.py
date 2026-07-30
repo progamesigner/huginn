@@ -234,3 +234,13 @@ def test_inbound_carries_no_command_for_ordinary_text() -> None:
 
     assert message is not None
     assert message.command is None
+
+
+def test_inbound_names_the_vendor_that_delivered_it() -> None:
+    # NOTE: identity is keyed by provider and realm, so a command handler that never
+    # sees the channel config still has to learn which vendor this came from
+    message = _inbound('support', body(text='hello'))
+
+    assert message is not None
+    assert message.kind == 'telegram'
+    assert message.channel == 'support'

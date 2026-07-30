@@ -10,7 +10,7 @@ from lib.database import DatabaseContract
 from lib.guid import GUIDContract
 from lib.temporal import ClockContract
 
-from .contracts import IdentityResolverContract
+from .contracts import IdentityLinkingContract, IdentityResolverContract
 from .exceptions import InvalidIdentityLinkError
 from .repositories import IdentityRepository
 from .tokens import IdentityTokenCodec
@@ -179,6 +179,43 @@ class IdentityLinkingService:
             realm,
             metadata={'reason': reason},
         )
+
+
+class PrincipalLinker(IdentityLinkingContract):
+    clock: ClockContract
+    database: DatabaseContract
+    guid: GUIDContract
+    tokens: IdentityTokenCodec
+
+    def __init__(
+        self,
+        database: DatabaseContract,
+        guid: GUIDContract,
+        clock: ClockContract,
+        tokens: IdentityTokenCodec,
+    ) -> None:
+        self.clock = clock
+        self.database = database
+        self.guid = guid
+        self.tokens = tokens
+
+    @override
+    async def link(
+        self,
+        credential: str,
+        provider: str,
+        realm: str,
+        external_user_id: str,
+    ) -> LinkedPrincipal:
+        async with self.database.session() as session, session.begin():
+            repository = IdentityRepository(session, self.guid, self.clock)
+            identity = await IdentityLinkingService(
+                repository,
+                self.tokens,
+                self.clock,
+            ).complete(credential, provider, realm, external_user_id)
+
+        return LinkedPrincipal(identity.user_id, identity.id)
 
 
 class PrincipalResolver(IdentityResolverContract):

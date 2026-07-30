@@ -15,6 +15,7 @@ def inbound(text: str = '/new') -> InboundMessage:
         chat='4242',
         event='7',
         id='7',
+        kind='telegram',
         text=text,
         user='77',
     )
@@ -26,7 +27,7 @@ def registry(*names: str) -> CommandRegistry:
 
     built = CommandRegistry()
     for name in names:
-        built.register(name, echo)
+        built.register(name, f'Do {name}.', echo)
 
     return built
 
@@ -65,4 +66,4 @@ def test_registering_a_command_twice_is_refused() -> None:
     built = registry('new')
 
     with pytest.raises(DuplicateCommandError, match='new'):
-        built.register('new', other)
+        built.register('new', 'Do it again.', other)

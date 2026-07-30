@@ -56,6 +56,7 @@ def inbound() -> InboundMessage:
         chat='42',
         event='7',
         id='31',
+        kind='telegram',
         text='hello',
         attachments=(
             InboundAttachment(

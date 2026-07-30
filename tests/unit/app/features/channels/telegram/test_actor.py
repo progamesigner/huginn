@@ -31,6 +31,7 @@ def inbound(event: int, chat: int = 555) -> InboundMessage:
         chat=str(chat),
         event=str(event),
         id=str(event),
+        kind='telegram',
         text=f'message {event}',
     )
 

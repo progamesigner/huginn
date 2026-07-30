@@ -120,7 +120,7 @@ class TelegramTurnProcessor:
             return _UNATTRIBUTED
 
         principal = await self.identities.resolve(
-            channel.kind,
+            message.kind,
             message.channel,
             message.user,
         )
