@@ -2,6 +2,7 @@ from typing import override
 
 from app.core.providers.config import ConfigCommandProvider
 from app.features.auditor.providers import AuditCommandProvider
+from app.features.channels.telegram.providers import TelegramCommandProvider
 from app.features.identities.providers import IdentityCommandProvider
 from lib.container import ContainerContract, ProviderContract
 
@@ -11,6 +12,7 @@ class HuginnCommandProvider(ProviderContract):
         AuditCommandProvider,
         ConfigCommandProvider,
         IdentityCommandProvider,
+        TelegramCommandProvider,
     )
 
     @override

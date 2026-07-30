@@ -110,7 +110,7 @@ def test_command_provider_mounts_every_command_group() -> None:
     result = runner.invoke(container.resolve(CommandContract).app, ['--help'])
 
     assert result.exit_code == 0
-    for group in ('audit', 'config', 'identities'):
+    for group in ('audit', 'config', 'identities', 'telegram'):
         assert group in result.output
 
 

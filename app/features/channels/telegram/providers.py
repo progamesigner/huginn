@@ -2,6 +2,7 @@ from datetime import timedelta
 from typing import override
 
 from app.core.config.registry import HuginnConfig
+from app.core.providers.command import CommandProvider
 from app.core.providers.config import ConfigProvider
 from app.core.providers.http import HTTPClientProvider
 from app.core.providers.redis import RedisProvider
@@ -16,6 +17,7 @@ from app.features.conversations.providers import ConversationProvider
 from app.features.identities.contracts import IdentityResolverContract
 from app.features.identities.providers import IdentityProvider
 from app.ports.channels import ChannelMessageHandlerContract
+from lib.command import CommandContract
 from lib.concurrency import TaskSupervisor, TaskSupervisorContract
 from lib.container import ContainerContract, ProviderContract
 from lib.http import HTTPClientContract
@@ -82,6 +84,16 @@ class TelegramProvider(ProviderContract):
         container.bind(TelegramChatActor, factory=_actor)
         container.bind(TelegramMessageHandler, factory=_handler)
         container.bind(ChannelMessageHandlerContract, factory=_handler)
+
+
+class TelegramCommandProvider(ProviderContract):
+    dependencies = (CommandProvider, ConfigProvider)
+
+    @override
+    def __call__(self, container: ContainerContract) -> None:
+        from .commands import cli
+
+        container.resolve(CommandContract).mount('telegram', cli)
 
 
 class TelegramEndpointProvider(ProviderContract):

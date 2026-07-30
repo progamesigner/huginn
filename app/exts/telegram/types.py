@@ -111,6 +111,11 @@ class File(TelegramValue):
     file_path: Annotated[str | None, Field()] = None
 
 
+class BotCommand(TelegramValue):
+    command: Annotated[str, Field()]
+    description: Annotated[str, Field()]
+
+
 class ReactionTypeEmoji(TelegramValue):
     type: Annotated[Literal['emoji'], Field()] = 'emoji'
     emoji: Annotated[str, Field()]

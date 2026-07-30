@@ -1,11 +1,19 @@
 import asyncio
+from collections.abc import Sequence
 
 from pydantic import JsonValue, SecretStr, TypeAdapter
 
 from lib.http import HTTPClientContract
 
 from .exceptions import MediaTooLargeError, MediaUnavailableError
-from .types import MEDIA, File, Message, ReactionTypeEmoji, TelegramResponse
+from .types import (
+    MEDIA,
+    BotCommand,
+    File,
+    Message,
+    ReactionTypeEmoji,
+    TelegramResponse,
+)
 
 _MAX_ATTEMPTS = 3
 
@@ -63,6 +71,17 @@ class TelegramClient:
             'sendMessage',
             {'chat_id': chat_id, 'text': text},
             Message,
+        )
+
+    async def set_my_commands(self, commands: Sequence[tuple[str, str]]) -> bool:
+        menu = [
+            BotCommand(command=name, description=description)
+            for name, description in commands
+        ]
+        return await self._post(
+            'setMyCommands',
+            {'commands': [entry.model_dump() for entry in menu]},
+            bool,
         )
 
     async def set_message_reaction(

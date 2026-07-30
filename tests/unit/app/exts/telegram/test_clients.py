@@ -224,3 +224,24 @@ async def test_retries_server_errors_then_raises(
         await make_client().send_message(123, 'hello')
 
     assert route.call_count == 3
+
+
+@respx.mock
+async def test_set_my_commands_sends_the_menu_in_the_order_it_was_given() -> None:
+    route = respx.post(f'{_BASE_URL}/setMyCommands').mock(
+        return_value=httpx.Response(200, json={'ok': True, 'result': True}),
+    )
+
+    result = await make_client().set_my_commands(
+        [('help', 'List the commands.'), ('new', 'Start over.')],
+    )
+
+    # NOTE: telegram shows the menu in the order it is sent, and the app side speaks in
+    # pairs so the vendor's BotCommand shape never leaves this ext
+    assert json.loads(route.calls.last.request.content) == {
+        'commands': [
+            {'command': 'help', 'description': 'List the commands.'},
+            {'command': 'new', 'description': 'Start over.'},
+        ],
+    }
+    assert result is True
