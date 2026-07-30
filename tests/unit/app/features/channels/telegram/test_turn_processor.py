@@ -8,6 +8,7 @@ from app.features.agents.contracts import TurnHandlerContract
 from app.features.agents.types import TurnRequest
 from app.features.channels.contracts import TranscriptionContract
 from app.features.channels.exceptions import TranscriptionUnavailableError
+from app.features.channels.registry import CommandRegistry
 from app.features.channels.telegram.config import TelegramChannelConfig
 from app.features.channels.telegram.turns import TelegramTurnProcessor
 from app.features.identities.contracts import IdentityResolverContract
@@ -20,6 +21,7 @@ from app.ports.channels import (
     ChannelGatewayContract,
     ChannelReplyContract,
     InboundAttachment,
+    InboundCommand,
     InboundMessage,
 )
 
@@ -186,6 +188,7 @@ def inbound(
     text: str = 'hello',
     user: str | None = '77',
     attachments: tuple[InboundAttachment, ...] = (),
+    command: InboundCommand | None = None,
 ) -> InboundMessage:
     return InboundMessage(
         channel='support_bot',
@@ -194,8 +197,27 @@ def inbound(
         id=str(event),
         text=text,
         attachments=attachments,
+        command=command,
         user=user,
     )
+
+
+def commanded(event: int, name: str, args: str = '') -> InboundMessage:
+    return inbound(
+        event,
+        text=f'/{name} {args}'.strip(),
+        command=InboundCommand(name=name, args=args),
+    )
+
+
+def registry(answer: str = 'done') -> CommandRegistry:
+    async def handle(command: InboundCommand, message: InboundMessage) -> str:
+        return f'{answer}:{command.name}'
+
+    built = CommandRegistry()
+    built.register('new', handle)
+
+    return built
 
 
 def make_processor(
@@ -203,12 +225,14 @@ def make_processor(
     identities: FakeIdentities,
     gateway: FakeGateway,
     transcription: FakeTranscription | None = None,
+    commands: CommandRegistry | None = None,
 ) -> TelegramTurnProcessor:
     return TelegramTurnProcessor(
         turns=turns,
         identities=identities,
         gateway=lambda _: gateway,
         transcription=transcription or FakeTranscription(),
+        commands=commands or registry(),
     )
 
 
@@ -453,6 +477,84 @@ async def test_a_round_with_nothing_readable_says_so_instead_of_going_quiet() ->
     ]
     assert gateway.replies[0].finished
     assert gateway.abandoned == []
+
+
+async def test_a_command_is_answered_without_reaching_the_loop() -> None:
+    gateway = FakeGateway()
+    turns = FakeTurns()
+
+    await make_processor(turns, FakeIdentities(), gateway).process(
+        channel(),
+        (commanded(1, 'new'),),
+    )
+
+    # NOTE: a command is the user operating the bot, not talking to it -- letting it
+    # through would put '/new' in the transcript and have the model answer it
+    assert turns.requests == []
+    assert gateway.replies[0].fragments == ['done:new']
+    assert gateway.replies[0].finished
+
+
+async def test_a_command_only_round_is_not_declined_as_unreadable() -> None:
+    gateway = FakeGateway()
+
+    await make_processor(FakeTurns(), FakeIdentities(), gateway).process(
+        channel(),
+        (commanded(1, 'new'),),
+    )
+
+    assert len(gateway.replies) == 1
+
+
+async def test_a_command_beside_text_leaves_the_text_answered() -> None:
+    gateway = FakeGateway()
+    turns = FakeTurns()
+
+    await make_processor(turns, FakeIdentities(), gateway).process(
+        channel(),
+        (inbound(1, text='what is the time'), commanded(2, 'new')),
+    )
+
+    # NOTE: each gets its own reply message: the command answers where it was typed and
+    # the round still answers what was said
+    assert [prompt.text for prompt in turns.requests[0].prompts] == ['what is the time']
+    assert gateway.replies[0].fragments == ['done:new']
+    assert gateway.replies[1].fragments == ['answer']
+
+
+async def test_a_command_nobody_registered_is_reported_to_the_user() -> None:
+    gateway = FakeGateway()
+    turns = FakeTurns()
+
+    await make_processor(turns, FakeIdentities(), gateway).process(
+        channel(),
+        (commanded(1, 'reboot'),),
+    )
+
+    assert turns.requests == []
+    assert gateway.replies[0].fragments == [
+        '/reboot is not a command I know. Available: /new.',
+    ]
+
+
+async def test_a_failed_command_reports_on_its_own_message_and_nothing_else() -> None:
+    async def raising(command: InboundCommand, message: InboundMessage) -> str:
+        raise RuntimeError('the service is down')
+
+    commands = CommandRegistry()
+    commands.register('new', raising)
+    gateway = FakeGateway()
+    turns = FakeTurns()
+
+    await make_processor(turns, FakeIdentities(), gateway, commands=commands).process(
+        channel(),
+        (inbound(1, text='hello'), commanded(2, 'new')),
+    )
+
+    # NOTE: the owner is mid-drain, so a command must not raise out of the round; the
+    # failed one wears the reaction and what was said still gets its answer
+    assert gateway.abandoned == ['2']
+    assert [prompt.text for prompt in turns.requests[0].prompts] == ['hello']
 
 
 async def test_a_failed_round_reports_on_every_message_it_was_answering() -> None:

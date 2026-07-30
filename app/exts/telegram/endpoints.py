@@ -9,6 +9,7 @@ from app.ports.channels import (
     ChannelMessageHandlerContract,
     ChannelResolverContract,
     InboundAttachment,
+    InboundCommand,
     InboundMessage,
 )
 from lib.router import Depends, Header, Request, Response, Router
@@ -18,6 +19,9 @@ from .types import MEDIA, WEBHOOK, Message, Update, select_photo
 logger = logging.getLogger(__name__)
 
 _KIND = 'telegram'
+_COMMAND_ENTITY = 'bot_command'
+_COMMAND_MENTION = '@'
+_COMMAND_PREFIX = '/'
 
 router = Router()
 
@@ -51,6 +55,27 @@ def _attachments(message: Message) -> Iterator[InboundAttachment]:
             )
 
 
+def _command(message: Message) -> InboundCommand | None:
+    text = message.text or ''
+    entity = next(
+        (
+            entity
+            for entity in message.entities
+            if entity.type == _COMMAND_ENTITY and entity.offset == 0
+        ),
+        None,
+    )
+    if entity is None:
+        return None
+
+    name = text[: entity.length].removeprefix(_COMMAND_PREFIX)
+
+    return InboundCommand(
+        name=name.partition(_COMMAND_MENTION)[0].lower(),
+        args=text[entity.length :].strip(),
+    )
+
+
 def _inbound(channel: str, body: bytes) -> InboundMessage | None:
     try:
         update = Update.model_validate_json(body)
@@ -71,6 +96,7 @@ def _inbound(channel: str, body: bytes) -> InboundMessage | None:
         id=str(message.message_id),
         text=message.text or message.caption or '',
         attachments=tuple(_attachments(message)),
+        command=_command(message),
         user=None if message.from_ is None else str(message.from_.id),
     )
 

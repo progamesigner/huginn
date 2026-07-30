@@ -6,11 +6,13 @@ from app.features.agents.types import PromptAttachment, TurnPrompt, TurnRequest
 from app.features.channels.config import routing_policy
 from app.features.channels.contracts import TranscriptionContract
 from app.features.channels.exceptions import TranscriptionUnavailableError
+from app.features.channels.registry import CommandRegistry
 from app.features.identities.contracts import IdentityResolverContract
 from app.ports.channels import (
     ChannelGatewayContract,
     ChannelReplyContract,
     InboundAttachment,
+    InboundCommand,
     InboundMessage,
 )
 
@@ -47,6 +49,7 @@ def _hint(attachment: InboundAttachment) -> str:
 
 
 class TelegramTurnProcessor:
+    commands: CommandRegistry
     gateway: GatewayFactory
     identities: IdentityResolverContract
     transcription: TranscriptionContract
@@ -58,7 +61,9 @@ class TelegramTurnProcessor:
         identities: IdentityResolverContract,
         gateway: GatewayFactory,
         transcription: TranscriptionContract,
+        commands: CommandRegistry,
     ) -> None:
+        self.commands = commands
         self.gateway = gateway
         self.identities = identities
         self.transcription = transcription
@@ -73,17 +78,25 @@ class TelegramTurnProcessor:
             return
 
         gateway = self.gateway(channel)
-        reply = gateway.reply(messages[-1])
+        for message in messages:
+            if (command := message.command) is not None:
+                await self._command(gateway, command, message)
+
+        said = tuple(message for message in messages if message.command is None)
+        if not said:
+            return
+
+        reply = gateway.reply(said[-1])
         try:
-            request = await self._request(channel, gateway, messages)
+            request = await self._request(channel, gateway, said)
             if not request.prompts:
-                await self._decline(reply, messages)
+                await self._decline(reply, said)
                 return
 
             await self.turns.handle(request, reply)
         except Exception:
-            logger.exception('Turn failed for chat %s', messages[-1].chat)
-            await self._abandon(gateway, reply, messages)
+            logger.exception('Turn failed for chat %s', said[-1].chat)
+            await self._abandon(gateway, reply, said)
 
     async def _abandon(
         self,
@@ -156,6 +169,28 @@ class TelegramTurnProcessor:
             hint=_hint(attachment),
             transcript=transcript,
         )
+
+    async def _command(
+        self,
+        gateway: ChannelGatewayContract,
+        command: InboundCommand,
+        message: InboundMessage,
+    ) -> None:
+        logger.info('Handling /%s for chat %s', command.name, message.chat)
+        try:
+            answer = await self.commands.dispatch(command, message)
+        except Exception:
+            logger.exception(
+                'Command /%s failed for chat %s',
+                command.name,
+                message.chat,
+            )
+            await self._abandon(gateway, gateway.reply(message), (message,))
+            return
+
+        reply = gateway.reply(message)
+        await reply.on_text(answer)
+        await reply.finish()
 
     async def _decline(
         self,

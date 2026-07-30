@@ -11,6 +11,7 @@ from app.exts.telegram.gateways import build_gateway
 from app.features.agents.contracts import TurnHandlerContract
 from app.features.agents.providers import TurnProvider
 from app.features.channels.contracts import TranscriptionContract
+from app.features.channels.registry import CommandRegistry
 from app.features.conversations.providers import ConversationProvider
 from app.features.identities.contracts import IdentityResolverContract
 from app.features.identities.providers import IdentityProvider
@@ -42,6 +43,7 @@ def _turns(container: ContainerContract) -> TelegramTurnProcessor:
     clock = container.resolve(ClockContract)
     return TelegramTurnProcessor(
         turns=container.resolve(TurnHandlerContract),
+        commands=container.resolve(CommandRegistry),
         identities=container.resolve(IdentityResolverContract),
         gateway=lambda channel: build_gateway(http, channel.token, clock),
         transcription=container.resolve(TranscriptionContract),

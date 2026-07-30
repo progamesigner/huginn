@@ -19,6 +19,13 @@ class InboundAttachment(BaseModel):
     width: int | None = None
 
 
+class InboundCommand(BaseModel):
+    model_config = ConfigDict(strict=True, frozen=True, extra='forbid')
+
+    name: str
+    args: str = ''
+
+
 class InboundMessage(BaseModel):
     model_config = ConfigDict(strict=True, frozen=True, extra='forbid')
 
@@ -28,6 +35,7 @@ class InboundMessage(BaseModel):
     id: str
     text: str
     attachments: tuple[InboundAttachment, ...] = ()
+    command: InboundCommand | None = None
     user: str | None = None
 
 

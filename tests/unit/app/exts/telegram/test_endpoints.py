@@ -158,3 +158,79 @@ def test_inbound_discards_an_update_without_a_message() -> None:
 
 def test_inbound_discards_an_unparseable_update() -> None:
     assert _inbound('support', b'not json') is None
+
+
+def entity(offset: int, length: int, type_: str = 'bot_command') -> dict[str, object]:
+    return {'type': type_, 'offset': offset, 'length': length}
+
+
+def test_inbound_reads_a_command_off_the_vendor_entities() -> None:
+    message = _inbound('support', body(text='/new', entities=[entity(0, 4)]))
+
+    assert message is not None
+    assert message.command is not None
+    assert message.command.name == 'new'
+    assert message.command.args == ''
+
+
+def test_inbound_keeps_what_follows_a_command_as_its_arguments() -> None:
+    message = _inbound(
+        'support',
+        body(text='/register  ABC123 ', entities=[entity(0, 9)]),
+    )
+
+    assert message is not None
+    assert message.command is not None
+    assert message.command.name == 'register'
+    assert message.command.args == 'ABC123'
+
+
+def test_inbound_drops_the_bot_mention_from_a_group_command() -> None:
+    # NOTE: telegram writes /cmd@botname in groups, and the mention is addressing, not
+    # part of the command the app registered
+    message = _inbound(
+        'support',
+        body(text='/help@huginn_bot please', entities=[entity(0, 16)]),
+    )
+
+    assert message is not None
+    assert message.command is not None
+    assert message.command.name == 'help'
+    assert message.command.args == 'please'
+
+
+def test_inbound_ignores_a_command_that_does_not_open_the_message() -> None:
+    # NOTE: only the first token invokes; a slash mid-sentence is the user talking
+    message = _inbound(
+        'support',
+        body(text='ask it with /help next time', entities=[entity(12, 5)]),
+    )
+
+    assert message is not None
+    assert message.command is None
+    assert message.text == 'ask it with /help next time'
+
+
+def test_inbound_ignores_an_entity_that_is_not_a_command() -> None:
+    message = _inbound(
+        'support',
+        body(text='@someone hello', entities=[entity(0, 8, 'mention')]),
+    )
+
+    assert message is not None
+    assert message.command is None
+
+
+def test_inbound_lowercases_the_command_name() -> None:
+    message = _inbound('support', body(text='/NEW', entities=[entity(0, 4)]))
+
+    assert message is not None
+    assert message.command is not None
+    assert message.command.name == 'new'
+
+
+def test_inbound_carries_no_command_for_ordinary_text() -> None:
+    message = _inbound('support', body(text='hello'))
+
+    assert message is not None
+    assert message.command is None

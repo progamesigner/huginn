@@ -9,7 +9,7 @@ from lib.http import HTTPClientContract
 
 from .config import TRANSCRIPTION, build_sections
 from .contracts import TranscriptionContract
-from .registry import ChannelRegistry
+from .registry import ChannelRegistry, CommandRegistry
 from .repositories import TranscriptionRepository
 from .resolver import ChannelSecretResolver
 from .telegram.config import TelegramChannelConfig
@@ -31,6 +31,7 @@ class ChannelRegistryProvider(ProviderContract):
     @override
     def __call__(self, container: ContainerContract) -> None:
         container.bind(ChannelRegistry, instance=ChannelRegistry())
+        container.bind(CommandRegistry, instance=CommandRegistry())
 
 
 class ChannelProvider(ProviderContract):

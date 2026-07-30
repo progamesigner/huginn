@@ -1,6 +1,48 @@
+from collections.abc import Awaitable, Callable
+
 from pydantic import BaseModel
 
-from .exceptions import DuplicateChannelKindError, UnknownChannelKindError
+from app.ports.channels import InboundCommand, InboundMessage
+
+from .exceptions import (
+    DuplicateChannelKindError,
+    DuplicateCommandError,
+    UnknownChannelKindError,
+)
+
+type CommandHandler = Callable[[InboundCommand, InboundMessage], Awaitable[str]]
+
+
+def _unknown(name: str, known: tuple[str, ...]) -> str:
+    if not known:
+        return f'/{name} is not a command I know.'
+
+    available = ', '.join(f'/{command}' for command in known)
+
+    return f'/{name} is not a command I know. Available: {available}.'
+
+
+class CommandRegistry:
+    handlers: dict[str, CommandHandler]
+
+    def __init__(self) -> None:
+        self.handlers = {}
+
+    async def dispatch(self, command: InboundCommand, message: InboundMessage) -> str:
+        handler = self.handlers.get(command.name)
+        if handler is None:
+            return _unknown(command.name, self.names())
+
+        return await handler(command, message)
+
+    def names(self) -> tuple[str, ...]:
+        return tuple(sorted(self.handlers))
+
+    def register(self, name: str, handler: CommandHandler) -> None:
+        if name in self.handlers:
+            raise DuplicateCommandError(f'command {name!r} is already registered')
+
+        self.handlers[name] = handler
 
 
 class ChannelRegistry:

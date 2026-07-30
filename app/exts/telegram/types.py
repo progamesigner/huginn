@@ -79,6 +79,12 @@ class Audio(TelegramValue):
     file_size: Annotated[int | None, Field()] = None
 
 
+class MessageEntity(TelegramValue):
+    type: Annotated[str, Field()]
+    offset: Annotated[int, Field()]
+    length: Annotated[int, Field()]
+
+
 class Message(TelegramValue):
     message_id: Annotated[int, Field()]
     date: Annotated[int, Field()]
@@ -86,6 +92,7 @@ class Message(TelegramValue):
     from_: Annotated[User | None, Field(alias='from')] = None
     text: Annotated[str | None, Field()] = None
     caption: Annotated[str | None, Field()] = None
+    entities: Annotated[tuple[MessageEntity, ...], Field()] = ()
     photo: Annotated[tuple[PhotoSize, ...], Field()] = ()
     audio: Annotated[Audio | None, Field()] = None
     voice: Annotated[Voice | None, Field()] = None

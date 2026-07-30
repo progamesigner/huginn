@@ -21,5 +21,9 @@ class ChannelError(Exception):
     pass
 
 
+class DuplicateCommandError(ChannelError):
+    pass
+
+
 class TranscriptionUnavailableError(ChannelError):
     pass

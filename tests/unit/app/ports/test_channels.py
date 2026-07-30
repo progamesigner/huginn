@@ -4,6 +4,7 @@ from app.features.agents.contracts import TextSink
 from app.ports.channels import (
     ChannelReplyContract,
     InboundAttachment,
+    InboundCommand,
     InboundMessage,
 )
 
@@ -99,3 +100,15 @@ def test_inbound_attachment_carries_a_reference_rather_than_content() -> None:
     assert 'data' not in fields
     assert 'content' not in fields
     assert 'reference' in fields
+
+
+# NOTE: the mailbox is where a command waits its turn behind the round in progress, so
+# it has to survive the queue as a command rather than as text to re-parse
+def test_inbound_command_survives_a_round_trip_through_bytes() -> None:
+    message = inbound().model_copy(
+        update={'command': InboundCommand(name='register', args='ABC123')},
+    )
+
+    restored = InboundMessage.model_validate_json(message.model_dump_json())
+
+    assert restored.command == InboundCommand(name='register', args='ABC123')
