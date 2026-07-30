@@ -125,13 +125,38 @@ class CompactionService:
         if not self.should_compact(foldable):
             return CompactionResult(compacted=False, conversation=conversation)
 
-        prior_payload = await self.repository.load_current_summary(conversation)
-        prior_summary = (
-            SummaryOutput.model_validate(prior_payload, strict=False)
-            if prior_payload is not None
-            else None
+        return await self.compact(
+            conversation,
+            await self._prior_summary(conversation),
+            foldable,
+            model,
         )
-        return await self.compact(conversation, prior_summary, foldable, model)
+
+    async def force(
+        self,
+        conversation: Conversation,
+        model: str,
+    ) -> CompactionResult:
+        foldable = await self.repository.load_turns_since_summary(conversation)
+        if not foldable:
+            return CompactionResult(compacted=False, conversation=conversation)
+
+        return await self.compact(
+            conversation,
+            await self._prior_summary(conversation),
+            foldable,
+            model,
+        )
+
+    async def _prior_summary(
+        self,
+        conversation: Conversation,
+    ) -> SummaryOutput | None:
+        payload = await self.repository.load_current_summary(conversation)
+        if payload is None:
+            return None
+
+        return SummaryOutput.model_validate(payload, strict=False)
 
     def should_compact(self, foldable: tuple[Turn, ...]) -> bool:
         if not foldable:

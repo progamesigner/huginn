@@ -11,3 +11,11 @@ type BlobStoreFactory = Callable[[AsyncSession], BlobStoreContract]
 class BlobStoreContract(ABC):
     @abstractmethod
     async def store(self, mime: str, data: bytes) -> Blob: ...
+
+
+class ConversationControlContract(ABC):
+    @abstractmethod
+    async def compact(self, channel: str, chat: str) -> int: ...
+
+    @abstractmethod
+    async def reset(self, channel: str, chat: str) -> int: ...

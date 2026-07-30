@@ -369,3 +369,46 @@ async def test_compact_with_no_turns_to_fold_raises() -> None:
 
     with pytest.raises(NoTurnsToCompactError):
         await service.compact(conversation, None, (), 'test-model')
+
+
+async def test_force_folds_everything_the_threshold_would_have_kept() -> None:
+    repository = FakeConversationRepository()
+    conversation = await repository.get_or_create('telegram', '9', 'scout')
+    for index in range(2):
+        await repository.append_turn(
+            conversation,
+            [Part(role='user', kind='text', payload={'text': f'turn {index}'})],
+        )
+    llm_client = FakeLLM(
+        [
+            [
+                TextChunk(text='{"summary": "they talked"}'),
+                FinishChunk(reason='stop'),
+            ],
+        ],
+    )
+    service = build_service(
+        FakeLLMContract(llm_client),
+        repository,
+        keep_turns=8,
+        token_threshold=1_000_000,
+    )
+
+    result = await service.force(conversation, 'test-model')
+
+    # NOTE: /compact is the user asking now, so neither the keep window nor the token
+    # threshold applies -- everything since the boundary folds
+    assert result.compacted is True
+    assert result.conversation.summarized_through_turn_id is not None
+
+
+async def test_force_leaves_a_conversation_with_nothing_to_fold_alone() -> None:
+    repository = FakeConversationRepository()
+    conversation = await repository.get_or_create('telegram', '10', 'scout')
+    llm_contract = FakeLLMContract(None)
+    service = build_service(llm_contract, repository)
+
+    result = await service.force(conversation, 'test-model')
+
+    assert result.compacted is False
+    assert llm_contract.calls == 0

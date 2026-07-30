@@ -3,6 +3,8 @@ from typing import override
 from app.core.config.registry import HuginnConfig, SectionRegistry
 from app.core.providers.config import ConfigProvider
 from app.core.providers.http import HTTPClientProvider
+from app.features.conversations.contracts import ConversationControlContract
+from app.features.conversations.providers import ConversationProvider
 from app.features.identities.contracts import (
     IdentityLinkingContract,
     IdentityResolverContract,
@@ -31,6 +33,7 @@ def _commands(container: ContainerContract) -> None:
     handlers = CommandHandlers(
         lambda: container.resolve(IdentityResolverContract),
         lambda: container.resolve(IdentityLinkingContract),
+        lambda: container.resolve(ConversationControlContract),
         registry,
     )
     for name, description, handler in handlers.commands():
@@ -55,6 +58,7 @@ class ChannelProvider(ProviderContract):
     dependencies = (
         ChannelRegistryProvider,
         ConfigProvider,
+        ConversationProvider,
         HTTPClientProvider,
         IdentityProvider,
     )

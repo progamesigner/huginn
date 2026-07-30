@@ -3,6 +3,7 @@ from uuid import UUID
 
 from app.features.channels.handlers import CommandHandlers
 from app.features.channels.registry import CommandRegistry
+from app.features.conversations.contracts import ConversationControlContract
 from app.features.identities.contracts import (
     IdentityLinkingContract,
     IdentityResolverContract,
@@ -39,6 +40,31 @@ class FakeIdentities(IdentityResolverContract):
             return LinkedPrincipal(_LINKED, _IDENTITY)
 
         return AnonymousPrincipal(provider, realm, external_user_id)
+
+
+class FakeControl(ConversationControlContract):
+    cleared: int
+    compactions: list[tuple[str, str]]
+    folded: int
+    resets: list[tuple[str, str]]
+
+    def __init__(self, *, cleared: int = 1, folded: int = 1) -> None:
+        self.cleared = cleared
+        self.compactions = []
+        self.folded = folded
+        self.resets = []
+
+    @override
+    async def compact(self, channel: str, chat: str) -> int:
+        self.compactions.append((channel, chat))
+
+        return self.folded
+
+    @override
+    async def reset(self, channel: str, chat: str) -> int:
+        self.resets.append((channel, chat))
+
+        return self.cleared
 
 
 class FakeLinking(IdentityLinkingContract):
@@ -83,11 +109,13 @@ def inbound(user: str | None = '77') -> InboundMessage:
 def make_handlers(
     identities: FakeIdentities | None = None,
     linking: FakeLinking | None = None,
+    control: FakeControl | None = None,
 ) -> tuple[CommandHandlers, CommandRegistry]:
     registry = CommandRegistry()
     handlers = CommandHandlers(
         lambda: identities or FakeIdentities(),
         lambda: linking or FakeLinking(),
+        lambda: control or FakeControl(),
         registry,
     )
     for name, description, handler in handlers.commands():
@@ -106,8 +134,10 @@ async def test_help_lists_every_registered_command_with_its_description() -> Non
     # a second list that drifts from it
     assert answer.splitlines() == [
         'Here is what I understand:',
+        '/compact — Summarise this chat now to free up context.',
         '/help — List the commands I understand.',
         '/identity — Show which account this chat is linked to.',
+        '/new — Start over: forget what we have said so far.',
         '/register — Link this chat to your account with a one-time code.',
         '/start — Say hello and explain how to get started.',
     ]
@@ -202,3 +232,41 @@ async def test_the_provider_of_a_link_is_the_vendor_the_message_named() -> None:
     # NOTE: the realm pair is (kind, channel) and a second transport is coming, so the
     # handler must read the vendor off the message rather than assume telegram
     assert linking.calls == [('ABC', 'http', 'support_bot', '77')]
+
+
+async def test_new_resets_every_conversation_of_the_chat() -> None:
+    control = FakeControl(cleared=2)
+    handlers, _ = make_handlers(control=control)
+
+    answer = await handlers.new(command('new'), inbound())
+
+    # NOTE: a chat can hold one conversation per agent, and the user means this chat --
+    # so the command names the chat and the count comes back from conversations
+    assert control.resets == [('support_bot', '4242')]
+    assert 'forgotten' in answer
+
+
+async def test_new_says_so_when_there_was_nothing_to_forget() -> None:
+    handlers, _ = make_handlers(control=FakeControl(cleared=0))
+
+    answer = await handlers.new(command('new'), inbound())
+
+    assert 'nothing' in answer
+
+
+async def test_compact_folds_every_conversation_of_the_chat() -> None:
+    control = FakeControl(folded=2)
+    handlers, _ = make_handlers(control=control)
+
+    answer = await handlers.compact(command('compact'), inbound())
+
+    assert control.compactions == [('support_bot', '4242')]
+    assert 'Summarised' in answer
+
+
+async def test_compact_says_so_when_there_was_nothing_to_fold() -> None:
+    handlers, _ = make_handlers(control=FakeControl(folded=0))
+
+    answer = await handlers.compact(command('compact'), inbound())
+
+    assert 'nothing' in answer

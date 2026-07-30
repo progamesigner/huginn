@@ -13,7 +13,14 @@ async def test_the_channel_provider_registers_the_command_set() -> None:
 
     registry = container.resolve(CommandRegistry)
 
-    assert registry.names() == ('help', 'identity', 'register', 'start')
+    assert registry.names() == (
+        'compact',
+        'help',
+        'identity',
+        'new',
+        'register',
+        'start',
+    )
     assert all(command.description for command in registry.listing())
 
     await container.dispose()

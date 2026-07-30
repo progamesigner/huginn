@@ -90,6 +90,23 @@ class ConversationRepository:
 
         return _to_conversation(record)
 
+    async def list_by_chat(
+        self,
+        channel: str,
+        chat_id: str,
+    ) -> tuple[Conversation, ...]:
+        query = (
+            select(ConversationRecord)
+            .where(
+                ConversationRecord.channel == channel,
+                ConversationRecord.chat_id == chat_id,
+            )
+            .order_by(ConversationRecord.agent.asc())
+        )
+        records = (await self.session.execute(query)).scalars().all()
+
+        return tuple(_to_conversation(record) for record in records)
+
     async def append_turn(
         self,
         conversation: Conversation,
@@ -168,9 +185,43 @@ class ConversationRepository:
             .order_by(PartRecord.id.desc())
             .limit(1)
         )
+        # NOTE: compaction writes the summary in a turn after the boundary it set, so a
+        # summary at or below the boundary was cut off by a reset and must stay cut
+        if (boundary_id := conversation.summarized_through_turn_id) is not None:
+            query = query.where(TurnRecord.id > boundary_id)
         part = (await self.session.execute(query)).scalar_one_or_none()
 
         return cast(Mapping[str, JsonValue], part.payload) if part is not None else None
+
+    async def reset(
+        self,
+        conversation: Conversation,
+        expected_version: int,
+    ) -> Conversation | None:
+        newest = (
+            select(TurnRecord.id)
+            .where(TurnRecord.conversation_id == conversation.id)
+            .order_by(TurnRecord.id.desc())
+            .limit(1)
+            .scalar_subquery()
+        )
+        statement = (
+            update(ConversationRecord)
+            .where(
+                ConversationRecord.id == conversation.id,
+                ConversationRecord.compact_version == expected_version,
+            )
+            .values(
+                compact_version=ConversationRecord.compact_version + 1,
+                summarized_through_turn_id=newest,
+                updated_at=self.clock.now(),
+            )
+            .returning(ConversationRecord)
+            .execution_options(synchronize_session=False)
+        )
+        record = (await self.session.execute(statement)).scalar_one_or_none()
+
+        return None if record is None else _to_conversation(record)
 
     async def apply_compaction(
         self,

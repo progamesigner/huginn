@@ -6,6 +6,8 @@ from typing import override
 from pydantic import JsonValue
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config.registry import HuginnConfig
+from app.features.agents.config import AGENTS, DEFAULTS, resolve_model
 from app.features.agents.contracts import (
     TranscriptContract,
     TranscriptStoreContract,
@@ -17,7 +19,11 @@ from lib.llm import LLMContract, Message, TextSegment
 from lib.temporal import ClockContract
 
 from .compaction import CompactionService
-from .contracts import BlobStoreContract, BlobStoreFactory
+from .contracts import (
+    BlobStoreContract,
+    BlobStoreFactory,
+    ConversationControlContract,
+)
 from .repositories import ConversationRepository
 from .types import Conversation, Part, Turn
 
@@ -124,6 +130,67 @@ class ConversationTranscript(TranscriptContract):
                 'unique': attachment.unique,
             },
         )
+
+
+class ConversationControl(ConversationControlContract):
+    clock: ClockContract
+    config: HuginnConfig
+    database: DatabaseContract
+    guid: GUIDContract
+    llm: LLMContract
+
+    def __init__(
+        self,
+        database: DatabaseContract,
+        guid: GUIDContract,
+        clock: ClockContract,
+        llm: LLMContract,
+        config: HuginnConfig,
+    ) -> None:
+        self.clock = clock
+        self.config = config
+        self.database = database
+        self.guid = guid
+        self.llm = llm
+
+    @override
+    async def compact(self, channel: str, chat: str) -> int:
+        compacted = 0
+        async with self.database.session() as session, session.begin():
+            repository = ConversationRepository(session, self.guid, self.clock)
+            service = CompactionService(self.llm, repository)
+            for conversation in await repository.list_by_chat(channel, chat):
+                model = self._model(conversation.agent)
+                if model is None:
+                    logger.warning(
+                        'Conversation %s names agent %s, which is not configured',
+                        conversation.id,
+                        conversation.agent,
+                    )
+                    continue
+
+                result = await service.force(conversation, model)
+                compacted += int(result.compacted)
+
+        return compacted
+
+    @override
+    async def reset(self, channel: str, chat: str) -> int:
+        async with self.database.session() as session, session.begin():
+            repository = ConversationRepository(session, self.guid, self.clock)
+            reset = [
+                await repository.reset(conversation, conversation.compact_version)
+                for conversation in await repository.list_by_chat(channel, chat)
+            ]
+
+        return sum(1 for conversation in reset if conversation is not None)
+
+    def _model(self, agent: str) -> str | None:
+        configured = self.config.section(AGENTS).root.get(agent)
+        if configured is None:
+            return None
+
+        return resolve_model(configured.model, self.config.section(DEFAULTS).model)
 
 
 class ConversationTranscriptStore(TranscriptStoreContract):

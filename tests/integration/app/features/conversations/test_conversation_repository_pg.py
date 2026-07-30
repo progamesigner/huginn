@@ -123,3 +123,67 @@ async def test_turns_are_scoped_to_their_conversation(session: AsyncSession) -> 
 
     assert len(await repository.load_recent_turns(scout, limit=10)) == 1
     assert await repository.load_recent_turns(sage, limit=10) == ()
+
+
+async def test_list_by_chat_returns_every_agent_of_that_chat(
+    session: AsyncSession,
+) -> None:
+    repository = _repository(session)
+    scout = await repository.get_or_create('telegram', '31', 'scout')
+    sage = await repository.get_or_create('telegram', '31', 'sage')
+    await repository.get_or_create('telegram', '32', 'scout')
+
+    listed = await repository.list_by_chat('telegram', '31')
+
+    # NOTE: a chat holds one conversation per agent, so a chat-level command has to see
+    # all of them rather than guess which one the router last picked
+    assert [conversation.id for conversation in listed] == [sage.id, scout.id]
+
+
+async def test_reset_moves_the_boundary_to_the_newest_turn(
+    session: AsyncSession,
+) -> None:
+    repository = _repository(session)
+    conversation = await repository.get_or_create('telegram', '33', 'scout')
+    for index in range(2):
+        await repository.append_turn(
+            conversation,
+            [Part(role='user', kind='text', payload={'text': str(index)})],
+        )
+    newest = (await repository.load_recent_turns(conversation, limit=1))[0]
+
+    reset = await repository.reset(conversation, conversation.compact_version)
+
+    assert reset is not None
+    assert reset.summarized_through_turn_id == newest.id
+    assert reset.compact_version == conversation.compact_version + 1
+    assert await repository.load_turns_since_summary(reset) == ()
+
+
+async def test_reset_on_an_empty_conversation_holds_no_boundary(
+    session: AsyncSession,
+) -> None:
+    repository = _repository(session)
+    conversation = await repository.get_or_create('telegram', '34', 'scout')
+
+    reset = await repository.reset(conversation, conversation.compact_version)
+
+    assert reset is not None
+    assert reset.summarized_through_turn_id is None
+
+
+async def test_reset_loses_a_cas_race_without_moving_anything(
+    session: AsyncSession,
+) -> None:
+    repository = _repository(session)
+    conversation = await repository.get_or_create('telegram', '35', 'scout')
+    await repository.append_turn(
+        conversation,
+        [Part(role='user', kind='text', payload={'text': 'hello'})],
+    )
+
+    # NOTE: a compaction running against the same chat bumps the version, and the reset
+    # must not then cut history at a boundary that race decided
+    assert (
+        await repository.reset(conversation, conversation.compact_version + 1) is None
+    )
