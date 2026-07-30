@@ -1,3 +1,4 @@
+from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import timedelta
 from typing import Annotated, Literal
@@ -22,12 +23,18 @@ class MessageSpec:
     length_limit: int
 
 
+@dataclass(frozen=True)
+class MediaSpec:
+    size_limit: int
+
+
 WEBHOOK = WebhookSpec(
     ack_status=200,
     reject_status=403,
     signature_header='X-Telegram-Bot-Api-Secret-Token',
 )
 MESSAGE = MessageSpec(length_limit=4096, edit_interval=timedelta(seconds=1.1))
+MEDIA = MediaSpec(size_limit=5 * 1024 * 1024)
 
 
 class User(TelegramValue):
@@ -90,3 +97,13 @@ class ReactionTypeEmoji(TelegramValue):
 class TelegramResponse(TelegramValue):
     ok: Annotated[bool, Field()]
     result: Annotated[JsonValue, Field()]
+
+
+def select_photo(
+    photos: Sequence[PhotoSize],
+    limit: int = MEDIA.size_limit,
+) -> PhotoSize | None:
+    fitting = [
+        photo for photo in photos if photo.file_size is None or photo.file_size <= limit
+    ]
+    return max(fitting, key=lambda photo: photo.width * photo.height, default=None)

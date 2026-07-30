@@ -2,7 +2,15 @@ from datetime import timedelta
 
 import pytest
 
-from app.exts.telegram.types import MESSAGE, WEBHOOK, Update, WebhookSpec
+from app.exts.telegram.types import (
+    MEDIA,
+    MESSAGE,
+    WEBHOOK,
+    PhotoSize,
+    Update,
+    WebhookSpec,
+    select_photo,
+)
 
 
 def test_update_ignores_unknown_vendor_fields() -> None:
@@ -44,6 +52,57 @@ def test_webhook_spec_pins_the_vendor_wire_contract() -> None:
 def test_message_spec_pins_the_vendor_limits() -> None:
     assert MESSAGE.length_limit == 4096
     assert MESSAGE.edit_interval == timedelta(seconds=1.1)
+
+
+def test_media_spec_pins_the_vendor_limits() -> None:
+    assert MEDIA.size_limit == 5 * 1024 * 1024
+
+
+def photo(width: int, height: int, file_size: int | None) -> PhotoSize:
+    return PhotoSize(
+        file_id=f'photo-{width}x{height}',
+        file_unique_id=f'unique-{width}x{height}',
+        width=width,
+        height=height,
+        file_size=file_size,
+    )
+
+
+def test_select_photo_takes_the_largest_size_that_fits() -> None:
+    sizes = (
+        photo(90, 60, 900),
+        photo(1280, 960, 400_000),
+        photo(3000, 2000, 9_000_000),
+    )
+
+    selected = select_photo(sizes, limit=1_000_000)
+
+    assert selected is not None
+    assert selected.file_id == 'photo-1280x960'
+
+
+def test_select_photo_ignores_wire_order() -> None:
+    sizes = (photo(1280, 960, 400_000), photo(90, 60, 900))
+
+    selected = select_photo(sizes, limit=1_000_000)
+
+    assert selected is not None
+    assert selected.file_id == 'photo-1280x960'
+
+
+def test_select_photo_keeps_an_unmeasured_size_as_a_candidate() -> None:
+    selected = select_photo((photo(1280, 960, None),), limit=1_000)
+
+    assert selected is not None
+    assert selected.file_id == 'photo-1280x960'
+
+
+def test_select_photo_without_any_size_that_fits() -> None:
+    assert select_photo((photo(3000, 2000, 9_000_000),), limit=1_000_000) is None
+
+
+def test_select_photo_without_photos() -> None:
+    assert select_photo(()) is None
 
 
 def test_specs_are_frozen_so_a_consumer_cannot_rewrite_a_vendor_fact() -> None:
