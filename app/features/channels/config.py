@@ -2,12 +2,13 @@ from collections.abc import Iterator, Mapping
 from dataclasses import replace
 from functools import reduce
 from operator import or_
-from typing import Annotated, Any, cast
+from typing import Annotated, Any, Literal, cast
 
 from pydantic import (
     BaseModel,
     Discriminator,
     Field,
+    HttpUrl,
     RootModel,
     SecretStr,
     Tag,
@@ -23,13 +24,26 @@ from app.features.agents.exceptions import (
 )
 from app.features.agents.types import RoutingPolicy, SelectionPolicy
 
-from .exceptions import DuplicateChannelSecretError, UnknownChannelKindError
+from .exceptions import (
+    DuplicateChannelSecretError,
+    IncompleteTranscriptionError,
+    UnknownChannelKindError,
+)
 from .registry import ChannelRegistry
+
+type TranscriptionKind = Literal['openai']
 
 
 class ChannelRouterConfig(ConfigValue):
     fallback: Annotated[str, Field()]
     model: Annotated[str | None, Field()] = None
+
+
+class TranscriptionConfig(ConfigValue):
+    kind: Annotated[TranscriptionKind | None, Field()] = None
+    model: Annotated[str | None, Field()] = None
+    api_key: Annotated[SecretStr | None, Field()] = None
+    base_url: Annotated[HttpUrl, Field()] = HttpUrl('https://api.openai.com')
 
 
 class ChannelConfig(ConfigValue):
@@ -77,6 +91,28 @@ def _describe_channels(config: HuginnConfig) -> list[str]:
         f'{name} ({channel.kind})' for name, channel in sorted(channels.items())
     )
     return [f'channels: {entries}']
+
+
+def _describe_transcription(config: HuginnConfig) -> list[str]:
+    transcription = config.section(TRANSCRIPTION)
+    if transcription.kind is None:
+        return []
+
+    return [f'transcription: {transcription.kind} model={transcription.model}']
+
+
+def _validate_transcription(config: HuginnConfig) -> None:
+    transcription = config.section(TRANSCRIPTION)
+    given = {
+        'api_key': transcription.api_key,
+        'kind': transcription.kind,
+        'model': transcription.model,
+    }
+    missing = sorted(key for key, value in given.items() if value is None)
+    if missing and len(missing) < len(given):
+        raise IncompleteTranscriptionError(
+            f'transcription: {", ".join(missing)} is required once the section is set',
+        )
 
 
 def routing_policy(channel: ChannelConfig) -> RoutingPolicy:
@@ -155,10 +191,18 @@ def build_sections(registry: ChannelRegistry) -> Iterator[SectionSpec[BaseModel]
         thunk=lambda: _build_channels_config(registry),
         validate=lambda config: _validate_channels(config, registry),
     )
+    yield TRANSCRIPTION
 
 
 CHANNELS = SectionSpec(
     'channels',
     ChannelConfigList,
     describe=_describe_channels,
+)
+
+TRANSCRIPTION = SectionSpec(
+    'transcription',
+    TranscriptionConfig,
+    describe=_describe_transcription,
+    validate=_validate_transcription,
 )

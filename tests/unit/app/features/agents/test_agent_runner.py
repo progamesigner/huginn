@@ -2,6 +2,7 @@ import asyncio
 import time
 from base64 import b64decode
 from collections.abc import AsyncIterator, Sequence
+from dataclasses import replace
 from datetime import timedelta
 from typing import Annotated, override
 
@@ -562,6 +563,23 @@ async def test_a_photo_without_a_caption_is_still_a_message() -> None:
     # reached the model as an empty turn and answered nothing
     segments = llm.requests[0].messages[-1].segments
     assert [type(segment) for segment in segments] == [ImageSegment]
+
+
+async def test_a_transcribed_voice_note_arrives_as_what_it_said() -> None:
+    llm = answering()
+    runner = AgentRunner(llm, make_toolset(), ClockManager())
+    voice = attachment('audio', mime='audio/ogg', hint='[audio: audio/ogg 12s]')
+    prompt = TurnPrompt(
+        text='',
+        actor='user:1',
+        attachments=(replace(voice, transcript='remind me at six'),),
+    )
+
+    await runner.run(make_turn(prompts=(prompt,)), discard)
+
+    assert llm.requests[0].messages[-1].segments == (
+        TextSegment(text='remind me at six'),
+    )
 
 
 async def test_an_attachment_the_model_cannot_take_arrives_as_its_hint() -> None:

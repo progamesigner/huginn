@@ -58,6 +58,13 @@ agents:
       You are concierge. Greet the user and hand off to scout for
       research questions; answer simple questions yourself.
 
+transcription:
+  kind: openai
+  model: gpt-4o-mini-transcribe
+  api_key:
+    value_from:
+      env: OPENAI_API_KEY
+
 channels:
   support_bot:
     kind: telegram

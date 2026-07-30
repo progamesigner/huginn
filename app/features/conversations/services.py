@@ -114,7 +114,7 @@ class ConversationTranscript(TranscriptContract):
             role='user',
             kind=attachment.kind,
             payload={
-                'text': attachment.hint,
+                'text': attachment.transcript or attachment.hint,
                 'actor': actor,
                 'blob': str(blob.id),
                 'sha256': blob.sha256,

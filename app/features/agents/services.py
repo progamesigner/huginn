@@ -73,7 +73,7 @@ def _prompt_segments(prompt: TurnPrompt) -> Iterator[Segment]:
                 data=b64encode(attachment.data).decode('ascii'),
             )
         else:
-            yield TextSegment(text=attachment.hint)
+            yield TextSegment(text=attachment.transcript or attachment.hint)
 
 
 def _build_messages(turn: TurnInput) -> Iterator[Message]:

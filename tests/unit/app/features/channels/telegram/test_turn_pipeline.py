@@ -14,7 +14,7 @@ from app.core.config.registry import HuginnConfig
 from app.features.agents.config import AgentConfig, AgentConfigList
 from app.features.agents.contracts import TurnHandlerContract
 from app.features.agents.types import TurnRequest
-from app.features.channels.config import ChannelConfigList
+from app.features.channels.config import ChannelConfigList, TranscriptionConfig
 from app.features.channels.telegram.config import TelegramChannelConfig
 from app.features.identities.contracts import IdentityResolverContract
 from app.features.identities.types import AnonymousPrincipal, Principal
@@ -29,6 +29,7 @@ _BASE_URL = 'https://api.telegram.org/botbot-token'
 _FILE_URL = 'https://api.telegram.org/file/botbot-token'
 _CHAT_ID = 4242
 _JPEG = b'\xff\xd8\xff\xe0 not really a jpeg'
+_VOICE = b'OggS not really an ogg'
 _HEADER = 'X-Telegram-Bot-Api-Secret-Token'
 _PATH = '/webhooks/telegram'
 
@@ -108,6 +109,25 @@ def photo_update(update_id: int) -> dict[str, object]:
     }
 
 
+def voice_update(update_id: int) -> dict[str, object]:
+    return {
+        'update_id': update_id,
+        'message': {
+            'message_id': update_id,
+            'date': 1_721_600_000,
+            'chat': {'id': _CHAT_ID, 'type': 'private'},
+            'from': {'id': 77, 'is_bot': False, 'first_name': 'Han'},
+            'voice': {
+                'file_id': 'note',
+                'file_unique_id': 'u-note',
+                'duration': 12,
+                'mime_type': 'audio/ogg',
+                'file_size': 1024,
+            },
+        },
+    }
+
+
 def make_config() -> HuginnConfig:
     channel = TelegramChannelConfig(
         kind='telegram',
@@ -121,6 +141,7 @@ def make_config() -> HuginnConfig:
                 {'scout': AgentConfig(description='scouts', instructions='be helpful')},
             ),
             'channels': ChannelConfigList({'support_bot': channel}),
+            'transcription': TranscriptionConfig(),
         },
     )
 
@@ -253,3 +274,55 @@ async def test_a_photo_with_no_caption_reaches_the_turn_with_its_bytes() -> None
         ('image', _JPEG),
     ]
     assert prompt.attachments[0].hint == '[image: image/jpeg 1280x960]'
+
+
+@respx.mock
+async def test_a_voice_note_with_no_transcription_configured_is_answered_anyway() -> (
+    None
+):
+    # NOTE: this config carries an empty transcription section, which is what a
+    # deployment that never set one up has
+    answered = asyncio.Event()
+
+    def send(request: httpx.Request) -> httpx.Response:
+        answered.set()
+        return message(7)
+
+    respx.post(f'{_BASE_URL}/setMessageReaction').mock(
+        return_value=httpx.Response(200, json={'ok': True, 'result': True}),
+    )
+    sent = respx.post(f'{_BASE_URL}/sendMessage').mock(side_effect=send)
+    respx.post(f'{_BASE_URL}/getFile').mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                'ok': True,
+                'result': {
+                    'file_id': 'note',
+                    'file_unique_id': 'u-note',
+                    'file_size': 1024,
+                    'file_path': 'voice/note.oga',
+                },
+            },
+        ),
+    )
+    respx.get(f'{_FILE_URL}/voice/note.oga').mock(
+        return_value=httpx.Response(200, content=_VOICE),
+    )
+    turns = StreamingTurns()
+
+    async with pipeline(turns) as client:
+        response = await client.post(
+            _PATH,
+            headers={_HEADER: 'sekret'},
+            json=voice_update(9),
+        )
+        assert response.status_code == 200
+        async with asyncio.timeout(1):
+            await answered.wait()
+
+    assert turns.requests == []
+    assert json.loads(sent.calls.last.request.content) == {
+        'chat_id': str(_CHAT_ID),
+        'text': 'I could not read that voice message; please send it as text.',
+    }

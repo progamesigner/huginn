@@ -49,6 +49,7 @@ class PromptAttachment:
     unique: str
     data: bytes
     hint: str
+    transcript: str | None = None
 
 
 @dataclass(frozen=True)

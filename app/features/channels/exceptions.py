@@ -11,3 +11,15 @@ class UnknownChannelKindError(ConfigError):
 
 class DuplicateChannelSecretError(ConfigError):
     pass
+
+
+class IncompleteTranscriptionError(ConfigError):
+    pass
+
+
+class ChannelError(Exception):
+    pass
+
+
+class TranscriptionUnavailableError(ChannelError):
+    pass

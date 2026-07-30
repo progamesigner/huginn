@@ -4,6 +4,8 @@ from collections.abc import Callable
 from app.features.agents.contracts import TurnHandlerContract
 from app.features.agents.types import PromptAttachment, TurnPrompt, TurnRequest
 from app.features.channels.config import routing_policy
+from app.features.channels.contracts import TranscriptionContract
+from app.features.channels.exceptions import TranscriptionUnavailableError
 from app.features.identities.contracts import IdentityResolverContract
 from app.ports.channels import (
     ChannelGatewayContract,
@@ -19,7 +21,18 @@ logger = logging.getLogger(__name__)
 type GatewayFactory = Callable[[TelegramChannelConfig], ChannelGatewayContract]
 
 _UNATTRIBUTED = ''
+_UNHEARD = 'I could not read that voice message; please send it as text.'
 _UNREADABLE = 'I can only read text, photos and voice messages.'
+
+
+def _decline_note(messages: tuple[InboundMessage, ...]) -> str:
+    audible = any(
+        attachment.kind == 'audio'
+        for message in messages
+        for attachment in message.attachments
+    )
+
+    return _UNHEARD if audible else _UNREADABLE
 
 
 def _hint(attachment: InboundAttachment) -> str:
@@ -36,6 +49,7 @@ def _hint(attachment: InboundAttachment) -> str:
 class TelegramTurnProcessor:
     gateway: GatewayFactory
     identities: IdentityResolverContract
+    transcription: TranscriptionContract
     turns: TurnHandlerContract
 
     def __init__(
@@ -43,9 +57,11 @@ class TelegramTurnProcessor:
         turns: TurnHandlerContract,
         identities: IdentityResolverContract,
         gateway: GatewayFactory,
+        transcription: TranscriptionContract,
     ) -> None:
         self.gateway = gateway
         self.identities = identities
+        self.transcription = transcription
         self.turns = turns
 
     async def process(
@@ -114,18 +130,32 @@ class TelegramTurnProcessor:
                 )
                 continue
 
-            carried.append(
-                PromptAttachment(
-                    kind=attachment.kind,
-                    mime=attachment.mime,
-                    reference=attachment.reference,
-                    unique=attachment.unique,
-                    data=data,
-                    hint=_hint(attachment),
-                ),
-            )
+            if (carrying := await self._carry(attachment, data, message)) is not None:
+                carried.append(carrying)
 
         return tuple(carried)
+
+    async def _carry(
+        self,
+        attachment: InboundAttachment,
+        data: bytes,
+        message: InboundMessage,
+    ) -> PromptAttachment | None:
+        transcript = None
+        if attachment.kind == 'audio':
+            transcript = await self._transcript(attachment, data, message)
+            if transcript is None:
+                return None
+
+        return PromptAttachment(
+            kind=attachment.kind,
+            mime=attachment.mime,
+            reference=attachment.reference,
+            unique=attachment.unique,
+            data=data,
+            hint=_hint(attachment),
+            transcript=transcript,
+        )
 
     async def _decline(
         self,
@@ -133,8 +163,26 @@ class TelegramTurnProcessor:
         messages: tuple[InboundMessage, ...],
     ) -> None:
         logger.info('Nothing readable in the round for chat %s', messages[-1].chat)
-        await reply.on_text(_UNREADABLE)
+        await reply.on_text(_decline_note(messages))
         await reply.finish()
+
+    async def _transcript(
+        self,
+        attachment: InboundAttachment,
+        data: bytes,
+        message: InboundMessage,
+    ) -> str | None:
+        try:
+            return await self.transcription.transcribe(attachment.mime, data)
+        except TranscriptionUnavailableError:
+            logger.warning(
+                'Dropping the voice of message %s: no transcription is configured',
+                message.id,
+            )
+        except Exception:
+            logger.exception('Could not transcribe the voice of message %s', message.id)
+
+        return None
 
     async def _request(
         self,

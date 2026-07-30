@@ -33,6 +33,7 @@ from lib.temporal import ClockManager
 pytestmark = pytest.mark.integration
 
 _PHOTO = b'\xff\xd8\xff\xe0 not really a jpeg'
+_VOICE = b'OggS not really an ogg'
 
 
 class NoModels(LLMContract):
@@ -232,6 +233,37 @@ async def test_a_stored_photo_replays_as_its_placeholder(
         for message in history
         for segment in message.segments
     )
+
+
+async def test_a_transcribed_voice_note_is_stored_as_what_it_said(
+    session: AsyncSession,
+) -> None:
+    repository = _repository(session)
+    conversation = await repository.get_or_create('support_bot', '7', 'scout')
+    transcript = _transcript(session, conversation)
+    voice = PromptAttachment(
+        kind='audio',
+        mime='audio/ogg',
+        reference='file-2',
+        unique='unique-2',
+        data=_VOICE,
+        hint='[audio: audio/ogg 12s]',
+        transcript='remind me at six',
+    )
+
+    await transcript.record(
+        [TurnPrompt(text='', actor='user:1', attachments=(voice,))],
+        'ok',
+    )
+
+    turn = (await repository.load_recent_turns(conversation, limit=1))[0]
+    # NOTE: the words are what a later round replays, and the ogg stays in its blob
+    assert turn.parts[0].kind == 'audio'
+    assert turn.parts[0].payload['text'] == 'remind me at six'
+    assert _texts(await transcript.history()) == [
+        ('user', 'remind me at six'),
+        ('assistant', 'ok'),
+    ]
 
 
 @pytest.mark.usefixtures('_migrated')

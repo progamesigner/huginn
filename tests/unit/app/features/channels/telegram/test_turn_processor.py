@@ -1,10 +1,13 @@
 from typing import override
 from uuid import UUID
 
+import pytest
 from pydantic import SecretStr
 
 from app.features.agents.contracts import TurnHandlerContract
 from app.features.agents.types import TurnRequest
+from app.features.channels.contracts import TranscriptionContract
+from app.features.channels.exceptions import TranscriptionUnavailableError
 from app.features.channels.telegram.config import TelegramChannelConfig
 from app.features.channels.telegram.turns import TelegramTurnProcessor
 from app.features.identities.contracts import IdentityResolverContract
@@ -76,6 +79,30 @@ class FakeGateway(ChannelGatewayContract):
         reply = FakeReply()
         self.replies.append(reply)
         return reply
+
+
+class FakeTranscription(TranscriptionContract):
+    error: Exception | None
+    heard: list[tuple[str, bytes]]
+    text: str
+
+    def __init__(
+        self,
+        *,
+        error: Exception | None = None,
+        text: str = 'buy milk',
+    ) -> None:
+        self.error = error
+        self.heard = []
+        self.text = text
+
+    @override
+    async def transcribe(self, mime: str, data: bytes) -> str:
+        self.heard.append((mime, data))
+        if self.error is not None:
+            raise self.error
+
+        return self.text
 
 
 class FakeIdentities(IdentityResolverContract):
@@ -175,11 +202,13 @@ def make_processor(
     turns: FakeTurns,
     identities: FakeIdentities,
     gateway: FakeGateway,
+    transcription: FakeTranscription | None = None,
 ) -> TelegramTurnProcessor:
     return TelegramTurnProcessor(
         turns=turns,
         identities=identities,
         gateway=lambda _: gateway,
+        transcription=transcription or FakeTranscription(),
     )
 
 
@@ -310,6 +339,82 @@ async def test_a_voice_note_is_named_by_its_duration() -> None:
     )
 
     assert turns.requests[0].prompts[0].attachments[0].hint == '[audio: audio/ogg 12s]'
+
+
+async def test_a_voice_note_carries_what_it_said() -> None:
+    transcription = FakeTranscription(text='remind me at six')
+    turns = FakeTurns()
+
+    await make_processor(
+        turns,
+        FakeIdentities(),
+        FakeGateway(),
+        transcription,
+    ).process(channel(), (inbound(1, text='', attachments=(voice(),)),))
+
+    # NOTE: routing reads the prompt text, so the voice has to become words inside the
+    # round rather than on the way to the model
+    assert transcription.heard == [('audio/ogg', b'bytes')]
+    assert turns.requests[0].prompts[0].attachments[0].transcript == 'remind me at six'
+
+
+async def test_a_photo_is_never_sent_to_be_transcribed() -> None:
+    transcription = FakeTranscription()
+
+    await make_processor(
+        FakeTurns(),
+        FakeIdentities(),
+        FakeGateway(),
+        transcription,
+    ).process(channel(), (inbound(1, text='', attachments=(photo(),)),))
+
+    assert transcription.heard == []
+
+
+async def test_a_voice_note_nobody_can_transcribe_leaves_the_text_answerable() -> None:
+    transcription = FakeTranscription(error=RuntimeError('whisper died'))
+    turns = FakeTurns()
+
+    await make_processor(
+        turns,
+        FakeIdentities(),
+        FakeGateway(),
+        transcription,
+    ).process(channel(), (inbound(1, text='and also this', attachments=(voice(),)),))
+
+    prompt = turns.requests[0].prompts[0]
+    assert prompt.text == 'and also this'
+    assert prompt.attachments == ()
+
+
+async def test_a_voice_only_round_says_it_could_not_read_the_voice(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    gateway = FakeGateway()
+    turns = FakeTurns()
+    transcription = FakeTranscription(
+        error=TranscriptionUnavailableError('nothing configured'),
+    )
+
+    with caplog.at_level('WARNING'):
+        await make_processor(turns, FakeIdentities(), gateway, transcription).process(
+            channel(),
+            (inbound(1, text='', attachments=(voice(),)),),
+        )
+
+    # NOTE: the user hears one sentence either way, so the log is the only place that
+    # says whether nobody configured transcription or the vendor fell over
+    assert any(
+        'no transcription is configured' in record.message for record in caplog.records
+    )
+
+    # NOTE: the generic refusal names voice as something we read, so a round that was
+    # only voice has to be told what actually went wrong with it
+    assert turns.requests == []
+    assert gateway.replies[0].fragments == [
+        'I could not read that voice message; please send it as text.',
+    ]
+    assert gateway.replies[0].finished
 
 
 async def test_an_attachment_that_will_not_download_is_left_behind() -> None:

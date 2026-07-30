@@ -1,8 +1,17 @@
 import pytest
 from pydantic import SecretStr, ValidationError
 
-from app.features.channels.config import ChannelConfig, ChannelConfigList
-from app.features.channels.exceptions import UnknownChannelKindError
+from app.core.config.registry import HuginnConfig
+from app.features.channels.config import (
+    TRANSCRIPTION,
+    ChannelConfig,
+    ChannelConfigList,
+    TranscriptionConfig,
+)
+from app.features.channels.exceptions import (
+    IncompleteTranscriptionError,
+    UnknownChannelKindError,
+)
 from app.features.channels.registry import ChannelRegistry
 from app.features.channels.telegram.config import TelegramChannelConfig
 
@@ -41,6 +50,53 @@ def test_channel_registry_rejects_unknown_kind() -> None:
 
     with pytest.raises(UnknownChannelKindError, match='discord'):
         registry.get('discord')
+
+
+def _describe(config: HuginnConfig) -> list[str]:
+    assert TRANSCRIPTION.describe is not None
+
+    return TRANSCRIPTION.describe(config)
+
+
+def _validate(config: HuginnConfig) -> None:
+    assert TRANSCRIPTION.validate is not None
+
+    TRANSCRIPTION.validate(config)
+
+
+def test_an_absent_transcription_section_is_simply_unconfigured() -> None:
+    # NOTE: the loader validates a missing section from {}, so voice being unsupported
+    # has to be a legal state of the config rather than a load failure
+    config = TranscriptionConfig.model_validate({})
+
+    assert config.kind is None
+    assert config.model is None
+    assert config.api_key is None
+
+
+def test_a_half_filled_transcription_section_is_refused() -> None:
+    config = HuginnConfig(
+        sections={'transcription': TranscriptionConfig(kind='openai')},
+    )
+
+    with pytest.raises(IncompleteTranscriptionError, match='api_key, model'):
+        _validate(config)
+
+
+def test_a_complete_transcription_section_passes_validation() -> None:
+    config = HuginnConfig(
+        sections={
+            'transcription': TranscriptionConfig(
+                kind='openai',
+                model='gpt-4o-mini-transcribe',
+                api_key=SecretStr('openai-key'),
+            ),
+        },
+    )
+
+    _validate(config)
+
+    assert _describe(config) == ['transcription: openai model=gpt-4o-mini-transcribe']
 
 
 def test_base_channel_config_is_not_telegram_specific() -> None:

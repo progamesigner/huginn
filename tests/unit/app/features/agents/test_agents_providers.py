@@ -83,7 +83,7 @@ def test_agent_provider_contributes_only_its_own_sections() -> None:
 
     keys = {spec.key for spec in app.resolve(SectionRegistry)}
 
-    assert keys == {'agents', 'channels', 'defaults'}
+    assert keys == {'agents', 'channels', 'defaults', 'transcription'}
 
 
 def test_agents_config_provider_accepts_valid_tool_overlay(tmp_path: Path) -> None:
