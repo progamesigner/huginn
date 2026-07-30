@@ -40,7 +40,7 @@ def queued(event: int, chat: int = 555) -> bytes:
 
 
 def collector() -> tuple[Rounds, Processor]:
-    rounds: Rounds = []
+    rounds = []
 
     async def process(
         ch: TelegramChannelConfig,

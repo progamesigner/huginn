@@ -88,12 +88,19 @@ def _ports_dir() -> Path:
     return Path(app.__file__).parent / 'ports'
 
 
-def _source_dirs(package: str) -> set[Path]:
+def _tests_dir() -> Path:
+    return Path(__file__).parent.parent
+
+
+def _source_root(package: str) -> Path:
     module = import_module(package)
 
     assert module.__file__ is not None
-    root = Path(module.__file__).parent
-    return {path.parent for path in root.rglob('*.py')}
+    return Path(module.__file__).parent
+
+
+def _source_dirs(package: str) -> set[Path]:
+    return {path.parent for path in _source_root(package).rglob('*.py')}
 
 
 def _package_of(path: Path, root: Path, package: str) -> str:
@@ -320,6 +327,27 @@ def _reaches_the_app(source: str, package: str) -> Iterator[str]:
             yield f'{target}: a port must not import the app whose boundary it declares'
 
 
+# A signature declares types; a function body lets ty infer them. An annotation on a
+# local is either redundant with what the signature already says or a sign the value is
+# being built in a shape ty cannot follow -- both are worth rewriting rather than
+# annotating. Class bodies and module level are the opposite case: there the annotation
+# IS the declaration, so only function bodies are checked.
+def _annotated_locals(source: str) -> Iterator[str]:
+    def visit(node: ast.AST, *, in_function: bool) -> Iterator[str]:
+        for child in ast.iter_child_nodes(node):
+            match child:
+                case ast.AnnAssign(target=ast.Name(id=name)) if in_function:
+                    yield f'line {child.lineno}: {name} is annotated; let ty infer it'
+                case ast.FunctionDef() | ast.AsyncFunctionDef():
+                    yield from visit(child, in_function=True)
+                case ast.ClassDef():
+                    yield from visit(child, in_function=False)
+                case _:
+                    yield from visit(child, in_function=in_function)
+
+    yield from visit(ast.parse(source), in_function=False)
+
+
 def _attribute_reads(source: str) -> Iterator[tuple[str, str]]:
     for node in ast.walk(ast.parse(source)):
         if isinstance(node, ast.Attribute) and isinstance(node.value, ast.Name):
@@ -372,6 +400,34 @@ def test_init_reexport_check_flags_logic_and_absolute_imports() -> None:
     assert not _init_reexport_only('import os\n')
     assert not _init_reexport_only('from app.core import exceptions\n')
     assert not _init_reexport_only('value = compute()\n')
+
+
+def test_function_bodies_leave_local_types_to_inference() -> None:
+    roots = (*(_source_root(package) for package in ROOT_PACKAGES), _tests_dir())
+    offenders = [
+        f'{path}: {message}'
+        for root in roots
+        for path in sorted(root.rglob('*.py'))
+        for message in _annotated_locals(path.read_text(encoding='utf-8'))
+    ]
+
+    assert not offenders, 'annotate the signature, not the local:\n' + '\n'.join(
+        offenders,
+    )
+
+
+def test_annotated_local_check_reads_the_scope_not_the_syntax() -> None:
+    def flagged(source: str) -> bool:
+        return bool(list(_annotated_locals(source)))
+
+    assert not flagged('value: int = 1\n')
+    assert not flagged('class A:\n    value: int = 1\n')
+    assert not flagged('def f() -> None:\n    class A:\n        value: int = 1\n')
+    assert not flagged('def f(value: int = 1) -> None:\n    pass\n')
+
+    assert flagged('def f() -> None:\n    value: int = 1\n')
+    assert flagged('async def f() -> None:\n    value: list[int] = []\n')
+    assert flagged('class A:\n    def f(self) -> None:\n        value: int = 1\n')
 
 
 def test_cross_feature_imports_respect_the_feature_tiers() -> None:

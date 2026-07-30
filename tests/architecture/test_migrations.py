@@ -116,7 +116,7 @@ def _read_constraints(
     rows = connection.execute(
         text(_CONSTRAINTS).bindparams(schemas=['public', _MIRROR_SCHEMA]),
     ).all()
-    sides: dict[str, set[Constraint]] = {'public': set(), _MIRROR_SCHEMA: set()}
+    sides = {'public': set[Constraint](), _MIRROR_SCHEMA: set[Constraint]()}
     for schema, relation, name, kind, definition in rows:
         table = relation.removeprefix(f'{_MIRROR_SCHEMA}.').strip('"')
         if table in tables:
