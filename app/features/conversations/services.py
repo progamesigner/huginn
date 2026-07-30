@@ -10,19 +10,21 @@ from app.features.agents.contracts import (
     TranscriptContract,
     TranscriptStoreContract,
 )
-from app.features.agents.types import TurnPrompt
+from app.features.agents.types import PromptAttachment, TurnPrompt
 from lib.database import DatabaseContract
 from lib.guid import GUIDContract
 from lib.llm import LLMContract, Message, TextSegment
 from lib.temporal import ClockContract
 
 from .compaction import CompactionService
+from .contracts import BlobStoreContract, BlobStoreFactory
 from .repositories import ConversationRepository
 from .types import Conversation, Part, Turn
 
 logger = logging.getLogger(__name__)
 
 _TEXT = 'text'
+_REPLAYED = ('audio', 'image', _TEXT)
 
 
 def _messages(turns: Sequence[Turn]) -> Iterator[Message]:
@@ -52,7 +54,7 @@ def _summary_message(summary: Mapping[str, JsonValue]) -> Message | None:
 
 
 def _text_of(part: Part) -> str | None:
-    if part.kind != _TEXT:
+    if part.kind not in _REPLAYED:
         return None
 
     text = part.payload.get('text')
@@ -60,14 +62,17 @@ def _text_of(part: Part) -> str | None:
 
 
 class ConversationTranscript(TranscriptContract):
+    blobs: BlobStoreContract
     conversation: Conversation
     repository: ConversationRepository
 
     def __init__(
         self,
         repository: ConversationRepository,
+        blobs: BlobStoreContract,
         conversation: Conversation,
     ) -> None:
+        self.blobs = blobs
         self.conversation = conversation
         self.repository = repository
 
@@ -84,21 +89,45 @@ class ConversationTranscript(TranscriptContract):
 
     @override
     async def record(self, prompts: Sequence[TurnPrompt], answer: str) -> None:
-        parts = [
-            Part(
-                role='user',
-                kind=_TEXT,
-                payload={'text': prompt.text, 'actor': prompt.actor},
-            )
-            for prompt in prompts
-        ]
+        parts = []
+        for prompt in prompts:
+            if prompt.text:
+                parts.append(
+                    Part(
+                        role='user',
+                        kind=_TEXT,
+                        payload={'text': prompt.text, 'actor': prompt.actor},
+                    ),
+                )
+            for attachment in prompt.attachments:
+                parts.append(await self._media(attachment, prompt.actor))
+
         if answer:
             parts.append(Part(role='assistant', kind=_TEXT, payload={'text': answer}))
 
         await self.repository.append_turn(self.conversation, parts)
 
+    async def _media(self, attachment: PromptAttachment, actor: str) -> Part:
+        blob = await self.blobs.store(attachment.mime, attachment.data)
+
+        return Part(
+            role='user',
+            kind=attachment.kind,
+            payload={
+                'text': attachment.hint,
+                'actor': actor,
+                'blob': str(blob.id),
+                'sha256': blob.sha256,
+                'mime': blob.mime,
+                'size': blob.size,
+                'reference': attachment.reference,
+                'unique': attachment.unique,
+            },
+        )
+
 
 class ConversationTranscriptStore(TranscriptStoreContract):
+    blobs: BlobStoreFactory
     clock: ClockContract
     database: DatabaseContract
     guid: GUIDContract
@@ -110,7 +139,9 @@ class ConversationTranscriptStore(TranscriptStoreContract):
         guid: GUIDContract,
         clock: ClockContract,
         llm: LLMContract,
+        blobs: BlobStoreFactory,
     ) -> None:
+        self.blobs = blobs
         self.clock = clock
         self.database = database
         self.guid = guid
@@ -154,7 +185,11 @@ class ConversationTranscriptStore(TranscriptStoreContract):
         async with self.database.session() as session, session.begin():
             repository = self._repository(session)
             conversation = await repository.get_or_create(channel, chat, agent)
-            yield ConversationTranscript(repository, conversation)
+            yield ConversationTranscript(
+                repository,
+                self.blobs(session),
+                conversation,
+            )
 
     def _repository(self, session: AsyncSession) -> ConversationRepository:
         return ConversationRepository(session, self.guid, self.clock)

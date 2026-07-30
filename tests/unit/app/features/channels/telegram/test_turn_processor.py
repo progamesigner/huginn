@@ -131,11 +131,34 @@ def channel() -> TelegramChannelConfig:
     )
 
 
+def photo() -> InboundAttachment:
+    return InboundAttachment(
+        kind='image',
+        mime='image/jpeg',
+        reference='file-1',
+        unique='unique-1',
+        height=960,
+        size=2048,
+        width=1280,
+    )
+
+
+def voice() -> InboundAttachment:
+    return InboundAttachment(
+        kind='audio',
+        mime='audio/ogg',
+        reference='file-2',
+        unique='unique-2',
+        duration=12,
+    )
+
+
 def inbound(
     event: int,
     *,
     text: str = 'hello',
     user: str | None = '77',
+    attachments: tuple[InboundAttachment, ...] = (),
 ) -> InboundMessage:
     return InboundMessage(
         channel='support_bot',
@@ -143,6 +166,7 @@ def inbound(
         event=str(event),
         id=str(event),
         text=text,
+        attachments=attachments,
         user=user,
     )
 
@@ -241,6 +265,89 @@ async def test_a_message_without_text_is_not_a_prompt() -> None:
     )
 
     assert [prompt.text for prompt in turns.requests[0].prompts] == ['real']
+
+
+async def test_an_attachment_reaches_the_turn_with_its_bytes_downloaded() -> None:
+    gateway = FakeGateway()
+    turns = FakeTurns()
+
+    await make_processor(turns, FakeIdentities(), gateway).process(
+        channel(),
+        (inbound(1, text='what is this?', attachments=(photo(),)),),
+    )
+
+    # NOTE: the port carries a reference only, so the round is where the bytes are
+    # fetched -- a 5MB photo through the mailbox would be a 6.7MB redis payload
+    assert gateway.fetched == ['file-1']
+    carried = turns.requests[0].prompts[0].attachments[0]
+    assert carried.kind == 'image'
+    assert carried.mime == 'image/jpeg'
+    assert carried.reference == 'file-1'
+    assert carried.unique == 'unique-1'
+    assert carried.data == b'bytes'
+    assert carried.hint == '[image: image/jpeg 1280x960]'
+
+
+async def test_a_photo_without_a_caption_is_still_a_prompt() -> None:
+    turns = FakeTurns()
+
+    await make_processor(turns, FakeIdentities(), FakeGateway()).process(
+        channel(),
+        (inbound(1, text='', attachments=(photo(),)),),
+    )
+
+    prompt = turns.requests[0].prompts[0]
+    assert prompt.text == ''
+    assert len(prompt.attachments) == 1
+
+
+async def test_a_voice_note_is_named_by_its_duration() -> None:
+    turns = FakeTurns()
+
+    await make_processor(turns, FakeIdentities(), FakeGateway()).process(
+        channel(),
+        (inbound(1, text='', attachments=(voice(),)),),
+    )
+
+    assert turns.requests[0].prompts[0].attachments[0].hint == '[audio: audio/ogg 12s]'
+
+
+async def test_an_attachment_that_will_not_download_is_left_behind() -> None:
+    class RefusingGateway(FakeGateway):
+        @override
+        async def fetch(self, attachment: InboundAttachment) -> bytes:
+            raise RuntimeError('file is over the limit')
+
+    turns = FakeTurns()
+
+    await make_processor(turns, FakeIdentities(), RefusingGateway()).process(
+        channel(),
+        (inbound(1, text='look', attachments=(photo(),)),),
+    )
+
+    # NOTE: one unreadable attachment must not cost the caption its answer
+    prompt = turns.requests[0].prompts[0]
+    assert prompt.text == 'look'
+    assert prompt.attachments == ()
+
+
+async def test_a_round_with_nothing_readable_says_so_instead_of_going_quiet() -> None:
+    gateway = FakeGateway()
+    turns = FakeTurns()
+
+    await make_processor(turns, FakeIdentities(), gateway).process(
+        channel(),
+        (inbound(1, text=''),),
+    )
+
+    # NOTE: a document or a sticker used to leave the ack reaction sitting on a message
+    # that was never going to be answered -- no answer and no failure either
+    assert turns.requests == []
+    assert gateway.replies[0].fragments == [
+        'I can only read text, photos and voice messages.',
+    ]
+    assert gateway.replies[0].finished
+    assert gateway.abandoned == []
 
 
 async def test_a_failed_round_reports_on_every_message_it_was_answering() -> None:

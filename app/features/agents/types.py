@@ -6,6 +6,7 @@ from typing import override
 
 from pydantic import BaseModel, ConfigDict, JsonValue, ValidationError
 
+from app.ports.channels import AttachmentKind
 from lib.llm import Message, ToolCallSegment, ToolResultSegment
 
 from .config import AgentConfig
@@ -41,9 +42,20 @@ class RoutedAgent:
 
 
 @dataclass(frozen=True)
+class PromptAttachment:
+    kind: AttachmentKind
+    mime: str
+    reference: str
+    unique: str
+    data: bytes
+    hint: str
+
+
+@dataclass(frozen=True)
 class TurnPrompt:
     text: str
     actor: str
+    attachments: tuple[PromptAttachment, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -69,7 +81,7 @@ class Step:
 @dataclass(frozen=True)
 class TurnInput:
     instructions: str
-    prompts: tuple[str, ...]
+    prompts: tuple[TurnPrompt, ...]
     model: str
     prior_turns: tuple[Message, ...] = ()
     max_iterations: int = _DEFAULT_MAX_ITERATIONS

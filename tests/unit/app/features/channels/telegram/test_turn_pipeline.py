@@ -26,7 +26,9 @@ from lib.router import RouterContract
 from tests.helpers.redis import FakeClient
 
 _BASE_URL = 'https://api.telegram.org/botbot-token'
+_FILE_URL = 'https://api.telegram.org/file/botbot-token'
 _CHAT_ID = 4242
+_JPEG = b'\xff\xd8\xff\xe0 not really a jpeg'
 _HEADER = 'X-Telegram-Bot-Api-Secret-Token'
 _PATH = '/webhooks/telegram'
 
@@ -74,6 +76,34 @@ def update(update_id: int) -> dict[str, object]:
             'chat': {'id': _CHAT_ID, 'type': 'private'},
             'from': {'id': 77, 'is_bot': False, 'first_name': 'Han'},
             'text': 'hello',
+        },
+    }
+
+
+def photo_update(update_id: int) -> dict[str, object]:
+    return {
+        'update_id': update_id,
+        'message': {
+            'message_id': update_id,
+            'date': 1_721_600_000,
+            'chat': {'id': _CHAT_ID, 'type': 'private'},
+            'from': {'id': 77, 'is_bot': False, 'first_name': 'Han'},
+            'photo': [
+                {
+                    'file_id': 'small',
+                    'file_unique_id': 'u-small',
+                    'width': 90,
+                    'height': 60,
+                    'file_size': 900,
+                },
+                {
+                    'file_id': 'large',
+                    'file_unique_id': 'u-large',
+                    'width': 1280,
+                    'height': 960,
+                    'file_size': 2048,
+                },
+            ],
         },
     }
 
@@ -174,3 +204,52 @@ async def test_a_webhook_message_reaches_the_agent_turn_and_answers_in_chat() ->
     assert [prompt.text for prompt in request.prompts] == ['hello']
     assert request.policy.agent == 'scout'
     assert request.prompts[0].actor.startswith('anonymous:')
+
+
+@respx.mock
+async def test_a_photo_with_no_caption_reaches_the_turn_with_its_bytes() -> None:
+    respx.post(f'{_BASE_URL}/setMessageReaction').mock(
+        return_value=httpx.Response(200, json={'ok': True, 'result': True}),
+    )
+    respx.post(f'{_BASE_URL}/sendMessage').mock(return_value=message(7))
+    respx.post(f'{_BASE_URL}/editMessageText').mock(return_value=message(7))
+    file = respx.post(f'{_BASE_URL}/getFile').mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                'ok': True,
+                'result': {
+                    'file_id': 'large',
+                    'file_unique_id': 'u-large',
+                    'file_size': 2048,
+                    'file_path': 'photos/large.jpg',
+                },
+            },
+        ),
+    )
+    download = respx.get(f'{_FILE_URL}/photos/large.jpg').mock(
+        return_value=httpx.Response(200, content=_JPEG),
+    )
+    turns = StreamingTurns()
+
+    async with pipeline(turns) as client:
+        response = await client.post(
+            _PATH,
+            headers={_HEADER: 'sekret'},
+            json=photo_update(8),
+        )
+        assert response.status_code == 200
+        async with asyncio.timeout(1):
+            await turns.done.wait()
+
+    # NOTE: the largest size that fits the limit is the one worth downloading, and the
+    # download is a second host away from the bot api
+    assert json.loads(file.calls.last.request.content) == {'file_id': 'large'}
+    assert download.called
+
+    prompt = turns.requests[0].prompts[0]
+    assert prompt.text == ''
+    assert [(carried.kind, carried.data) for carried in prompt.attachments] == [
+        ('image', _JPEG),
+    ]
+    assert prompt.attachments[0].hint == '[image: image/jpeg 1280x960]'

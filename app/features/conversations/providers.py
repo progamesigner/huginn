@@ -7,11 +7,28 @@ from app.core.providers.temporal import ClockProvider
 from app.features.agents.contracts import TranscriptStoreContract
 from app.features.agents.providers import AgentProvider
 from lib.container import ContainerContract, ProviderContract
+from lib.database import DatabaseContract
+from lib.guid import GUIDContract
+from lib.llm import LLMContract
+from lib.temporal import ClockContract
 
 from .compaction import CompactionService
 from .contracts import BlobStoreContract
 from .repositories import BlobRepository, ConversationRepository
 from .services import ConversationTranscriptStore
+
+
+def _store(container: ContainerContract) -> ConversationTranscriptStore:
+    guid = container.resolve(GUIDContract)
+
+    return ConversationTranscriptStore(
+        container.resolve(DatabaseContract),
+        guid,
+        container.resolve(ClockContract),
+        container.resolve(LLMContract),
+        # NOTE: the transcript owns the turn's session, blobs not reusing it
+        lambda session: BlobRepository(session, guid),
+    )
 
 
 class ConversationProvider(ProviderContract):
@@ -32,8 +49,4 @@ class ConversationProvider(ProviderContract):
         )
         container.bind(BlobStoreContract, constructor=BlobRepository, scoped=True)
         container.bind(CompactionService, constructor=CompactionService, scoped=True)
-        container.bind(
-            TranscriptStoreContract,
-            constructor=ConversationTranscriptStore,
-            shared=True,
-        )
+        container.bind(TranscriptStoreContract, factory=_store, shared=True)

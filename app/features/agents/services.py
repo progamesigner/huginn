@@ -1,5 +1,6 @@
 import asyncio
 import logging
+from base64 import b64encode
 from collections.abc import AsyncIterator, Iterator, Sequence
 from pathlib import Path
 from typing import cast, override
@@ -12,9 +13,11 @@ from lib.llm import (
     CompletionChunk,
     CompletionRequest,
     FinishChunk,
+    ImageSegment,
     LLMClient,
     LLMContract,
     Message,
+    Segment,
     TextChunk,
     TextSegment,
     ThinkingChunk,
@@ -41,6 +44,7 @@ from .types import (
     ToolSet,
     TurnInput,
     TurnOutput,
+    TurnPrompt,
     TurnRequest,
 )
 
@@ -58,11 +62,26 @@ class ToolCallBuilder:
         self.arguments = ''
 
 
+def _prompt_segments(prompt: TurnPrompt) -> Iterator[Segment]:
+    if prompt.text:
+        yield TextSegment(text=prompt.text)
+
+    for attachment in prompt.attachments:
+        if attachment.kind == 'image':
+            yield ImageSegment(
+                media_type=attachment.mime,
+                data=b64encode(attachment.data).decode('ascii'),
+            )
+        else:
+            yield TextSegment(text=attachment.hint)
+
+
 def _build_messages(turn: TurnInput) -> Iterator[Message]:
     yield Message(role='system', segments=(TextSegment(text=turn.instructions),))
     yield from turn.prior_turns
     for prompt in turn.prompts:
-        yield Message(role='user', segments=(TextSegment(text=prompt),))
+        if segments := tuple(_prompt_segments(prompt)):
+            yield Message(role='user', segments=segments)
 
 
 def _assistant_message(text: str, tool_calls: tuple[ToolCallSegment, ...]) -> Message:
@@ -287,7 +306,7 @@ class TurnHandler(TurnHandlerContract):
             output = await runner.run(
                 TurnInput(
                     instructions=load_instructions(agent.config),
-                    prompts=tuple(prompt.text for prompt in request.prompts),
+                    prompts=request.prompts,
                     model=model,
                     prior_turns=history,
                 ),

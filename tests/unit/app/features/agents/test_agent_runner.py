@@ -1,5 +1,6 @@
 import asyncio
 import time
+from base64 import b64decode
 from collections.abc import AsyncIterator, Sequence
 from datetime import timedelta
 from typing import Annotated, override
@@ -11,18 +12,23 @@ from structlog.contextvars import bound_contextvars, get_contextvars
 from app.features.agents.exceptions import TurnTimeoutError
 from app.features.agents.services import AgentRunner
 from app.features.agents.types import (
+    PromptAttachment,
     ToolOutput,
     ToolParams,
     ToolSet,
     TurnInput,
+    TurnPrompt,
     TypedTool,
 )
+from app.ports.channels import AttachmentKind
 from lib.llm import (
     CompletionChunk,
     CompletionRequest,
     FinishChunk,
+    ImageSegment,
     Message,
     TextChunk,
+    TextSegment,
     ToolCallChunk,
     ToolResultSegment,
 )
@@ -126,7 +132,7 @@ def make_toolset() -> ToolSet:
 
 def make_turn(
     *,
-    prompts: tuple[str, ...] = ('hello',),
+    prompts: tuple[TurnPrompt, ...] = (TurnPrompt(text='hello', actor='user:1'),),
     model: str = 'test-model',
     prior_turns: tuple[Message, ...] = (),
     max_iterations: int = 10,
@@ -144,10 +150,31 @@ def make_turn(
     )
 
 
+def attachment(
+    kind: AttachmentKind = 'image',
+    *,
+    data: bytes = b'\xff\xd8\xff\xe0jpeg',
+    mime: str = 'image/jpeg',
+    hint: str = '[image: image/jpeg 8x8]',
+) -> PromptAttachment:
+    return PromptAttachment(
+        kind=kind,
+        mime=mime,
+        reference='file-1',
+        unique='unique-1',
+        data=data,
+        hint=hint,
+    )
+
+
 def tool_result(message: Message) -> ToolResultSegment:
     segment = message.segments[0]
     assert isinstance(segment, ToolResultSegment)
     return segment
+
+
+def answering() -> FakeLLM:
+    return FakeLLM([[TextChunk(text='done'), FinishChunk(reason='stop')]])
 
 
 async def discard(fragment: str) -> None:
@@ -503,6 +530,61 @@ async def test_run_generates_unique_turn_id_per_turn() -> None:
     await runner.run(make_turn(), discard)
 
     assert probe.seen['turn_id'] != first
+
+
+async def test_an_attached_image_reaches_the_model_beside_its_caption() -> None:
+    llm = answering()
+    runner = AgentRunner(llm, make_toolset(), ClockManager())
+    prompt = TurnPrompt(
+        text='what is this?',
+        actor='user:1',
+        attachments=(attachment(),),
+    )
+
+    await runner.run(make_turn(prompts=(prompt,)), discard)
+
+    segments = llm.requests[0].messages[-1].segments
+    assert [type(segment) for segment in segments] == [TextSegment, ImageSegment]
+    image = segments[1]
+    assert isinstance(image, ImageSegment)
+    assert image.media_type == 'image/jpeg'
+    assert b64decode(image.data) == b'\xff\xd8\xff\xe0jpeg'
+
+
+async def test_a_photo_without_a_caption_is_still_a_message() -> None:
+    llm = answering()
+    runner = AgentRunner(llm, make_toolset(), ClockManager())
+    prompt = TurnPrompt(text='', actor='user:1', attachments=(attachment(),))
+
+    await runner.run(make_turn(prompts=(prompt,)), discard)
+
+    # NOTE: the old shape built the message from text alone, so a caption-less photo
+    # reached the model as an empty turn and answered nothing
+    segments = llm.requests[0].messages[-1].segments
+    assert [type(segment) for segment in segments] == [ImageSegment]
+
+
+async def test_an_attachment_the_model_cannot_take_arrives_as_its_hint() -> None:
+    llm = answering()
+    runner = AgentRunner(llm, make_toolset(), ClockManager())
+    voice = attachment('audio', mime='audio/ogg', hint='[audio: audio/ogg 12s]')
+    prompt = TurnPrompt(text='', actor='user:1', attachments=(voice,))
+
+    await runner.run(make_turn(prompts=(prompt,)), discard)
+
+    assert llm.requests[0].messages[-1].segments == (
+        TextSegment(text='[audio: audio/ogg 12s]'),
+    )
+
+
+async def test_a_prompt_with_nothing_in_it_is_not_a_message() -> None:
+    llm = answering()
+    runner = AgentRunner(llm, make_toolset(), ClockManager())
+    prompt = TurnPrompt(text='', actor='user:1')
+
+    await runner.run(make_turn(prompts=(prompt,)), discard)
+
+    assert [message.role for message in llm.requests[0].messages] == ['system']
 
 
 # NOTE: a channel opens the turn before the runner sees it and needs the id for its own

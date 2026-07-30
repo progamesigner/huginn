@@ -1,19 +1,27 @@
 from collections.abc import Sequence
+from hashlib import sha256
 from typing import override
+from uuid import UUID
 
 import pytest
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.features.agents.types import TurnPrompt
-from app.features.conversations.repositories import ConversationRepository
+from app.features.agents.types import PromptAttachment, TurnPrompt
+from app.features.conversations.repositories import (
+    BlobRepository,
+    ConversationRepository,
+)
+from app.features.conversations.schemas.sqlalchemy import BlobRecord
 from app.features.conversations.services import (
     ConversationTranscript,
     ConversationTranscriptStore,
 )
-from app.features.conversations.types import Part
+from app.features.conversations.types import Conversation, Part
 from lib.database import DatabaseContract, DatabaseManager
 from lib.guid import GUIDManager
 from lib.llm import (
+    ImageSegment,
     LLMClient,
     LLMContract,
     Message,
@@ -23,6 +31,8 @@ from lib.llm import (
 from lib.temporal import ClockManager
 
 pytestmark = pytest.mark.integration
+
+_PHOTO = b'\xff\xd8\xff\xe0 not really a jpeg'
 
 
 class NoModels(LLMContract):
@@ -35,6 +45,16 @@ class NoModels(LLMContract):
         return None
 
 
+async def _blob(session: AsyncSession, id_: str) -> bytes:
+    query = select(BlobRecord).where(BlobRecord.id == UUID(id_))
+
+    return (await session.execute(query)).scalar_one().data
+
+
+def _blobs(session: AsyncSession) -> BlobRepository:
+    return BlobRepository(session, GUIDManager())
+
+
 def _repository(session: AsyncSession) -> ConversationRepository:
     return ConversationRepository(session, GUIDManager(), ClockManager())
 
@@ -45,11 +65,30 @@ def _store(database: DatabaseContract) -> ConversationTranscriptStore:
         GUIDManager(),
         ClockManager(),
         NoModels(),
+        _blobs,
     )
+
+
+def _transcript(
+    session: AsyncSession,
+    conversation: Conversation,
+) -> ConversationTranscript:
+    return ConversationTranscript(_repository(session), _blobs(session), conversation)
 
 
 def _prompt(text: str) -> TurnPrompt:
     return TurnPrompt(text=text, actor='user:1')
+
+
+def _photo(hint: str = '[image: image/jpeg 8x8]') -> PromptAttachment:
+    return PromptAttachment(
+        kind='image',
+        mime='image/jpeg',
+        reference='file-1',
+        unique='unique-1',
+        data=_PHOTO,
+        hint=hint,
+    )
 
 
 def _texts(messages: Sequence[Message]) -> list[tuple[str, str]]:
@@ -66,7 +105,7 @@ async def test_a_recorded_turn_reads_back_as_the_next_turns_history(
 ) -> None:
     repository = _repository(session)
     conversation = await repository.get_or_create('support_bot', '4242', 'scout')
-    transcript = ConversationTranscript(repository, conversation)
+    transcript = _transcript(session, conversation)
 
     await transcript.record([_prompt('first'), _prompt('second')], 'answer')
 
@@ -82,7 +121,7 @@ async def test_an_empty_answer_records_only_what_the_user_said(
 ) -> None:
     repository = _repository(session)
     conversation = await repository.get_or_create('support_bot', '1', 'scout')
-    transcript = ConversationTranscript(repository, conversation)
+    transcript = _transcript(session, conversation)
 
     await transcript.record([_prompt('hello')], '')
 
@@ -94,7 +133,7 @@ async def test_history_opens_with_the_summary_and_omits_folded_turns(
 ) -> None:
     repository = _repository(session)
     conversation = await repository.get_or_create('support_bot', '2', 'scout')
-    transcript = ConversationTranscript(repository, conversation)
+    transcript = _transcript(session, conversation)
     await transcript.record([_prompt('ancient')], 'forgotten')
     folded = await repository.load_turns_since_summary(conversation)
     updated = await repository.apply_compaction(
@@ -105,7 +144,7 @@ async def test_history_opens_with_the_summary_and_omits_folded_turns(
     )
 
     assert updated is not None
-    after = ConversationTranscript(repository, updated)
+    after = _transcript(session, updated)
     await after.record([_prompt('recent')], 'fresh')
 
     # NOTE: the summary stands in for everything before the boundary, so the folded turn
@@ -130,10 +169,69 @@ async def test_tool_traffic_is_kept_but_never_replayed(session: AsyncSession) ->
         ],
     )
 
-    assert _texts(await ConversationTranscript(repository, conversation).history()) == [
+    assert _texts(await _transcript(session, conversation).history()) == [
         ('user', 'search it'),
         ('assistant', 'here you go'),
     ]
+
+
+async def test_an_attached_photo_is_stored_as_a_blob_and_a_media_part(
+    session: AsyncSession,
+) -> None:
+    repository = _repository(session)
+    conversation = await repository.get_or_create('support_bot', '5', 'scout')
+
+    await _transcript(session, conversation).record(
+        [TurnPrompt(text='what is this?', actor='user:1', attachments=(_photo(),))],
+        'a duck',
+    )
+
+    turn = (await repository.load_recent_turns(conversation, limit=1))[0]
+    text, media, answer = turn.parts
+    assert (text.role, text.kind) == ('user', 'text')
+    assert (media.role, media.kind) == ('user', 'image')
+    assert (answer.role, answer.kind) == ('assistant', 'text')
+
+    payload = dict(media.payload)
+    stored = payload.pop('blob')
+    # NOTE: the payload carries the reference and the digest, never the bytes -- that is
+    # what keeps compaction and the token estimate off a base64 blob
+    assert payload == {
+        'text': '[image: image/jpeg 8x8]',
+        'actor': 'user:1',
+        'sha256': sha256(_PHOTO).hexdigest(),
+        'mime': 'image/jpeg',
+        'size': len(_PHOTO),
+        'reference': 'file-1',
+        'unique': 'unique-1',
+    }
+    assert await _blob(session, str(stored)) == _PHOTO
+
+
+async def test_a_stored_photo_replays_as_its_placeholder(
+    session: AsyncSession,
+) -> None:
+    repository = _repository(session)
+    conversation = await repository.get_or_create('support_bot', '6', 'scout')
+    transcript = _transcript(session, conversation)
+    await transcript.record(
+        [TurnPrompt(text='', actor='user:1', attachments=(_photo(),))],
+        'a duck',
+    )
+
+    history = await transcript.history()
+
+    # NOTE: the bytes are kept but never replayed -- a later round costs the placeholder,
+    # not a second upload of the same image
+    assert _texts(history) == [
+        ('user', '[image: image/jpeg 8x8]'),
+        ('assistant', 'a duck'),
+    ]
+    assert not any(
+        isinstance(segment, ImageSegment)
+        for message in history
+        for segment in message.segments
+    )
 
 
 @pytest.mark.usefixtures('_migrated')
