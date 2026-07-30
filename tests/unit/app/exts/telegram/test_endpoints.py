@@ -113,6 +113,28 @@ def test_inbound_falls_back_to_the_vendor_voice_mime() -> None:
     assert message.attachments[0].mime == 'audio/ogg'
 
 
+def test_inbound_carries_an_audio_file() -> None:
+    message = _inbound(
+        'support',
+        body(
+            audio={
+                'file_id': 'audio-file',
+                'file_unique_id': 'audio-unique',
+                'duration': 154,
+                'mime_type': 'audio/mpeg',
+                'file_size': 2_000_000,
+            },
+        ),
+    )
+
+    assert message is not None
+    assert len(message.attachments) == 1
+    attachment = message.attachments[0]
+    assert attachment.kind == 'audio'
+    assert attachment.mime == 'audio/mpeg'
+    assert attachment.reference == 'audio-file'
+
+
 def test_inbound_carries_both_a_photo_and_a_voice_note() -> None:
     message = _inbound(
         'support',

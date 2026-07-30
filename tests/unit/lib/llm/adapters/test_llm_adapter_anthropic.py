@@ -25,6 +25,7 @@ from lib.llm import (
     CompletionRequest,
     Effort,
     FinishChunk,
+    ImageSegment,
     Message,
     OutputSchema,
     TextChunk,
@@ -144,6 +145,62 @@ def test_build_messages_preserves_segment_order_within_message() -> None:
             'content': [
                 {'type': 'text', 'text': 'looking...'},
                 {'type': 'tool_use', 'id': 'call_1', 'name': 'search', 'input': {}},
+            ],
+        },
+    ]
+
+
+def test_build_messages_wraps_image_segment_in_base64_source_block() -> None:
+    messages = (
+        Message(
+            role='user',
+            segments=(
+                TextSegment(text='what is this'),
+                ImageSegment(media_type='image/jpeg', data='YQ=='),
+            ),
+        ),
+    )
+
+    assert list(build_messages(messages)) == [
+        {
+            'role': 'user',
+            'content': [
+                {'type': 'text', 'text': 'what is this'},
+                {
+                    'type': 'image',
+                    'source': {
+                        'type': 'base64',
+                        'data': 'YQ==',
+                        'media_type': 'image/jpeg',
+                    },
+                },
+            ],
+        },
+    ]
+
+
+def test_build_messages_marks_a_trailing_image_cacheable() -> None:
+    messages = (
+        Message(
+            role='user',
+            segments=(ImageSegment(media_type='image/png', data='Yg=='),),
+            cacheable=True,
+        ),
+    )
+
+    assert list(build_messages(messages)) == [
+        {
+            'role': 'user',
+            'content': [
+                {
+                    'type': 'image',
+                    'source': {
+                        'type': 'base64',
+                        'data': 'Yg==',
+                        'media_type': 'image/png',
+                    },
+                    'cache_control': {'type': 'ephemeral'},
+                },
             ],
         },
     ]

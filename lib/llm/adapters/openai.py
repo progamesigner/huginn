@@ -5,6 +5,9 @@ from openai import AsyncOpenAI, omit
 from openai.types.chat import (
     ChatCompletionAssistantMessageParam,
     ChatCompletionChunk,
+    ChatCompletionContentPartImageParam,
+    ChatCompletionContentPartParam,
+    ChatCompletionContentPartTextParam,
     ChatCompletionFunctionToolParam,
     ChatCompletionMessageFunctionToolCallParam,
     ChatCompletionMessageParam,
@@ -13,6 +16,7 @@ from openai.types.chat import (
     ChatCompletionToolUnionParam,
     ChatCompletionUserMessageParam,
 )
+from openai.types.chat.chat_completion_content_part_image_param import ImageURL
 from openai.types.chat.chat_completion_message_function_tool_call_param import Function
 from openai.types.shared_params import ResponseFormatJSONSchema
 from openai.types.shared_params.response_format_json_schema import JSONSchema
@@ -25,6 +29,7 @@ from lib.llm.types import (
     CompletionRequest,
     FinishChunk,
     FinishReason,
+    ImageSegment,
     Message,
     TextChunk,
     TextSegment,
@@ -45,6 +50,25 @@ _FINISH_REASONS: dict[str, FinishReason] = {
 def build_messages(
     messages: tuple[Message, ...],
 ) -> Iterator[ChatCompletionMessageParam]:
+    def content_parts(
+        text: str | None,
+        images: list[ChatCompletionContentPartImageParam],
+    ) -> Iterator[ChatCompletionContentPartParam]:
+        if text is not None:
+            yield ChatCompletionContentPartTextParam(type='text', text=text)
+        yield from images
+
+    def image_entries(
+        message: Message,
+    ) -> Iterator[ChatCompletionContentPartImageParam]:
+        for segment in message.segments:
+            match segment:
+                case ImageSegment(media_type=media_type, data=data):
+                    yield ChatCompletionContentPartImageParam(
+                        type='image_url',
+                        image_url=ImageURL(url=f'data:{media_type};base64,{data}'),
+                    )
+
     def text_fragments(message: Message) -> Iterator[str]:
         for segment in message.segments:
             match segment:
@@ -76,8 +100,10 @@ def build_messages(
 
         texts = list(text_fragments(message))
         tool_calls = list(tool_call_entries(message))
+        # NOTE: only a user turn can hold an image
+        images = list(image_entries(message)) if message.role == 'user' else []
 
-        if not texts and not tool_calls:
+        if not texts and not tool_calls and not images:
             continue
 
         content = '\n'.join(texts) or None
@@ -86,6 +112,11 @@ def build_messages(
                 yield ChatCompletionSystemMessageParam(
                     role=message.role,
                     content=content or '',
+                )
+            case 'user' if images:
+                yield ChatCompletionUserMessageParam(
+                    role=message.role,
+                    content=list(content_parts(content, images)),
                 )
             case 'user':
                 yield ChatCompletionUserMessageParam(

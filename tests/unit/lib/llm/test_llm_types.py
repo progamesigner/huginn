@@ -5,6 +5,7 @@ from lib.llm import (
     CompletionChunk,
     CompletionRequest,
     FinishChunk,
+    ImageSegment,
     Message,
     OutputSchema,
     Segment,
@@ -61,6 +62,8 @@ def test_segment_union_matches_exhaustively() -> None:
         match segment:
             case TextSegment(text=text):
                 return f'text:{text}'
+            case ImageSegment(media_type=media_type):
+                return f'image:{media_type}'
             case ToolCallSegment(name=name):
                 return f'tool_call:{name}'
             case ToolResultSegment(tool_call_id=tool_call_id):
@@ -76,6 +79,9 @@ def test_segment_union_matches_exhaustively() -> None:
         'tool_result:call_1'
     )
     assert describe(ThinkingSegment(data='...')) == 'thinking:...'
+    assert describe(ImageSegment(media_type='image/jpeg', data='YQ==')) == (
+        'image:image/jpeg'
+    )
 
 
 def test_message_preserves_segment_order() -> None:

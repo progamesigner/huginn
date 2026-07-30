@@ -71,6 +71,14 @@ class Voice(TelegramValue):
     file_size: Annotated[int | None, Field()] = None
 
 
+class Audio(TelegramValue):
+    file_id: Annotated[str, Field()]
+    file_unique_id: Annotated[str, Field()]
+    duration: Annotated[int, Field()]
+    mime_type: Annotated[str | None, Field()] = None
+    file_size: Annotated[int | None, Field()] = None
+
+
 class Message(TelegramValue):
     message_id: Annotated[int, Field()]
     date: Annotated[int, Field()]
@@ -79,7 +87,8 @@ class Message(TelegramValue):
     text: Annotated[str | None, Field()] = None
     caption: Annotated[str | None, Field()] = None
     photo: Annotated[tuple[PhotoSize, ...], Field()] = ()
-    audio: Annotated[Voice | None, Field()] = None
+    audio: Annotated[Audio | None, Field()] = None
+    voice: Annotated[Voice | None, Field()] = None
 
 
 class Update(TelegramValue):

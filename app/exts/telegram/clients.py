@@ -82,10 +82,6 @@ class TelegramClient:
             bool,
         )
 
-    def _adapt[T](self, result: type[T], response: bytes) -> T:
-        parsed = TelegramResponse.model_validate_json(response)
-        return TypeAdapter(result).validate_python(parsed.result)
-
     async def _post[T](
         self,
         method: str,

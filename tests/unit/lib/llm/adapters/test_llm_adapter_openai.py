@@ -16,6 +16,7 @@ from lib.http import HTTPClientManager
 from lib.llm import (
     CompletionRequest,
     FinishChunk,
+    ImageSegment,
     Message,
     OutputSchema,
     TextChunk,
@@ -90,6 +91,86 @@ def test_build_messages_drops_thinking_segments() -> None:
     )
 
     assert list(build_messages(messages)) == [{'role': 'assistant', 'content': 'ok'}]
+
+
+def test_build_messages_turns_an_image_into_content_parts() -> None:
+    messages = (
+        Message(
+            role='user',
+            segments=(
+                TextSegment(text='what is this'),
+                ImageSegment(media_type='image/jpeg', data='YQ=='),
+            ),
+        ),
+    )
+
+    assert list(build_messages(messages)) == [
+        {
+            'role': 'user',
+            'content': [
+                {'type': 'text', 'text': 'what is this'},
+                {
+                    'type': 'image_url',
+                    'image_url': {'url': 'data:image/jpeg;base64,YQ=='},
+                },
+            ],
+        },
+    ]
+
+
+def test_build_messages_sends_an_image_without_a_caption() -> None:
+    messages = (
+        Message(
+            role='user',
+            segments=(ImageSegment(media_type='image/png', data='Yg=='),),
+        ),
+    )
+
+    assert list(build_messages(messages)) == [
+        {
+            'role': 'user',
+            'content': [
+                {
+                    'type': 'image_url',
+                    'image_url': {'url': 'data:image/png;base64,Yg=='},
+                },
+            ],
+        },
+    ]
+
+
+# NOTE: the wire shape of a text-only turn must not change just because images exist
+def test_build_messages_keeps_plain_content_for_a_text_only_turn() -> None:
+    messages = (Message(role='user', segments=(TextSegment(text='hi'),)),)
+
+    assert list(build_messages(messages)) == [{'role': 'user', 'content': 'hi'}]
+
+
+def test_build_messages_drops_an_image_outside_a_user_turn() -> None:
+    messages = (
+        Message(
+            role='system',
+            segments=(
+                TextSegment(text='be brief'),
+                ImageSegment(media_type='image/jpeg', data='YQ=='),
+            ),
+        ),
+    )
+
+    assert list(build_messages(messages)) == [
+        {'role': 'system', 'content': 'be brief'},
+    ]
+
+
+def test_build_messages_skips_a_system_message_holding_only_an_image() -> None:
+    messages = (
+        Message(
+            role='system',
+            segments=(ImageSegment(media_type='image/jpeg', data='YQ=='),),
+        ),
+    )
+
+    assert list(build_messages(messages)) == []
 
 
 def test_build_messages_preserves_order_across_messages() -> None:

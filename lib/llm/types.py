@@ -16,6 +16,11 @@ class TextSegment(LLMValue):
     text: Annotated[str, Field()]
 
 
+class ImageSegment(LLMValue):
+    media_type: Annotated[str, Field()]
+    data: Annotated[str, Field()]
+
+
 class ToolCallSegment(LLMValue):
     id: Annotated[str, Field()]
     name: Annotated[str, Field()]
@@ -32,7 +37,9 @@ class ThinkingSegment(LLMValue):
     data: Annotated[JsonValue, Field()]
 
 
-type Segment = TextSegment | ToolCallSegment | ToolResultSegment | ThinkingSegment
+type Segment = (
+    TextSegment | ImageSegment | ToolCallSegment | ToolResultSegment | ThinkingSegment
+)
 
 
 class Message(LLMValue):

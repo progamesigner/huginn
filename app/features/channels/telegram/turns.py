@@ -84,7 +84,7 @@ class TelegramTurnProcessor:
         channel: TelegramChannelConfig,
         messages: tuple[InboundMessage, ...],
     ) -> TurnRequest:
-        actors: dict[str, str] = {}
+        actors = {}
         prompts = []
         for message in messages:
             if not message.text:

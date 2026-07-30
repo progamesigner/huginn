@@ -39,15 +39,16 @@ def _attachments(message: Message) -> Iterator[InboundAttachment]:
             message.message_id,
         )
 
-    if (audio := message.audio) is not None:
-        yield InboundAttachment(
-            kind='audio',
-            mime=audio.mime_type or MEDIA.audio_mime,
-            reference=audio.file_id,
-            unique=audio.file_unique_id,
-            duration=audio.duration,
-            size=audio.file_size,
-        )
+    for sound in (message.voice, message.audio):
+        if sound is not None:
+            yield InboundAttachment(
+                kind='audio',
+                mime=sound.mime_type or MEDIA.audio_mime,
+                reference=sound.file_id,
+                unique=sound.file_unique_id,
+                duration=sound.duration,
+                size=sound.file_size,
+            )
 
 
 def _inbound(channel: str, body: bytes) -> InboundMessage | None:

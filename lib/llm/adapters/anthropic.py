@@ -1,10 +1,12 @@
 import json
 from collections.abc import AsyncIterator, Callable, Iterator
-from typing import cast
+from typing import Literal, cast
 
 from anthropic import AsyncAnthropic, omit
 from anthropic.types import (
+    Base64ImageSourceParam,
     CacheControlEphemeralParam,
+    ImageBlockParam,
     InputJSONDelta,
     JSONOutputFormatParam,
     MessageParam,
@@ -33,6 +35,7 @@ from lib.llm.types import (
     CompletionRequest,
     FinishChunk,
     FinishReason,
+    ImageSegment,
     Message,
     TextChunk,
     TextSegment,
@@ -55,8 +58,13 @@ _STOP_REASONS: dict[str, FinishReason] = {
 }
 
 type _Block = (
-    TextBlockParam | ToolUseBlockParam | ToolResultBlockParam | ThinkingBlockParam
+    TextBlockParam
+    | ImageBlockParam
+    | ToolUseBlockParam
+    | ToolResultBlockParam
+    | ThinkingBlockParam
 )
+type _MediaType = Literal['image/gif', 'image/jpeg', 'image/png', 'image/webp']
 
 
 def build_messages(messages: tuple[Message, ...]) -> Iterator[MessageParam]:
@@ -76,6 +84,18 @@ def build_messages(messages: tuple[Message, ...]) -> Iterator[MessageParam]:
                     if cache_control:
                         block['cache_control'] = cache_control
                     yield block
+                case ImageSegment(media_type=media_type, data=data):
+                    image = ImageBlockParam(
+                        type='image',
+                        source=Base64ImageSourceParam(
+                            type='base64',
+                            data=data,
+                            media_type=cast(_MediaType, media_type),
+                        ),
+                    )
+                    if cache_control:
+                        image['cache_control'] = cache_control
+                    yield image
                 case ToolCallSegment(id=id_, name=name, arguments=arguments):
                     tool_use = ToolUseBlockParam(
                         type='tool_use',
