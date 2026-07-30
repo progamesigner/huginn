@@ -16,6 +16,7 @@ from app.features.identities.types import (
 from app.ports.channels import (
     ChannelGatewayContract,
     ChannelReplyContract,
+    InboundAttachment,
     InboundMessage,
 )
 
@@ -48,11 +49,13 @@ class FakeReply(ChannelReplyContract):
 class FakeGateway(ChannelGatewayContract):
     abandoned: list[str]
     acknowledged: list[str]
+    fetched: list[str]
     replies: list[FakeReply]
 
     def __init__(self) -> None:
         self.abandoned = []
         self.acknowledged = []
+        self.fetched = []
         self.replies = []
 
     @override
@@ -62,6 +65,11 @@ class FakeGateway(ChannelGatewayContract):
     @override
     async def acknowledge(self, message: InboundMessage) -> None:
         self.acknowledged.append(message.id)
+
+    @override
+    async def fetch(self, attachment: InboundAttachment) -> bytes:
+        self.fetched.append(attachment.reference)
+        return b'bytes'
 
     @override
     def reply(self, message: InboundMessage) -> ChannelReplyContract:

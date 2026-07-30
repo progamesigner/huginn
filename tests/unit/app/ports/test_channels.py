@@ -1,7 +1,11 @@
 from typing import override
 
 from app.features.agents.contracts import TextSink
-from app.ports.channels import ChannelReplyContract, InboundMessage
+from app.ports.channels import (
+    ChannelReplyContract,
+    InboundAttachment,
+    InboundMessage,
+)
 
 
 class FakeReply(ChannelReplyContract):
@@ -52,6 +56,17 @@ def inbound() -> InboundMessage:
         event='7',
         id='31',
         text='hello',
+        attachments=(
+            InboundAttachment(
+                kind='image',
+                mime='image/jpeg',
+                reference='photo-file',
+                unique='photo-unique',
+                height=960,
+                size=400_000,
+                width=1280,
+            ),
+        ),
     )
 
 
@@ -73,3 +88,14 @@ def test_inbound_message_survives_a_round_trip_through_bytes() -> None:
     restored = InboundMessage.model_validate_json(message.model_dump_json())
 
     assert restored == message
+    assert restored.attachments[0].reference == 'photo-file'
+
+
+# NOTE: the queue only ever carries the reference, so bytes staying out of the port is
+# the property that keeps a coalesced round small enough to sit in redis
+def test_inbound_attachment_carries_a_reference_rather_than_content() -> None:
+    fields = set(InboundAttachment.model_fields)
+
+    assert 'data' not in fields
+    assert 'content' not in fields
+    assert 'reference' in fields

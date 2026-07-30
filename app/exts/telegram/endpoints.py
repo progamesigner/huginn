@@ -1,4 +1,5 @@
 import logging
+from collections.abc import Iterator
 from typing import Annotated
 
 from pydantic import ValidationError
@@ -7,17 +8,46 @@ from app.core.dependencies import Provide
 from app.ports.channels import (
     ChannelMessageHandlerContract,
     ChannelResolverContract,
+    InboundAttachment,
     InboundMessage,
 )
 from lib.router import Depends, Header, Request, Response, Router
 
-from .types import WEBHOOK, Update
+from .types import MEDIA, WEBHOOK, Message, Update, select_photo
 
 logger = logging.getLogger(__name__)
 
 _KIND = 'telegram'
 
 router = Router()
+
+
+def _attachments(message: Message) -> Iterator[InboundAttachment]:
+    if (photo := select_photo(message.photo)) is not None:
+        yield InboundAttachment(
+            kind='image',
+            mime=MEDIA.photo_mime,
+            reference=photo.file_id,
+            unique=photo.file_unique_id,
+            height=photo.height,
+            size=photo.file_size,
+            width=photo.width,
+        )
+    elif message.photo:
+        logger.warning(
+            'Every size of photo message %s is over the limit',
+            message.message_id,
+        )
+
+    if (audio := message.audio) is not None:
+        yield InboundAttachment(
+            kind='audio',
+            mime=audio.mime_type or MEDIA.audio_mime,
+            reference=audio.file_id,
+            unique=audio.file_unique_id,
+            duration=audio.duration,
+            size=audio.file_size,
+        )
 
 
 def _inbound(channel: str, body: bytes) -> InboundMessage | None:
@@ -39,6 +69,7 @@ def _inbound(channel: str, body: bytes) -> InboundMessage | None:
         event=str(update.update_id),
         id=str(message.message_id),
         text=message.text or message.caption or '',
+        attachments=tuple(_attachments(message)),
         user=None if message.from_ is None else str(message.from_.id),
     )
 

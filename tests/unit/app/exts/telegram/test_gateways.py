@@ -8,11 +8,12 @@ from pydantic import SecretStr
 from app.exts.telegram.clients import TelegramClient
 from app.exts.telegram.gateways import TelegramGateway, TelegramReply
 from app.features.agents.contracts import TextSink
-from app.ports.channels import InboundMessage
+from app.ports.channels import InboundAttachment, InboundMessage
 from lib.http import HTTPClientManager
 from tests.helpers.clock import FakeClock
 
 _BASE_URL = 'https://api.telegram.org/bottelegram-token'
+_FILE_URL = 'https://api.telegram.org/file/bottelegram-token'
 _CHAT_ID = 123
 _LIMIT = 4096
 
@@ -273,6 +274,37 @@ async def test_abandon_replaces_the_ack_with_the_failure_reaction() -> None:
             {'type': 'emoji', 'emoji': '\N{SHOCKED FACE WITH EXPLODING HEAD}'},
         ],
     }
+
+
+@respx.mock
+async def test_fetch_pulls_the_bytes_behind_an_attachment_reference() -> None:
+    respx.post(f'{_BASE_URL}/getFile').mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                'ok': True,
+                'result': {
+                    'file_id': 'photo-file',
+                    'file_unique_id': 'photo-unique',
+                    'file_size': 5,
+                    'file_path': 'photos/file.jpg',
+                },
+            },
+        ),
+    )
+    respx.get(f'{_FILE_URL}/photos/file.jpg').mock(
+        return_value=httpx.Response(200, content=b'\xff\xd8jpeg'),
+    )
+    attachment = InboundAttachment(
+        kind='image',
+        mime='image/jpeg',
+        reference='photo-file',
+        unique='photo-unique',
+    )
+
+    content = await make_gateway(FakeClock()).fetch(attachment)
+
+    assert content == b'\xff\xd8jpeg'
 
 
 @respx.mock

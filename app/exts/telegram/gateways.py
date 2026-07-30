@@ -7,6 +7,7 @@ from pydantic import SecretStr
 from app.ports.channels import (
     ChannelGatewayContract,
     ChannelReplyContract,
+    InboundAttachment,
     InboundMessage,
 )
 from lib.http import HTTPClientContract
@@ -130,6 +131,10 @@ class TelegramGateway(ChannelGatewayContract):
     @override
     async def acknowledge(self, message: InboundMessage) -> None:
         await self.client.set_message_reaction(message.chat, message.id, _ACK_EMOJI)
+
+    @override
+    async def fetch(self, attachment: InboundAttachment) -> bytes:
+        return await self.client.fetch_file(attachment.reference)
 
     @override
     def reply(self, message: InboundMessage) -> ChannelReplyContract:

@@ -26,6 +26,8 @@ class MessageSpec:
 @dataclass(frozen=True)
 class MediaSpec:
     size_limit: int
+    photo_mime: str
+    audio_mime: str
 
 
 WEBHOOK = WebhookSpec(
@@ -34,7 +36,11 @@ WEBHOOK = WebhookSpec(
     signature_header='X-Telegram-Bot-Api-Secret-Token',
 )
 MESSAGE = MessageSpec(length_limit=4096, edit_interval=timedelta(seconds=1.1))
-MEDIA = MediaSpec(size_limit=5 * 1024 * 1024)
+MEDIA = MediaSpec(
+    size_limit=5 * 1024 * 1024,
+    photo_mime='image/jpeg',
+    audio_mime='audio/ogg',
+)
 
 
 class User(TelegramValue):
@@ -73,7 +79,7 @@ class Message(TelegramValue):
     text: Annotated[str | None, Field()] = None
     caption: Annotated[str | None, Field()] = None
     photo: Annotated[tuple[PhotoSize, ...], Field()] = ()
-    voice: Annotated[Voice | None, Field()] = None
+    audio: Annotated[Voice | None, Field()] = None
 
 
 class Update(TelegramValue):
