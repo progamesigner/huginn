@@ -19,6 +19,17 @@ from app.core.records import AppRecord, TimestampRecordMixin
 _EMPTY_JSON = text("'{}'::jsonb")
 
 
+class BlobRecord(AppRecord):
+    __tablename__ = 'blobs'
+    __table_args__ = (UniqueConstraint('sha256'),)
+
+    sha256: Mapped[str] = mapped_column()
+    mime: Mapped[str] = mapped_column()
+    size: Mapped[int] = mapped_column()
+    data: Mapped[bytes] = mapped_column()
+    created_at: Mapped[datetime] = mapped_column(server_default=func.now())
+
+
 class ConversationRecord(TimestampRecordMixin, AppRecord):
     __tablename__ = 'conversations'
     __table_args__ = (UniqueConstraint('channel', 'chat_id', 'agent'),)
@@ -44,7 +55,7 @@ class TurnRecord(AppRecord):
 
 
 _ROLES = ('assistant', 'system', 'tool', 'user')
-_KINDS = ('summary', 'text', 'tool_call', 'tool_result')
+_KINDS = ('audio', 'image', 'summary', 'text', 'tool_call', 'tool_result')
 
 
 class PartRecord(AppRecord):

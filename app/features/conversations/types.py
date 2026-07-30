@@ -7,6 +7,14 @@ from pydantic import JsonValue
 
 
 @dataclass(frozen=True)
+class Blob:
+    id: UUID
+    sha256: str
+    mime: str
+    size: int
+
+
+@dataclass(frozen=True)
 class Conversation:
     id: UUID
     channel: str

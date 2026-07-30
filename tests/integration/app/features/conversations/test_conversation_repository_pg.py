@@ -77,6 +77,22 @@ async def test_load_recent_turns_orders_by_time_and_limits(
     assert payloads == [{'text': '1'}, {'text': '2'}]
 
 
+@pytest.mark.parametrize('kind', ['audio', 'image'], ids=['audio', 'image'])
+async def test_a_media_part_is_within_the_declared_vocabulary(
+    session: AsyncSession,
+    kind: str,
+) -> None:
+    repository = _repository(session)
+    conversation = await repository.get_or_create('telegram', '77', 'scout')
+
+    turn = await repository.append_turn(
+        conversation,
+        [Part(role='user', kind=kind, payload={'text': 'a placeholder'})],
+    )
+
+    assert [part.kind for part in turn.parts] == [kind]
+
+
 @pytest.mark.parametrize(
     'part',
     [

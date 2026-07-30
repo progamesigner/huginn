@@ -9,7 +9,8 @@ from app.features.agents.providers import AgentProvider
 from lib.container import ContainerContract, ProviderContract
 
 from .compaction import CompactionService
-from .repositories import ConversationRepository
+from .contracts import BlobStoreContract
+from .repositories import BlobRepository, ConversationRepository
 from .services import ConversationTranscriptStore
 
 
@@ -29,6 +30,7 @@ class ConversationProvider(ProviderContract):
             constructor=ConversationRepository,
             scoped=True,
         )
+        container.bind(BlobStoreContract, constructor=BlobRepository, scoped=True)
         container.bind(CompactionService, constructor=CompactionService, scoped=True)
         container.bind(
             TranscriptStoreContract,
