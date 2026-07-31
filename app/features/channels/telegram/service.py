@@ -4,14 +4,14 @@ from uuid import uuid4
 
 from structlog.contextvars import bound_contextvars
 
-from app.core.config.registry import HuginnConfig
-from app.exts.telegram.gateways import build_gateway
-from app.features.channels.config import CHANNELS
-from app.ports.channels import (
+from app.contracts.channels import (
     ChannelGatewayContract,
     ChannelMessageHandlerContract,
     InboundMessage,
 )
+from app.core.config.registry import HuginnConfig
+from app.exts.telegram.gateways import build_gateway
+from app.features.channels.config import CHANNELS
 from lib.concurrency import TaskSupervisorContract
 from lib.http import HTTPClientContract
 from lib.redis import RedisContract

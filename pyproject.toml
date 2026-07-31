@@ -68,7 +68,7 @@ layers = [
     "app.features",
     "app.exts",
     "app.core",
-    "app.ports",
+    "app.contracts",
     "lib",
 ]
 

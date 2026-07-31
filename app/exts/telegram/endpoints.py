@@ -4,14 +4,14 @@ from typing import Annotated
 
 from pydantic import ValidationError
 
-from app.core.dependencies import Provide
-from app.ports.channels import (
+from app.contracts.channels import (
     ChannelMessageHandlerContract,
     ChannelResolverContract,
     InboundAttachment,
     InboundCommand,
     InboundMessage,
 )
+from app.core.dependencies import Provide
 from lib.router import Depends, Header, Request, Response, Router
 
 from .types import MEDIA, WEBHOOK, Message, Update, select_photo

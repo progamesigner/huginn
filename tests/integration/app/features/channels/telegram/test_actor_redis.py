@@ -6,9 +6,9 @@ from datetime import timedelta
 import pytest
 from pydantic import SecretStr
 
+from app.contracts.channels import InboundMessage
 from app.features.channels.telegram.actor import TelegramChatActor
 from app.features.channels.telegram.config import TelegramChannelConfig
-from app.ports.channels import InboundMessage
 from lib.redis import RedisManager
 
 pytestmark = pytest.mark.integration

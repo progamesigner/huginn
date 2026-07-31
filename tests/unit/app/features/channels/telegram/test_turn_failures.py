@@ -9,12 +9,12 @@ import respx
 from pydantic import SecretStr
 from structlog.contextvars import get_contextvars
 
+from app.contracts.channels import InboundMessage
 from app.core.config.registry import HuginnConfig
 from app.features.channels.config import ChannelConfigList
 from app.features.channels.telegram.actor import TelegramChatActor
 from app.features.channels.telegram.config import TelegramChannelConfig
 from app.features.channels.telegram.service import TelegramMessageHandler
-from app.ports.channels import InboundMessage
 from lib.concurrency import TaskSupervisor
 from lib.http import HTTPClientManager
 from lib.redis import RedisContract

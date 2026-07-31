@@ -4,6 +4,7 @@ from typing import override
 
 import pytest
 
+from app.contracts.channels import ChannelReplyContract
 from app.features.agents.config import AgentConfig
 from app.features.agents.contracts import (
     ToolSourceRegistry,
@@ -18,7 +19,6 @@ from app.features.agents.types import (
     TurnPrompt,
     TurnRequest,
 )
-from app.ports.channels import ChannelReplyContract
 from lib.llm import (
     FinishChunk,
     LLMClient,

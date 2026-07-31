@@ -39,11 +39,11 @@ SHARED_SLICES = frozenset(
 ROOT_PACKAGES = ('app', 'bin', 'lib')
 FEATURES_PACKAGE = 'app.features'
 EXTS_PACKAGE = 'app.exts'
-PORTS_PACKAGE = 'app.ports'
+CONTRACTS_PACKAGE = 'app.contracts'
 # An ext slice is named for whose vocabulary it speaks: `clients` and `types` speak the
-# vendor's, `gateways` speaks ours by implementing an app.ports contract, and
+# vendor's, `gateways` speaks ours by implementing an app.contracts contract, and
 # `endpoints` is what the vendor calls inbound. A gateway reaches the app only through
-# those ports, so an ext still never imports a feature. Slice names are plural because
+# those contracts, so an ext still never imports a feature. Slice names are plural because
 # a vendor may well have more than one of each; singular is for a named single thing.
 EXT_SLICE_NAMES = frozenset(
     {
@@ -57,7 +57,7 @@ EXT_SLICE_NAMES = frozenset(
 # A feature reaches an ext in one of two directions, and the slice it names says which.
 # A data-source ext is pulled: the feature calls the vendor, so a repository owns that
 # call and translates the answer into domain values -- `clients` may only be named from
-# there. A transport ext is pushed: it implements an app.ports contract and the feature
+# there. A transport ext is pushed: it implements an app.contracts contract and the feature
 # is handed the result, so its `endpoints` and `gateways` may be named at the wiring
 # point. There is no third way, which is why no blanket "always via a repository" rule
 # survives here: it would demand a repository for a vendor that answers no queries.
@@ -82,10 +82,10 @@ def _exts_dir() -> Path:
     return Path(app.__file__).parent / 'exts'
 
 
-def _ports_dir() -> Path:
+def _contracts_dir() -> Path:
     import app
 
-    return Path(app.__file__).parent / 'ports'
+    return Path(app.__file__).parent / 'contracts'
 
 
 def _tests_dir() -> Path:
@@ -195,7 +195,7 @@ def _ext_client_reach(relative: Path, targets: Iterable[str]) -> Iterator[str]:
             yield (
                 f'{target}: only a repository may call a vendor client;'
                 f' move the call into {sorted(EXT_CLIENT_HOSTS)}'
-                f' or reach the vendor through an app.ports contract instead'
+                f' or reach the vendor through an app.contracts contract instead'
             )
 
 
@@ -209,7 +209,7 @@ def _vendor_types_reach(targets: Iterable[str]) -> Iterator[str]:
         if slice_ == EXT_VENDOR_TYPES_SLICE:
             yield (
                 f'{target}: a vendor payload type stops at the ext;'
-                f' have the adapter hand over an app.ports type instead'
+                f' have the adapter hand over an app.contracts type instead'
             )
 
 
@@ -296,9 +296,9 @@ def _retyped_facts(
             yield f'line {node.lineno}: {node.value!r} is a vendor fact; read the spec'
 
 
-# A port is the seam a lower layer uses to call back into a higher one, so it is the
-# one place the layer rules cannot police by direction alone. These two checks are
-# what keep it from becoming a dumping ground: a port declares a boundary and knows
+# A contract is the seam a lower layer uses to call back into a higher one, so it is
+# the one place the layer rules cannot police by direction alone. These two checks are
+# what keep it from becoming a dumping ground: a contract declares a boundary and knows
 # nothing about the app on either side of it, which leaves no room for an
 # implementation to hide here.
 def _implemented(source: str) -> Iterator[str]:
@@ -316,15 +316,15 @@ def _implemented(source: str) -> Iterator[str]:
             )
         ]
         if body:
-            yield f'line {node.lineno}: {node.name} has a body; a port only declares'
+            yield f'line {node.lineno}: {node.name} has a body; a contract only declares'
 
 
 def _reaches_the_app(source: str, package: str) -> Iterator[str]:
     for target in _import_targets(source, package):
         if (target == 'app' or target.startswith('app.')) and not target.startswith(
-            f'{PORTS_PACKAGE}.',
+            f'{CONTRACTS_PACKAGE}.',
         ):
-            yield f'{target}: a port must not import the app whose boundary it declares'
+            yield f'{target}: a contract must not import the app whose boundary it declares'
 
 
 # A signature declares types; a function body lets ty infer them. An annotation on a
@@ -538,11 +538,11 @@ def test_exts_never_import_a_feature() -> None:
     )
 
 
-def test_ports_only_declare_their_boundary() -> None:
-    root = _ports_dir()
+def test_contracts_only_declare_their_boundary() -> None:
+    root = _contracts_dir()
     modules = sorted(path for path in root.rglob('*.py') if path.name != '__init__.py')
 
-    assert modules, 'no port module found; the check would pass vacuously'
+    assert modules, 'no contract module found; the check would pass vacuously'
 
     violations = [
         f'{path.relative_to(root)}: {message}'
@@ -550,53 +550,58 @@ def test_ports_only_declare_their_boundary() -> None:
         for message in _implemented(path.read_text())
     ]
 
-    assert not violations, 'ports must not implement anything:\n' + '\n'.join(
+    assert not violations, 'contracts must not implement anything:\n' + '\n'.join(
         violations,
     )
 
 
-def test_ports_never_reach_back_into_the_app() -> None:
-    root = _ports_dir()
+def test_contracts_never_reach_back_into_the_app() -> None:
+    root = _contracts_dir()
     violations = [
         f'{path.relative_to(root)}: {message}'
         for path in sorted(root.rglob('*.py'))
         for message in _reaches_the_app(
             path.read_text(),
-            _package_of(path, root, PORTS_PACKAGE),
+            _package_of(path, root, CONTRACTS_PACKAGE),
         )
     ]
 
-    assert not violations, 'ports must stay ignorant of the app:\n' + '\n'.join(
+    assert not violations, 'contracts must stay ignorant of the app:\n' + '\n'.join(
         violations,
     )
 
 
-def test_port_declaration_check_flags_a_body() -> None:
-    assert not list(_implemented('class Port:\n    def read(self) -> int: ...\n'))
+def test_contract_declaration_check_flags_a_body() -> None:
+    assert not list(_implemented('class Boundary:\n    def read(self) -> int: ...\n'))
     assert not list(_implemented('def read() -> None:\n    """Doc."""\n'))
     assert not list(_implemented('MAX = 3\n'))
 
     assert list(_implemented('def read() -> int:\n    return 1\n'))
     assert list(
-        _implemented('class Port:\n    def read(self) -> None:\n        pass\n'),
+        _implemented('class Boundary:\n    def read(self) -> None:\n        pass\n'),
     )
 
 
-def test_port_import_check_flags_app_imports() -> None:
-    assert not list(_reaches_the_app('from lib.router import Router\n', PORTS_PACKAGE))
+def test_contract_import_check_flags_app_imports() -> None:
     assert not list(
-        _reaches_the_app('from dataclasses import dataclass\n', PORTS_PACKAGE),
+        _reaches_the_app('from lib.router import Router\n', CONTRACTS_PACKAGE),
     )
-    # a port may lean on a sibling port's vocabulary
     assert not list(
-        _reaches_the_app('from .channels import InboundMessage\n', PORTS_PACKAGE),
+        _reaches_the_app('from dataclasses import dataclass\n', CONTRACTS_PACKAGE),
+    )
+    # a contract may lean on a sibling contract's vocabulary
+    assert not list(
+        _reaches_the_app('from .channels import InboundMessage\n', CONTRACTS_PACKAGE),
     )
 
     assert list(
-        _reaches_the_app('from app.features.agents.types import Tool\n', PORTS_PACKAGE),
+        _reaches_the_app(
+            'from app.features.agents.types import Tool\n',
+            CONTRACTS_PACKAGE,
+        ),
     )
     assert list(
-        _reaches_the_app('from app.core.settings import Settings\n', PORTS_PACKAGE),
+        _reaches_the_app('from app.core.settings import Settings\n', CONTRACTS_PACKAGE),
     )
 
 
@@ -651,7 +656,7 @@ def test_features_never_name_a_vendor_payload_type() -> None:
 def test_vendor_types_check_flags_only_the_vendor_payload_slice() -> None:
     assert not list(_vendor_types_reach(('app.exts.telegram.gateways',)))
     assert not list(_vendor_types_reach(('app.exts.felo.clients',)))
-    assert not list(_vendor_types_reach(('app.ports.channels',)))
+    assert not list(_vendor_types_reach(('app.contracts.channels',)))
     # our own types slice is a feature's own business
     assert not list(_vendor_types_reach(('app.features.agents.types',)))
 
@@ -668,7 +673,7 @@ def test_ext_client_reach_check_separates_data_sources_from_transports() -> None
         _ext_client_reach(Path('conversations/repositories/repository.py'), client),
     )
     assert not list(_ext_client_reach(Path('skills/sources/muninn.py'), client))
-    # a transport is handed to the feature through a port, so wiring may name it
+    # a transport is handed to the feature through a contract, so wiring may name it
     assert not list(_ext_client_reach(Path('channels/telegram/service.py'), transport))
     assert not list(
         _ext_client_reach(Path('channels/telegram/providers.py'), transport),

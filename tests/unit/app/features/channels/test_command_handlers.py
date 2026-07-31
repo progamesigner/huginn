@@ -1,6 +1,7 @@
 from typing import override
 from uuid import UUID
 
+from app.contracts.channels import InboundCommand, InboundMessage
 from app.features.channels.handlers import CommandHandlers
 from app.features.channels.registry import CommandRegistry
 from app.features.conversations.contracts import ConversationControlContract
@@ -14,7 +15,6 @@ from app.features.identities.types import (
     LinkedPrincipal,
     Principal,
 )
-from app.ports.channels import InboundCommand, InboundMessage
 
 _LINKED = UUID('00000000-0000-7000-8000-000000000001')
 _IDENTITY = UUID('00000000-0000-7000-8000-000000000002')

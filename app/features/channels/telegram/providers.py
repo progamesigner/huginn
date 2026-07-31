@@ -1,6 +1,7 @@
 from datetime import timedelta
 from typing import override
 
+from app.contracts.channels import ChannelMessageHandlerContract
 from app.core.config.registry import HuginnConfig
 from app.core.providers.command import CommandProvider
 from app.core.providers.config import ConfigProvider
@@ -16,7 +17,6 @@ from app.features.channels.registry import CommandRegistry
 from app.features.conversations.providers import ConversationProvider
 from app.features.identities.contracts import IdentityResolverContract
 from app.features.identities.providers import IdentityProvider
-from app.ports.channels import ChannelMessageHandlerContract
 from lib.command import CommandContract
 from lib.concurrency import TaskSupervisor, TaskSupervisorContract
 from lib.container import ContainerContract, ProviderContract

@@ -4,7 +4,7 @@ from typing import override
 
 from pydantic import SecretStr
 
-from app.ports.channels import (
+from app.contracts.channels import (
     ChannelGatewayContract,
     ChannelReplyContract,
     InboundAttachment,

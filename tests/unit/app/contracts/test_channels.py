@@ -1,12 +1,12 @@
 from typing import override
 
-from app.features.agents.contracts import TextSink
-from app.ports.channels import (
+from app.contracts.channels import (
     ChannelReplyContract,
     InboundAttachment,
     InboundCommand,
     InboundMessage,
 )
+from app.features.agents.contracts import TextSink
 
 
 class FakeReply(ChannelReplyContract):
@@ -33,7 +33,7 @@ class FakeReply(ChannelReplyContract):
 
 
 # NOTE: typing the parameter is the assertion — it makes ty prove a core reply
-# port works as the agent loop's sink without either side importing the other
+# contract works as the agent loop's sink without either side importing the other
 async def drive(sink: TextSink, *fragments: str) -> None:
     for fragment in fragments:
         await sink(fragment)
@@ -93,7 +93,7 @@ def test_inbound_message_survives_a_round_trip_through_bytes() -> None:
     assert restored.attachments[0].reference == 'photo-file'
 
 
-# NOTE: the queue only ever carries the reference, so bytes staying out of the port is
+# NOTE: the queue only ever carries the reference, so bytes staying out of the contract is
 # the property that keeps a coalesced round small enough to sit in redis
 def test_inbound_attachment_carries_a_reference_rather_than_content() -> None:
     fields = set(InboundAttachment.model_fields)

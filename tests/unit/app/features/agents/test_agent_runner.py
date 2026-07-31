@@ -10,6 +10,7 @@ import pytest
 from pydantic import Field, JsonValue
 from structlog.contextvars import bound_contextvars, get_contextvars
 
+from app.contracts.channels import AttachmentKind
 from app.features.agents.exceptions import TurnTimeoutError
 from app.features.agents.services import AgentRunner
 from app.features.agents.types import (
@@ -21,7 +22,6 @@ from app.features.agents.types import (
     TurnPrompt,
     TypedTool,
 )
-from app.ports.channels import AttachmentKind
 from lib.llm import (
     CompletionChunk,
     CompletionRequest,

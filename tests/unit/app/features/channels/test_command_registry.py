@@ -1,8 +1,8 @@
 import pytest
 
+from app.contracts.channels import InboundCommand, InboundMessage
 from app.features.channels.exceptions import DuplicateCommandError
 from app.features.channels.registry import CommandRegistry
-from app.ports.channels import InboundCommand, InboundMessage
 
 
 def command(name: str, args: str = '') -> InboundCommand:

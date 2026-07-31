@@ -1,5 +1,6 @@
 from typing import override
 
+from app.contracts.channels import ChannelResolverContract
 from app.core.config.registry import HuginnConfig, SectionRegistry
 from app.core.providers.config import ConfigProvider
 from app.core.providers.http import HTTPClientProvider
@@ -10,7 +11,6 @@ from app.features.identities.contracts import (
     IdentityResolverContract,
 )
 from app.features.identities.providers import IdentityProvider
-from app.ports.channels import ChannelResolverContract
 from lib.container import ContainerContract, ProviderContract
 from lib.http import HTTPClientContract
 

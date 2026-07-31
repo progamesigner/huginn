@@ -2,7 +2,7 @@ from abc import ABC, abstractmethod
 from collections.abc import Awaitable, Callable, Sequence
 from contextlib import AbstractAsyncContextManager
 
-from app.ports.channels import ChannelReplyContract
+from app.contracts.channels import ChannelReplyContract
 from lib.llm import Message
 
 from .config import AgentConfig

@@ -5,10 +5,10 @@ import httpx
 import respx
 from pydantic import SecretStr
 
+from app.contracts.channels import InboundAttachment, InboundMessage
 from app.exts.telegram.clients import TelegramClient
 from app.exts.telegram.gateways import TelegramGateway, TelegramReply
 from app.features.agents.contracts import TextSink
-from app.ports.channels import InboundAttachment, InboundMessage
 from lib.http import HTTPClientManager
 from tests.helpers.clock import FakeClock
 
@@ -47,7 +47,7 @@ def texts(route: respx.Route) -> list[str]:
     return [json.loads(call.request.content)['text'] for call in route.calls]
 
 
-# NOTE: typing the parameter proves the reply port satisfies the agent loop's sink
+# NOTE: typing the parameter proves the reply contract satisfies the agent loop's sink
 async def drive(sink: TextSink, *fragments: str) -> None:
     for fragment in fragments:
         await sink(fragment)
@@ -247,7 +247,7 @@ async def test_acknowledge_reacts_to_the_incoming_message() -> None:
         return_value=httpx.Response(200, json={'ok': True, 'result': True}),
     )
 
-    # NOTE: the port carries the message id, so there is no longer an unparseable
+    # NOTE: the contract carries the message id, so there is no longer an unparseable
     # payload for the gateway to guard against; the adapter discards those at its edge
     await make_gateway(FakeClock()).acknowledge(make_message())
 

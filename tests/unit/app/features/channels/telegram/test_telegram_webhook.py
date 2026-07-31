@@ -9,11 +9,11 @@ import respx
 from fastapi import FastAPI
 from pydantic import SecretStr
 
+from app.contracts.channels import InboundMessage
 from app.core.config.registry import HuginnConfig
 from app.features.channels.config import ChannelConfigList
 from app.features.channels.telegram.actor import TelegramChatActor
 from app.features.channels.telegram.config import TelegramChannelConfig
-from app.ports.channels import InboundMessage
 from bin.server import build
 from lib.mcp import MCPClientContract
 from lib.redis import RedisContract

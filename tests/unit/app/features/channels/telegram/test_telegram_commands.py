@@ -5,6 +5,7 @@ import respx
 from pydantic import SecretStr
 from typer.testing import CliRunner, Result
 
+from app.contracts.channels import InboundCommand, InboundMessage
 from app.core.application import App
 from app.core.config.registry import HuginnConfig
 from app.core.providers.command import CommandProvider
@@ -12,7 +13,6 @@ from app.features.channels.config import ChannelConfig, ChannelConfigList
 from app.features.channels.registry import CommandRegistry
 from app.features.channels.telegram.commands import cli
 from app.features.channels.telegram.config import TelegramChannelConfig
-from app.ports.channels import InboundCommand, InboundMessage
 from lib.command import CommandContract
 from lib.container import ContainerContract, ProviderContract
 from lib.http import HTTPClientContract, HTTPClientManager

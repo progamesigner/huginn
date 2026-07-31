@@ -8,7 +8,7 @@ from uuid import uuid4
 
 from structlog.contextvars import bound_contextvars, get_contextvars
 
-from app.ports.channels import ChannelReplyContract
+from app.contracts.channels import ChannelReplyContract
 from lib.llm import (
     CompletionChunk,
     CompletionRequest,

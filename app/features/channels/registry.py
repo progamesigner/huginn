@@ -3,7 +3,7 @@ from dataclasses import dataclass
 
 from pydantic import BaseModel
 
-from app.ports.channels import InboundCommand, InboundMessage
+from app.contracts.channels import InboundCommand, InboundMessage
 
 from .exceptions import (
     DuplicateChannelKindError,

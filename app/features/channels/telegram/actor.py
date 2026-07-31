@@ -4,7 +4,7 @@ from datetime import timedelta
 
 from pydantic import ValidationError
 
-from app.ports.channels import InboundMessage
+from app.contracts.channels import InboundMessage
 from lib.redis import RedisContract, RedisLock, RedisMailbox
 
 from .config import TelegramChannelConfig
@@ -43,7 +43,7 @@ class TelegramChatActor:
         lock = RedisLock(self.redis, self._key(message, 'lock'), ttl=self.ttl)
         mailbox = RedisMailbox(lock, self._key(message, 'mailbox'))
 
-        # NOTE: the queue carries the port's own serialization, so a drained round is
+        # NOTE: the queue carries the contract's own serialization, so a drained round is
         # read back as our vocabulary and the vendor's payload never reaches the feature
         if not await mailbox.claim(message.model_dump_json().encode()):
             return

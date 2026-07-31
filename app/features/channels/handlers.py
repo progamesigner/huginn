@@ -1,5 +1,6 @@
 from collections.abc import Callable, Iterator
 
+from app.contracts.channels import InboundCommand, InboundMessage
 from app.features.conversations.contracts import ConversationControlContract
 from app.features.identities.contracts import (
     IdentityLinkingContract,
@@ -7,7 +8,6 @@ from app.features.identities.contracts import (
 )
 from app.features.identities.exceptions import InvalidIdentityLinkError
 from app.features.identities.types import AnonymousPrincipal, LinkedPrincipal
-from app.ports.channels import InboundCommand, InboundMessage
 
 from .registry import CommandHandler, CommandRegistry
 

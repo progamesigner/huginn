@@ -6,7 +6,7 @@ from typing import override
 
 from pydantic import BaseModel, ConfigDict, JsonValue, ValidationError
 
-from app.ports.channels import AttachmentKind
+from app.contracts.channels import AttachmentKind
 from lib.llm import Message, ToolCallSegment, ToolResultSegment
 
 from .config import AgentConfig

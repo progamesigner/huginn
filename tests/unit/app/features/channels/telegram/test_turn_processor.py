@@ -4,6 +4,13 @@ from uuid import UUID
 import pytest
 from pydantic import SecretStr
 
+from app.contracts.channels import (
+    ChannelGatewayContract,
+    ChannelReplyContract,
+    InboundAttachment,
+    InboundCommand,
+    InboundMessage,
+)
 from app.features.agents.contracts import TurnHandlerContract
 from app.features.agents.types import TurnRequest
 from app.features.channels.contracts import TranscriptionContract
@@ -16,13 +23,6 @@ from app.features.identities.types import (
     AnonymousPrincipal,
     LinkedPrincipal,
     Principal,
-)
-from app.ports.channels import (
-    ChannelGatewayContract,
-    ChannelReplyContract,
-    InboundAttachment,
-    InboundCommand,
-    InboundMessage,
 )
 
 _LINKED = UUID('00000000-0000-7000-8000-000000000001')
@@ -330,7 +330,7 @@ async def test_an_attachment_reaches_the_turn_with_its_bytes_downloaded() -> Non
         (inbound(1, text='what is this?', attachments=(photo(),)),),
     )
 
-    # NOTE: the port carries a reference only, so the round is where the bytes are
+    # NOTE: the contract carries a reference only, so the round is where the bytes are
     # fetched -- a 5MB photo through the mailbox would be a 6.7MB redis payload
     assert gateway.fetched == ['file-1']
     carried = turns.requests[0].prompts[0].attachments[0]

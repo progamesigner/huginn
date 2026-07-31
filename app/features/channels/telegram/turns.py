@@ -1,6 +1,13 @@
 import logging
 from collections.abc import Callable
 
+from app.contracts.channels import (
+    ChannelGatewayContract,
+    ChannelReplyContract,
+    InboundAttachment,
+    InboundCommand,
+    InboundMessage,
+)
 from app.features.agents.contracts import TurnHandlerContract
 from app.features.agents.types import PromptAttachment, TurnPrompt, TurnRequest
 from app.features.channels.config import routing_policy
@@ -8,13 +15,6 @@ from app.features.channels.contracts import TranscriptionContract
 from app.features.channels.exceptions import TranscriptionUnavailableError
 from app.features.channels.registry import CommandRegistry
 from app.features.identities.contracts import IdentityResolverContract
-from app.ports.channels import (
-    ChannelGatewayContract,
-    ChannelReplyContract,
-    InboundAttachment,
-    InboundCommand,
-    InboundMessage,
-)
 
 from .config import TelegramChannelConfig
 

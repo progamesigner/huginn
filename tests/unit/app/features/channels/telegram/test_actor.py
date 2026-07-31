@@ -3,9 +3,9 @@ from datetime import timedelta
 
 from pydantic import SecretStr
 
+from app.contracts.channels import InboundMessage
 from app.features.channels.telegram.actor import TelegramChatActor
 from app.features.channels.telegram.config import TelegramChannelConfig
-from app.ports.channels import InboundMessage
 from tests.helpers.redis import FakeClient, make_redis
 
 _TTL = timedelta(seconds=60)
@@ -101,7 +101,7 @@ async def test_the_claim_queues_the_port_message_itself() -> None:
 
     await actor.handle(channel(), message)
 
-    # NOTE: the queue has to round-trip the port, not the vendor payload it came from
+    # NOTE: the queue has to round-trip the contract, not the vendor payload it came from
     _, keys, args = client.evaluated[0]
     payload = args[-1]
 

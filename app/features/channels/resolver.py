@@ -3,8 +3,8 @@ from typing import cast, override
 
 from pydantic import SecretStr
 
+from app.contracts.channels import ChannelResolverContract
 from app.core.config.registry import HuginnConfig
-from app.ports.channels import ChannelResolverContract
 
 from .config import CHANNELS
 
