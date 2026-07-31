@@ -15,7 +15,7 @@ from app.features.channels.config import CHANNELS
 from lib.concurrency import TaskSupervisorContract
 from lib.http import HTTPClientContract
 from lib.redis import RedisContract
-from lib.temporal import ClockContract
+from lib.temporal import ClockContract, Timer
 
 from .actor import TelegramChatActor
 from .config import TelegramChannelConfig
@@ -54,6 +54,9 @@ class TelegramMessageHandler(ChannelMessageHandlerContract):
 
     @override
     async def handle(self, message: InboundMessage) -> None:
+        # NOTE: the clock starts here, before dedupe, so the measured acknowledgement
+        # covers everything this service does rather than only the vendor call
+        timer = self.clock.timer()
         channel = self._channel(message.channel)
         if channel is None:
             logger.error('No telegram channel named %s', message.channel)
@@ -67,7 +70,7 @@ class TelegramMessageHandler(ChannelMessageHandlerContract):
             )
             return
 
-        self.supervisor.spawn(self._process(message, channel))
+        self.supervisor.spawn(self._process(message, channel, timer))
 
     async def _abandon(
         self,
@@ -83,11 +86,18 @@ class TelegramMessageHandler(ChannelMessageHandlerContract):
         self,
         gateway: ChannelGatewayContract,
         message: InboundMessage,
+        timer: Timer,
     ) -> None:
         try:
             await gateway.acknowledge(message)
         except Exception as error:
             logger.warning('Could not acknowledge %s: %s', message.event, error)
+        else:
+            logger.info(
+                'Acknowledged %s after %.3fs',
+                message.event,
+                timer.elapsed().total_seconds(),
+            )
 
     def _channel(self, name: str) -> TelegramChannelConfig | None:
         channel = self.config.section(CHANNELS).root.get(name)
@@ -97,10 +107,11 @@ class TelegramMessageHandler(ChannelMessageHandlerContract):
         self,
         message: InboundMessage,
         channel: TelegramChannelConfig,
+        timer: Timer,
     ) -> None:
         gateway = self.gateway(channel)
         with bound_contextvars(turn_id=uuid4().hex):
-            await self._acknowledge(gateway, message)
+            await self._acknowledge(gateway, message, timer)
             try:
                 await self.actor.handle(channel, message)
             except Exception:

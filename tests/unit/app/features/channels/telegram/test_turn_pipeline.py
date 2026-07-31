@@ -1,11 +1,13 @@
 import asyncio
 import json
-from collections.abc import AsyncIterator
-from contextlib import asynccontextmanager
+import logging
+from collections.abc import AsyncIterator, Iterator
+from contextlib import asynccontextmanager, contextmanager
 from typing import override
 from unittest.mock import AsyncMock, MagicMock
 
 import httpx
+import pytest
 import respx
 from fastapi import FastAPI
 from pydantic import SecretStr
@@ -32,6 +34,12 @@ _JPEG = b'\xff\xd8\xff\xe0 not really a jpeg'
 _VOICE = b'OggS not really an ogg'
 _HEADER = 'X-Telegram-Bot-Api-Secret-Token'
 _PATH = '/webhooks/telegram'
+_MILESTONES = (
+    'Received telegram webhook',
+    'Acknowledged',
+    'Sent the first draft',
+    'Finished the reply',
+)
 
 
 class StreamingTurns(TurnHandlerContract):
@@ -193,6 +201,18 @@ async def pipeline(turns: TurnHandlerContract) -> AsyncIterator[httpx.AsyncClien
                 yield client
 
 
+@contextmanager
+def recording(caplog: pytest.LogCaptureFixture) -> Iterator[None]:
+    # NOTE: building the app configures logging, which drops the handler caplog installed
+    # before the test started -- so it goes back on once the container is wired
+    root = logging.getLogger()
+    root.addHandler(caplog.handler)
+    try:
+        yield
+    finally:
+        root.removeHandler(caplog.handler)
+
+
 @respx.mock
 async def test_a_webhook_message_reaches_the_agent_turn_and_answers_in_chat() -> None:
     # NOTE: everything between the webhook and the vendor is real here -- dedupe, ack,
@@ -326,3 +346,36 @@ async def test_a_voice_note_with_no_transcription_configured_is_answered_anyway(
         'chat_id': str(_CHAT_ID),
         'text': 'I could not read that voice message; please send it as text.',
     }
+
+
+@respx.mock
+async def test_one_round_logs_the_four_milestones_in_order(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    respx.post(f'{_BASE_URL}/setMessageReaction').mock(
+        return_value=httpx.Response(200, json={'ok': True, 'result': True}),
+    )
+    respx.post(f'{_BASE_URL}/sendMessage').mock(return_value=message(7))
+    respx.post(f'{_BASE_URL}/editMessageText').mock(return_value=message(7))
+    turns = StreamingTurns()
+
+    with caplog.at_level('INFO'):
+        async with pipeline(turns) as client:
+            with recording(caplog):
+                response = await client.post(
+                    _PATH,
+                    headers={_HEADER: 'sekret'},
+                    json=update(7),
+                )
+                assert response.status_code == 200
+                async with asyncio.timeout(1):
+                    await turns.done.wait()
+
+    # NOTE: these four are what the staging runbook measures a round by, so the order
+    # they appear in is part of the contract, not an accident of where the calls sit
+    assert [
+        milestone
+        for record in caplog.records
+        for milestone in _MILESTONES
+        if record.message.startswith(milestone)
+    ] == list(_MILESTONES)

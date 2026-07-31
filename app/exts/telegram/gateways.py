@@ -47,6 +47,8 @@ class TelegramReply(ChannelReplyContract):
     draft: int | None
     sent: str
     pending: str
+    started: bool
+    opened: Timer
     timer: Timer
 
     def __init__(
@@ -66,6 +68,10 @@ class TelegramReply(ChannelReplyContract):
         self.draft = None
         self.sent = ''
         self.pending = ''
+        self.started = False
+        # NOTE: `timer` is reset on every write to throttle edits; `opened` never is, so
+        # the two reply milestones stay measured from the moment the round opened
+        self.opened = clock.timer()
         self.timer = clock.timer()
 
     @override
@@ -81,6 +87,10 @@ class TelegramReply(ChannelReplyContract):
     @override
     async def finish(self) -> None:
         await self._flush()
+        logger.info(
+            'Finished the reply after %.3fs',
+            self.opened.elapsed().total_seconds(),
+        )
 
     @override
     async def on_text(self, fragment: str) -> None:
@@ -109,6 +119,14 @@ class TelegramReply(ChannelReplyContract):
 
         if self.draft is None:
             self.draft = (await self.client.send_message(self.chat_id, text)).message_id
+            # NOTE: a rollover clears `draft` too, so without this the continuation
+            # message would report itself as the first one
+            if not self.started:
+                self.started = True
+                logger.info(
+                    'Sent the first draft after %.3fs',
+                    self.opened.elapsed().total_seconds(),
+                )
         else:
             await self.client.edit_message_text(self.chat_id, self.draft, text)
 

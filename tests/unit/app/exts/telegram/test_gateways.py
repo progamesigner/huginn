@@ -2,6 +2,7 @@ import json
 from datetime import timedelta
 
 import httpx
+import pytest
 import respx
 from pydantic import SecretStr
 
@@ -198,6 +199,47 @@ async def test_keeps_editing_the_continuation_message_after_a_rollover() -> None
         'message_id': 8,
         'text': 'second line',
     }
+
+
+@respx.mock
+async def test_the_reply_milestones_are_measured_from_when_the_round_opened(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    respx.post(f'{_BASE_URL}/sendMessage').mock(return_value=message(7))
+    respx.post(f'{_BASE_URL}/editMessageText').mock(return_value=message(7))
+    clock = FakeClock()
+    streamer = make_reply(clock)
+
+    with caplog.at_level('INFO'):
+        clock.advance(timedelta(seconds=2))
+        await drive(streamer.on_text, 'the ')
+        clock.advance(timedelta(seconds=3))
+        await drive(streamer.on_text, 'answer')
+        await streamer.finish()
+
+    # NOTE: the throttle timer restarts on every write, so measuring off it would report
+    # the gap since the last edit instead of how long the user waited
+    assert 'Sent the first draft after 2.000s' in caplog.messages
+    assert 'Finished the reply after 5.000s' in caplog.messages
+
+
+@respx.mock
+async def test_a_rollover_does_not_report_itself_as_the_first_draft(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    respx.post(f'{_BASE_URL}/sendMessage').mock(side_effect=[message(7), message(8)])
+    streamer = TelegramReply(make_client(), _CHAT_ID, FakeClock(), limit=12)
+
+    with caplog.at_level('INFO'):
+        await drive(streamer.on_text, 'first line\nsecond line')
+        await streamer.finish()
+
+    drafts = [
+        message_
+        for message_ in caplog.messages
+        if message_.startswith('Sent the first')
+    ]
+    assert len(drafts) == 1
 
 
 @respx.mock
