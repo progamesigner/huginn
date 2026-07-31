@@ -33,7 +33,7 @@ class IdentityProvider(ProviderContract):
     @override
     def __call__(self, container: ContainerContract) -> None:
         container.bind(IdentityRepository, constructor=IdentityRepository, scoped=True)
-        container.bind(IdentityTokenCodec, factory=_token_codec, scoped=True)
+        container.bind(IdentityTokenCodec, factory=_token_codec, shared=True)
         container.bind(
             IdentityLinkingService,
             constructor=IdentityLinkingService,
