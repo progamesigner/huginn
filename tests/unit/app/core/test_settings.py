@@ -1,3 +1,5 @@
+import json
+
 import pytest
 from pydantic import SecretStr, ValidationError
 from pydantic_settings import SettingsConfigDict
@@ -81,6 +83,43 @@ def test_providers_accepts_constructor_override() -> None:
     settings = IsolatedSettings(providers=(provider,))
 
     assert settings.providers == (provider,)
+
+
+def test_providers_are_read_from_the_environment(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # NOTE: pydantic-settings decodes this into lists before validation, and a strict
+    # model refuses a list where it wants a tuple -- so without JSON-mode validation the
+    # only way to configure a provider is to construct one in python
+    monkeypatch.setenv(
+        'HUGINN_PROVIDERS',
+        json.dumps(
+            [
+                {
+                    'name': 'openai',
+                    'adapter': 'openai',
+                    'api_key': 'sk-test',
+                    'models': ['gpt-5-mini', 'gpt-5'],
+                },
+            ],
+        ),
+    )
+
+    settings = IsolatedSettings()
+
+    assert len(settings.providers) == 1
+    assert settings.providers[0].name == 'openai'
+    assert settings.providers[0].models == ('gpt-5-mini', 'gpt-5')
+    assert settings.providers[0].api_key.get_secret_value() == 'sk-test'
+
+
+def test_a_malformed_provider_is_still_reported_as_a_validation_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv('HUGINN_PROVIDERS', json.dumps([{'name': 'openai'}]))
+
+    with pytest.raises(ValidationError, match='adapter'):
+        IsolatedSettings()
 
 
 def test_connection_urls_default_to_empty_mappings() -> None:
