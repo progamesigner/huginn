@@ -8,14 +8,20 @@ from lib.http import HTTPClientContract
 from .exceptions import MediaTooLargeError, MediaUnavailableError
 from .types import (
     MEDIA,
+    WEBHOOK,
     BotCommand,
     File,
     Message,
     ReactionTypeEmoji,
     TelegramResponse,
+    WebhookInfo,
 )
 
 _MAX_ATTEMPTS = 3
+
+
+def webhook_url(base_url: str) -> str:
+    return f'{base_url.rstrip("/")}{WEBHOOK.path}'
 
 
 class TelegramClient:
@@ -28,6 +34,13 @@ class TelegramClient:
         self.base_url = f'https://api.telegram.org/bot{token}'
         self.file_url = f'https://api.telegram.org/file/bot{token}'
         self.http = http
+
+    async def delete_webhook(self, drop_pending_updates: bool = False) -> bool:
+        return await self._post(
+            'deleteWebhook',
+            {'drop_pending_updates': drop_pending_updates},
+            bool,
+        )
 
     async def download_file(self, file_path: str) -> bytes:
         return await self._request(self.file_url, file_path)
@@ -66,6 +79,9 @@ class TelegramClient:
     async def get_file(self, file_id: str) -> File:
         return await self._post('getFile', {'file_id': file_id}, File)
 
+    async def get_webhook_info(self) -> WebhookInfo:
+        return await self._post('getWebhookInfo', {}, WebhookInfo)
+
     async def send_message(self, chat_id: int | str, text: str) -> Message:
         return await self._post(
             'sendMessage',
@@ -97,6 +113,24 @@ class TelegramClient:
                 'chat_id': chat_id,
                 'message_id': message_id,
                 'reaction': [reaction.model_dump()],
+            },
+            bool,
+        )
+
+    async def set_webhook(
+        self,
+        url: str,
+        secret_token: SecretStr,
+        allowed_updates: Sequence[str],
+        drop_pending_updates: bool = False,
+    ) -> bool:
+        return await self._post(
+            'setWebhook',
+            {
+                'url': url,
+                'secret_token': secret_token.get_secret_value(),
+                'allowed_updates': list(allowed_updates),
+                'drop_pending_updates': drop_pending_updates,
             },
             bool,
         )

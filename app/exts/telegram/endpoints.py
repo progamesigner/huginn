@@ -102,7 +102,7 @@ def _inbound(channel: str, body: bytes) -> InboundMessage | None:
     )
 
 
-@router.post('/webhooks/telegram')
+@router.post(WEBHOOK.path)
 async def telegram_webhook(
     request: Request,
     resolver: Annotated[

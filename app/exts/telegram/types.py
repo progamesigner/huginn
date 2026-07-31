@@ -13,6 +13,7 @@ class TelegramValue(BaseModel):
 @dataclass(frozen=True)
 class WebhookSpec:
     ack_status: int
+    path: str
     reject_status: int
     signature_header: str
 
@@ -32,6 +33,7 @@ class MediaSpec:
 
 WEBHOOK = WebhookSpec(
     ack_status=200,
+    path='/webhooks/telegram',
     reject_status=403,
     signature_header='X-Telegram-Bot-Api-Secret-Token',
 )
@@ -114,6 +116,16 @@ class File(TelegramValue):
 class BotCommand(TelegramValue):
     command: Annotated[str, Field()]
     description: Annotated[str, Field()]
+
+
+class WebhookInfo(TelegramValue):
+    url: Annotated[str, Field()]
+    has_custom_certificate: Annotated[bool, Field()]
+    pending_update_count: Annotated[int, Field()]
+    allowed_updates: Annotated[tuple[str, ...], Field()] = ()
+    last_error_date: Annotated[int | None, Field()] = None
+    last_error_message: Annotated[str | None, Field()] = None
+    max_connections: Annotated[int | None, Field()] = None
 
 
 class ReactionTypeEmoji(TelegramValue):

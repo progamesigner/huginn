@@ -5,7 +5,7 @@ import pytest
 import respx
 from pydantic import SecretStr
 
-from app.exts.telegram.clients import TelegramClient
+from app.exts.telegram.clients import TelegramClient, webhook_url
 from app.exts.telegram.exceptions import MediaTooLargeError, MediaUnavailableError
 from lib.http import HTTPClientManager
 
@@ -224,6 +224,110 @@ async def test_retries_server_errors_then_raises(
         await make_client().send_message(123, 'hello')
 
     assert route.call_count == 3
+
+
+@respx.mock
+async def test_set_webhook_registers_the_url_with_the_secret_and_updates() -> None:
+    route = respx.post(f'{_BASE_URL}/setWebhook').mock(
+        return_value=httpx.Response(200, json={'ok': True, 'result': True}),
+    )
+
+    result = await make_client().set_webhook(
+        'https://huginn.example.com/webhooks/telegram',
+        SecretStr('webhook-secret'),
+        ['message'],
+        drop_pending_updates=True,
+    )
+
+    assert json.loads(route.calls.last.request.content) == {
+        'url': 'https://huginn.example.com/webhooks/telegram',
+        'secret_token': 'webhook-secret',
+        'allowed_updates': ['message'],
+        'drop_pending_updates': True,
+    }
+    assert result is True
+
+
+@respx.mock
+async def test_delete_webhook_defaults_to_keeping_pending_updates() -> None:
+    route = respx.post(f'{_BASE_URL}/deleteWebhook').mock(
+        return_value=httpx.Response(200, json={'ok': True, 'result': True}),
+    )
+
+    result = await make_client().delete_webhook()
+
+    assert json.loads(route.calls.last.request.content) == {
+        'drop_pending_updates': False,
+    }
+    assert result is True
+
+
+@respx.mock
+async def test_get_webhook_info_reads_the_registration_back() -> None:
+    respx.post(f'{_BASE_URL}/getWebhookInfo').mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                'ok': True,
+                'result': {
+                    'url': 'https://huginn.example.com/webhooks/telegram',
+                    'has_custom_certificate': False,
+                    'pending_update_count': 3,
+                    'allowed_updates': ['message'],
+                    'last_error_date': 1_721_600_000,
+                    'last_error_message': 'Wrong response from the webhook: 502',
+                    'max_connections': 40,
+                    'ip_address': '203.0.113.7',
+                },
+            },
+        ),
+    )
+
+    info = await make_client().get_webhook_info()
+
+    assert info.url == 'https://huginn.example.com/webhooks/telegram'
+    assert info.pending_update_count == 3
+    assert info.allowed_updates == ('message',)
+    assert info.last_error_date == 1_721_600_000
+    assert info.max_connections == 40
+
+
+@respx.mock
+async def test_get_webhook_info_reads_an_unregistered_bot() -> None:
+    respx.post(f'{_BASE_URL}/getWebhookInfo').mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                'ok': True,
+                'result': {
+                    'url': '',
+                    'has_custom_certificate': False,
+                    'pending_update_count': 0,
+                },
+            },
+        ),
+    )
+
+    info = await make_client().get_webhook_info()
+
+    # NOTE: telegram reports "no webhook" as an empty url rather than an absent field
+    assert not info.url
+    assert info.allowed_updates == ()
+    assert info.last_error_message is None
+
+
+def test_webhook_url_joins_the_base_with_the_receiving_route() -> None:
+    assert webhook_url('https://huginn.example.com') == (
+        'https://huginn.example.com/webhooks/telegram'
+    )
+
+
+def test_webhook_url_tolerates_a_trailing_slash_on_the_base() -> None:
+    # NOTE: pydantic's HttpUrl renders a bare origin with a trailing slash, so the
+    # config-supplied base arrives in this shape
+    assert webhook_url('https://huginn.example.com/') == (
+        'https://huginn.example.com/webhooks/telegram'
+    )
 
 
 @respx.mock

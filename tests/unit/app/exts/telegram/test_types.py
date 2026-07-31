@@ -47,6 +47,7 @@ def test_webhook_spec_pins_the_vendor_wire_contract() -> None:
     assert WEBHOOK.signature_header == 'X-Telegram-Bot-Api-Secret-Token'
     assert WEBHOOK.ack_status == 200
     assert WEBHOOK.reject_status == 403
+    assert WEBHOOK.path == '/webhooks/telegram'
 
 
 def test_message_spec_pins_the_vendor_limits() -> None:
