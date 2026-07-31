@@ -70,6 +70,7 @@ channels:
     kind: telegram
     token: ${TELEGRAM_BOT_TOKEN}
     secret_token: ${TELEGRAM_WEBHOOK_SECRET}
+    webhook_base_url: https://huginn.example.com
     bindings:
       '000000000': scout
     router:

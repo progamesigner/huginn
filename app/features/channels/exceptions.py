@@ -27,3 +27,7 @@ class DuplicateCommandError(ChannelError):
 
 class TranscriptionUnavailableError(ChannelError):
     pass
+
+
+class MissingWebhookURLError(ChannelError):
+    pass
