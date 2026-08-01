@@ -28,6 +28,7 @@ def clean_env(monkeypatch: pytest.MonkeyPatch) -> None:
         'HUGINN_REDIS_USER',
         'HUGINN_REDIS_PASSWORD',
         'HUGINN_REDIS_DATABASE',
+        'HUGINN_HTTP_KEEPALIVE_EXPIRY',
     ):
         monkeypatch.delenv(name, raising=False)
 
@@ -37,6 +38,17 @@ def test_defaults() -> None:
 
     assert settings.environment == 'dev'
     assert settings.providers == ()
+    assert settings.http_keepalive_expiry == 300.0
+
+
+def test_http_keepalive_expiry_reads_the_environment(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv('HUGINN_HTTP_KEEPALIVE_EXPIRY', '45')
+
+    settings = IsolatedSettings()
+
+    assert settings.http_keepalive_expiry == 45.0
 
 
 def test_env_override(monkeypatch: pytest.MonkeyPatch) -> None:

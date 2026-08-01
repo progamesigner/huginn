@@ -43,6 +43,7 @@ class HuginnSettings(BaseSettings):
     redis_user: Annotated[str | None, Field()] = None
     redis_password: Annotated[SecretStr | None, Field()] = None
     redis_database: Annotated[int, Field()] = 0
+    http_keepalive_expiry: Annotated[float, Field()] = 300.0
     identity_link_secret: Annotated[SecretStr | None, Field()] = None
     providers: Annotated[tuple[ProviderConfig, ...], Field()] = ()
 

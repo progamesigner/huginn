@@ -1,5 +1,13 @@
+from httpcore import AsyncConnectionPool
+
 from lib.container import Disposable
 from lib.http import HTTPClientManager
+
+
+def pool_of(manager: HTTPClientManager) -> AsyncConnectionPool:
+    pool = manager.transport._pool
+    assert isinstance(pool, AsyncConnectionPool)
+    return pool
 
 
 async def test_connect_configures_client_with_manager_defaults() -> None:
@@ -21,6 +29,20 @@ async def test_connect_applies_configured_limits() -> None:
 
     async with manager.connect() as client:
         assert client.timeout.read == manager.timeout.read
+
+
+def test_keepalive_expiry_reaches_the_shared_pool() -> None:
+    manager = HTTPClientManager()
+
+    assert manager.limits.keepalive_expiry == 300.0
+    assert pool_of(manager)._keepalive_expiry == 300.0
+
+
+def test_keepalive_expiry_is_configurable() -> None:
+    manager = HTTPClientManager(keepalive_expiry=42.0)
+
+    assert manager.limits.keepalive_expiry == 42.0
+    assert pool_of(manager)._keepalive_expiry == 42.0
 
 
 async def test_connect_keeps_shared_pool_open_on_exit() -> None:

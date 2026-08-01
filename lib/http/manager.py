@@ -9,6 +9,7 @@ from .contracts import HTTPClientContract
 _DEFAULT_TIMEOUT = 30.0
 _DEFAULT_MAX_CONNECTIONS = 100
 _DEFAULT_MAX_KEEPALIVE_CONNECTIONS = 20
+_DEFAULT_KEEPALIVE_EXPIRY = 300.0
 
 
 class HTTPClientManager(HTTPClientContract):
@@ -21,10 +22,12 @@ class HTTPClientManager(HTTPClientContract):
         timeout: float = _DEFAULT_TIMEOUT,
         max_connections: int = _DEFAULT_MAX_CONNECTIONS,
         max_keepalive_connections: int = _DEFAULT_MAX_KEEPALIVE_CONNECTIONS,
+        keepalive_expiry: float = _DEFAULT_KEEPALIVE_EXPIRY,
     ) -> None:
         self.limits = Limits(
             max_connections=max_connections,
             max_keepalive_connections=max_keepalive_connections,
+            keepalive_expiry=keepalive_expiry,
         )
         self.timeout = Timeout(timeout)
         self.transport = AsyncHTTPTransport(limits=self.limits)
