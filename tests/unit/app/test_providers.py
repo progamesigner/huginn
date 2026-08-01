@@ -84,6 +84,7 @@ def test_endpoint_provider_mounts_every_route() -> None:
     )
 
     assert {
+        '/anthropic/v1/messages',
         '/healthz',
         '/openai/v1/chat/completions',
         '/readyz',

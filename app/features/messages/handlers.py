@@ -7,20 +7,29 @@ from lib.router import EventSourceResponse
 from lib.temporal import ClockContract
 
 from .exceptions import TurnFailedError
-from .presenters import NativePresenter, OpenAIPresenter, Presenter, encode
+from .presenters import (
+    AnthropicPresenter,
+    NativePresenter,
+    OpenAIPresenter,
+    Presenter,
+    encode,
+)
 from .services import ChatService, PreparedTurn
 from .types import (
     ChatRequest,
+    CompatibleMessage,
     CompatibleRequest,
     Completion,
     CompletionChoice,
     CompletionMessage,
     ErrorEvent,
+    MessageContent,
     TextEvent,
 )
 
 _HEADERS = {'Cache-Control': 'no-cache', 'X-Accel-Buffering': 'no'}
 _COMPLETION_PREFIX = 'chatcmpl'
+_MESSAGE_PREFIX = 'msg'
 
 
 class ChatHandlers:
@@ -37,6 +46,25 @@ class ChatHandlers:
         self.clock = clock
         self.guid = guid
         self.service = service
+
+    async def anthropic(
+        self,
+        ask: CompatibleRequest,
+        client: ApiClient,
+    ) -> EventSourceResponse | CompatibleMessage:
+        prepared = await self._prepare(ask, client)
+        identifier = self._identify(_MESSAGE_PREFIX)
+        if not ask.stream:
+            return CompatibleMessage(
+                id=identifier,
+                model=ask.model,
+                content=(MessageContent(text=await self._answer(prepared)),),
+            )
+
+        return self._streaming(
+            prepared,
+            AnthropicPresenter(identifier, ask.model),
+        )
 
     async def native(self, ask: ChatRequest, client: ApiClient) -> EventSourceResponse:
         prepared = await self.service.prepare(

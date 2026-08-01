@@ -122,3 +122,85 @@ class OpenAIPresenter(Presenter):
 
         self.opened = True
         return {'role': 'assistant', 'content': text}
+
+
+class AnthropicPresenter(Presenter):
+    id: str
+    model: str
+    opened: bool
+
+    def __init__(self, id_: str, model: str) -> None:
+        self.id = id_
+        self.model = model
+        self.opened = False
+
+    @override
+    def present(self, event: TurnEvent) -> Iterator[ServerSentEvent]:
+        match event:
+            case TextEvent(text=text):
+                yield from self._open()
+                yield ServerSentEvent(
+                    event='content_block_delta',
+                    data={
+                        'type': 'content_block_delta',
+                        'index': 0,
+                        'delta': {'type': 'text_delta', 'text': text},
+                    },
+                )
+            case DoneEvent():
+                yield from self._open()
+                yield ServerSentEvent(
+                    event='content_block_stop',
+                    data={'type': 'content_block_stop', 'index': 0},
+                )
+                yield ServerSentEvent(
+                    event='message_delta',
+                    data={
+                        'type': 'message_delta',
+                        'delta': {'stop_reason': 'end_turn', 'stop_sequence': None},
+                    },
+                )
+                yield ServerSentEvent(
+                    event='message_stop',
+                    data={'type': 'message_stop'},
+                )
+            case ErrorEvent(message=message):
+                yield ServerSentEvent(
+                    event='error',
+                    data={
+                        'type': 'error',
+                        'error': {'type': 'api_error', 'message': message},
+                    },
+                )
+            case PingEvent():
+                yield ServerSentEvent(event='ping', data={'type': 'ping'})
+            case OpenedEvent() | RoutedEvent() | ToolEvent():
+                return
+
+    def _open(self) -> Iterator[ServerSentEvent]:
+        if self.opened:
+            return
+
+        self.opened = True
+        yield ServerSentEvent(
+            event='message_start',
+            data={
+                'type': 'message_start',
+                'message': {
+                    'id': self.id,
+                    'type': 'message',
+                    'role': 'assistant',
+                    'model': self.model,
+                    'content': [],
+                    'stop_reason': None,
+                },
+            },
+        )
+        yield ServerSentEvent(
+            event='content_block_start',
+            data={
+                'type': 'content_block_start',
+                'index': 0,
+                'content_block': {'type': 'text', 'text': ''},
+            },
+        )

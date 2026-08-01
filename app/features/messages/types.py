@@ -69,6 +69,20 @@ class Completion(AppResponse):
     choices: Annotated[tuple[CompletionChoice, ...], Field()]
 
 
+class MessageContent(AppResponse):
+    type: Annotated[Literal['text'], Field()] = 'text'
+    text: Annotated[str, Field()]
+
+
+class CompatibleMessage(AppResponse):
+    id: Annotated[str, Field()]
+    type: Annotated[Literal['message'], Field()] = 'message'
+    role: Annotated[Literal['assistant'], Field()] = 'assistant'
+    model: Annotated[str, Field()]
+    content: Annotated[tuple[MessageContent, ...], Field()]
+    stop_reason: Annotated[str, Field()] = 'end_turn'
+
+
 @dataclass(frozen=True)
 class OpenedEvent:
     conversation: str

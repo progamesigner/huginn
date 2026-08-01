@@ -5,7 +5,7 @@ from app.core.dependencies import Authenticated, Provide
 from lib.router import Depends, EventSourceResponse, Router
 
 from .handlers import ChatHandlers
-from .types import ChatRequest, CompatibleRequest, Completion
+from .types import ChatRequest, CompatibleMessage, CompatibleRequest, Completion
 
 router = Router()
 
@@ -28,3 +28,12 @@ async def completions(
     handlers: Annotated[ChatHandlers, Depends(Provide(ChatHandlers))],
 ) -> EventSourceResponse | Completion:
     return await handlers.openai(ask, client)
+
+
+@router.post('/anthropic/v1/messages', response_model=None)
+async def messages(
+    ask: CompatibleRequest,
+    client: Annotated[ApiClient, Depends(Authenticated())],
+    handlers: Annotated[ChatHandlers, Depends(Provide(ChatHandlers))],
+) -> EventSourceResponse | CompatibleMessage:
+    return await handlers.anthropic(ask, client)
