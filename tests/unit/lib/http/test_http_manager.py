@@ -45,6 +45,18 @@ def test_keepalive_expiry_is_configurable() -> None:
     assert pool_of(manager)._keepalive_expiry == 42.0
 
 
+def test_transport_negotiates_http2_by_default() -> None:
+    manager = HTTPClientManager()
+
+    assert pool_of(manager)._http2
+
+
+def test_http2_is_configurable() -> None:
+    manager = HTTPClientManager(http2=False)
+
+    assert not pool_of(manager)._http2
+
+
 async def test_connect_keeps_shared_pool_open_on_exit() -> None:
     manager = HTTPClientManager()
     transport = manager.transport

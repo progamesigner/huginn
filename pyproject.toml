@@ -6,6 +6,7 @@ dependencies = [
     "alembic==1.18.5",
     "asyncpg==0.31.0",
     "fastapi==0.139.0",
+    "h2==4.4.0",
     "httptools==0.8.0",
     "httpx==0.28.1",
     "mcp==1.28.1",

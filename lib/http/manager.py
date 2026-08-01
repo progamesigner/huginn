@@ -10,6 +10,7 @@ _DEFAULT_TIMEOUT = 30.0
 _DEFAULT_MAX_CONNECTIONS = 100
 _DEFAULT_MAX_KEEPALIVE_CONNECTIONS = 20
 _DEFAULT_KEEPALIVE_EXPIRY = 300.0
+_DEFAULT_HTTP2 = True
 
 
 class HTTPClientManager(HTTPClientContract):
@@ -23,6 +24,7 @@ class HTTPClientManager(HTTPClientContract):
         max_connections: int = _DEFAULT_MAX_CONNECTIONS,
         max_keepalive_connections: int = _DEFAULT_MAX_KEEPALIVE_CONNECTIONS,
         keepalive_expiry: float = _DEFAULT_KEEPALIVE_EXPIRY,
+        http2: bool = _DEFAULT_HTTP2,
     ) -> None:
         self.limits = Limits(
             max_connections=max_connections,
@@ -30,7 +32,7 @@ class HTTPClientManager(HTTPClientContract):
             keepalive_expiry=keepalive_expiry,
         )
         self.timeout = Timeout(timeout)
-        self.transport = AsyncHTTPTransport(limits=self.limits)
+        self.transport = AsyncHTTPTransport(limits=self.limits, http2=http2)
 
     @asynccontextmanager
     @override
