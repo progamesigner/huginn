@@ -8,6 +8,7 @@ from app.features.channels.telegram.providers import TelegramProvider
 from app.features.conversations.providers import ConversationProvider
 from app.features.identities.providers import IdentityProvider
 from app.features.mcp.providers import MCPProvider
+from app.features.messages.providers import MessageProvider
 from app.features.skills.providers import SkillsProvider
 from app.features.tools.providers import ToolProvider
 from lib.container import ContainerContract, ProviderContract
@@ -22,6 +23,7 @@ class HuginnProvider(ProviderContract):
         ConversationProvider,
         IdentityProvider,
         MCPProvider,
+        MessageProvider,
         SkillsProvider,
         TelegramProvider,
         ToolProvider,

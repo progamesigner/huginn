@@ -17,7 +17,7 @@ from tests.helpers.schemas import mapped_tables
 # lower tier, which keeps the feature graph a DAG however many features get added; a
 # feature absent from this list may not cross the feature boundary at all.
 FEATURE_TIERS: tuple[frozenset[str], ...] = (
-    frozenset({'channels', 'skills', 'tools'}),
+    frozenset({'channels', 'messages', 'skills', 'tools'}),
     frozenset({'auth'}),
     frozenset({'conversations'}),
     frozenset({'identities'}),

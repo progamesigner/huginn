@@ -83,7 +83,12 @@ def test_endpoint_provider_mounts_every_route() -> None:
         HuginnEndpointProvider(),
     )
 
-    assert {'/healthz', '/readyz', '/webhooks/telegram'} <= paths(container)
+    assert {
+        '/healthz',
+        '/readyz',
+        '/v1/chat',
+        '/webhooks/telegram',
+    } <= paths(container)
 
 
 def test_endpoint_provider_pulls_the_base_wiring_its_routes_need() -> None:
