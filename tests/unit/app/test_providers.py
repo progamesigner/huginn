@@ -85,6 +85,7 @@ def test_endpoint_provider_mounts_every_route() -> None:
 
     assert {
         '/healthz',
+        '/openai/v1/chat/completions',
         '/readyz',
         '/v1/chat',
         '/webhooks/telegram',

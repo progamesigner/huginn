@@ -14,3 +14,8 @@ class ConversationBusyError(AppError):
 class UnroutableRequestError(AppError):
     status = 400
     code = 4
+
+
+class TurnFailedError(AppError):
+    status = 500
+    code = 5

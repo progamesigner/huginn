@@ -3,6 +3,8 @@ from abc import ABC, abstractmethod
 from collections.abc import Iterator
 from typing import override
 
+from pydantic import JsonValue
+
 from lib.router import ServerSentEvent, format_sse_event
 
 from .types import (
@@ -16,7 +18,9 @@ from .types import (
     TurnEvent,
 )
 
+_DONE = '[DONE]'
 _KEEPALIVE = 'ping'
+_TURN_FAILED = 'turn_failed'
 
 
 def _payload(event: ServerSentEvent) -> str | None:
@@ -63,3 +67,58 @@ class NativePresenter(Presenter):
                 yield ServerSentEvent(event='error', data={'message': message})
             case PingEvent():
                 yield ServerSentEvent(comment=_KEEPALIVE)
+
+
+class OpenAIPresenter(Presenter):
+    id: str
+    created: int
+    model: str
+    opened: bool
+
+    def __init__(self, id_: str, created: int, model: str) -> None:
+        self.id = id_
+        self.created = created
+        self.model = model
+        self.opened = False
+
+    @override
+    def present(self, event: TurnEvent) -> Iterator[ServerSentEvent]:
+        match event:
+            case TextEvent(text=text):
+                yield self._chunk(self._delta(text))
+            case DoneEvent():
+                yield self._chunk({}, finish='stop')
+                yield ServerSentEvent(raw_data=_DONE)
+            case ErrorEvent(message=message):
+                yield ServerSentEvent(
+                    data={'error': {'message': message, 'type': _TURN_FAILED}},
+                )
+                yield ServerSentEvent(raw_data=_DONE)
+            case PingEvent():
+                yield ServerSentEvent(comment=_KEEPALIVE)
+            case OpenedEvent() | RoutedEvent() | ToolEvent():
+                return
+
+    def _chunk(
+        self,
+        delta: dict[str, JsonValue],
+        finish: str | None = None,
+    ) -> ServerSentEvent:
+        return ServerSentEvent(
+            data={
+                'id': self.id,
+                'object': 'chat.completion.chunk',
+                'created': self.created,
+                'model': self.model,
+                'choices': [
+                    {'index': 0, 'delta': delta, 'finish_reason': finish},
+                ],
+            },
+        )
+
+    def _delta(self, text: str) -> dict[str, JsonValue]:
+        if self.opened:
+            return {'content': text}
+
+        self.opened = True
+        return {'role': 'assistant', 'content': text}
