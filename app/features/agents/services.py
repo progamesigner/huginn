@@ -306,7 +306,11 @@ class TurnHandler(TurnHandlerContract):
             history = await store.history()
             runner = AgentRunner(
                 client,
-                await build_tool_set(self.sources.sources(), agent.config),
+                await build_tool_set(
+                    self.sources.sources(),
+                    agent.config,
+                    request.denied_tools,
+                ),
                 self.clock,
             )
             output = await runner.run(
@@ -325,10 +329,15 @@ class TurnHandler(TurnHandlerContract):
 async def build_tool_set(
     sources: Sequence[ToolSource],
     agent: AgentConfig,
+    denied: frozenset[str] = frozenset(),
 ) -> ToolSet:
     tools = ToolSet()
     for source in sources:
         for name, tool in await source.collect(agent):
+            if name in denied:
+                logger.info('Tool %s is denied for this turn', name)
+                continue
+
             tools.add(name, tool)
 
     return tools

@@ -33,6 +33,7 @@ class RoutingPolicy:
     bindings: Mapping[str, str] = field(default_factory=dict)
     agent: str | None = None
     selection: SelectionPolicy | None = None
+    allowed: frozenset[str] = field(default_factory=frozenset)
 
 
 @dataclass(frozen=True)
@@ -65,6 +66,7 @@ class TurnRequest:
     chat: str
     policy: RoutingPolicy
     prompts: tuple[TurnPrompt, ...]
+    denied_tools: frozenset[str] = field(default_factory=frozenset)
 
 
 @dataclass(frozen=True)

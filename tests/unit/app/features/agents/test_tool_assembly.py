@@ -57,6 +57,28 @@ async def test_build_tool_set_merges_every_source() -> None:
     assert set(tools.tools) == {'echo', 'recall', 'skill'}
 
 
+async def test_build_tool_set_drops_a_denied_tool() -> None:
+    # NOTE: the denial narrows what the agent is configured with -- a caller may take
+    # tools away from a turn, never add one the agent does not already have
+    tools = await build_tool_set(
+        (FakeSource('echo', 'recall'),),
+        _agent(),
+        frozenset({'recall'}),
+    )
+
+    assert set(tools.tools) == {'echo'}
+
+
+async def test_build_tool_set_denying_an_absent_tool_adds_nothing() -> None:
+    tools = await build_tool_set(
+        (FakeSource('echo'),),
+        _agent(),
+        frozenset({'recall'}),
+    )
+
+    assert set(tools.tools) == {'echo'}
+
+
 async def test_build_tool_set_is_empty_without_sources() -> None:
     tools = await build_tool_set((), _agent())
 

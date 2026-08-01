@@ -14,6 +14,7 @@ from lib.llm import (
     LLMContract,
     ProviderConfig,
     TextChunk,
+    TextSegment,
 )
 
 
@@ -193,3 +194,54 @@ async def test_resolve_raises_when_unbound_and_no_selection_policy() -> None:
 
     with pytest.raises(UnroutableError, match='999'):
         await Router(agents, FakeLLM()).resolve(policy, '999', 'hello')
+
+
+async def test_resolve_offers_the_router_only_the_agents_the_caller_may_reach() -> None:
+    # NOTE: narrowing the pool is what makes an out-of-permission choice impossible
+    # rather than merely rejected -- the model never sees the agent it may not pick
+    client = _saying('concierge')
+    policy = RoutingPolicy(
+        selection=_selection(),
+        allowed=frozenset({'concierge'}),
+    )
+
+    routed = await Router(_agents(), FakeLLM(client), 'default-model').resolve(
+        policy,
+        '999',
+        'hello',
+    )
+
+    prompt = client.requests[0].messages[0].segments[0]
+    assert isinstance(prompt, TextSegment)
+    assert 'concierge' in prompt.text
+    assert 'scout' not in prompt.text
+    assert routed.name == 'concierge'
+
+
+async def test_resolve_refuses_a_binding_outside_what_the_caller_may_reach() -> None:
+    policy = RoutingPolicy(
+        bindings={'123': 'scout'},
+        allowed=frozenset({'concierge'}),
+    )
+
+    with pytest.raises(UnroutableError, match='scout'):
+        await Router(_agents(), FakeLLM()).resolve(policy, '123', 'hello')
+
+
+async def test_resolve_refuses_a_pinned_agent_outside_what_the_caller_may_reach() -> (
+    None
+):
+    policy = RoutingPolicy(agent='scout', allowed=frozenset({'concierge'}))
+
+    with pytest.raises(UnroutableError, match='scout'):
+        await Router(_agents(), FakeLLM()).resolve(policy, '999', 'hello')
+
+
+async def test_resolve_leaves_every_agent_routable_when_nothing_narrows_it() -> None:
+    # NOTE: a channel whose config already names its agents passes no permission, and
+    # must keep reaching all of them
+    policy = RoutingPolicy(agent='scout')
+
+    routed = await Router(_agents(), FakeLLM()).resolve(policy, '999', 'hello')
+
+    assert routed.name == 'scout'

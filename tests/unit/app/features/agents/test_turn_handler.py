@@ -1,11 +1,14 @@
 from collections.abc import AsyncIterator, Sequence
 from contextlib import AbstractAsyncContextManager, asynccontextmanager
+from dataclasses import replace
 from typing import override
 
 import pytest
 
 from app.features.agents.config import AgentConfig
 from app.features.agents.contracts import (
+    NamedTool,
+    ToolSource,
     ToolSourceRegistry,
     TranscriptContract,
     TranscriptStoreContract,
@@ -30,7 +33,7 @@ from lib.llm import (
 from lib.temporal import ClockManager
 from tests.helpers.replies import RecordingReply
 
-from .test_agent_runner import FakeLLM
+from .test_agent_runner import EchoTool, FakeLLM
 
 
 class FakeModels(LLMContract):
@@ -122,6 +125,40 @@ def answering(text: str = 'answer') -> FakeLLM:
     return FakeLLM([[TextChunk(text=text), FinishChunk(reason='stop')]])
 
 
+class FakeSource(ToolSource):
+    named: tuple[NamedTool, ...]
+
+    def __init__(self, *names: str) -> None:
+        self.named = tuple((name, EchoTool()) for name in names)
+
+    @override
+    async def collect(self, agent: AgentConfig) -> Sequence[NamedTool]:
+        return self.named
+
+
+def offered(llm: FakeLLM) -> list[str]:
+    return [
+        schema['function']['name']
+        for schema in llm.requests[0].tools
+        if isinstance(schema, dict) and isinstance(function := schema['function'], dict)
+        for name in [function['name']]
+        if isinstance(name, str)
+    ]
+
+
+def handler_with(llm: FakeLLM, source: ToolSource) -> TurnHandler:
+    sources = ToolSourceRegistry()
+    sources.register(lambda: source)
+
+    return TurnHandler(
+        llm=FakeModels(llm),
+        router=Router(agents(), FakeModels(llm), 'default-model'),
+        sources=sources,
+        store=FakeStore(),
+        clock=ClockManager(),
+    )
+
+
 def make_handler(
     llm: FakeLLM | None,
     store: FakeStore,
@@ -163,6 +200,30 @@ async def test_a_turn_tells_the_reply_which_agent_took_it() -> None:
     await make_handler(answering(), FakeStore()).handle(request('hello'), reply)
 
     assert reply.routed == ['scout']
+
+
+async def test_a_turn_offers_the_model_every_tool_the_request_left_alone() -> None:
+    llm = answering()
+
+    await handler_with(llm, FakeSource('echo', 'recall')).handle(
+        request('hello'),
+        RecordingReply(),
+    )
+
+    assert offered(llm) == ['echo', 'recall']
+
+
+async def test_a_turn_never_offers_the_model_a_denied_tool() -> None:
+    # NOTE: the api key that opened the turn may take a tool away from the agent, and
+    # the only place that can be observed is what the model was offered
+    llm = answering()
+
+    await handler_with(llm, FakeSource('echo', 'recall')).handle(
+        replace(request('hello'), denied_tools=frozenset({'recall'})),
+        RecordingReply(),
+    )
+
+    assert offered(llm) == ['echo']
 
 
 async def test_a_turn_opens_the_transcript_of_the_agent_it_routed_to() -> None:
