@@ -9,7 +9,7 @@ from pydantic import SecretStr
 from app.contracts.channels import InboundAttachment, InboundMessage
 from app.exts.telegram.clients import TelegramClient
 from app.exts.telegram.gateways import TelegramGateway, TelegramReply
-from app.features.agents.contracts import TextSink
+from app.features.agents.contracts import TurnStream
 from lib.http import HTTPClientManager
 from tests.helpers.clock import FakeClock
 
@@ -49,9 +49,11 @@ def texts(route: respx.Route) -> list[str]:
 
 
 # NOTE: typing the parameter proves the reply contract satisfies the agent loop's sink
-async def drive(sink: TextSink, *fragments: str) -> None:
+# NOTE: typing the parameter is the assertion -- it makes ty prove a vendor reply is
+# usable as the agent loop's stream without either side importing the other
+async def drive(sink: TurnStream, *fragments: str) -> None:
     for fragment in fragments:
-        await sink(fragment)
+        await sink.on_text(fragment)
 
 
 @respx.mock
@@ -59,7 +61,7 @@ async def test_sends_a_draft_on_the_first_fragment() -> None:
     send = respx.post(f'{_BASE_URL}/sendMessage').mock(return_value=message(7))
     edit = respx.post(f'{_BASE_URL}/editMessageText').mock(return_value=message(7))
 
-    await drive(make_reply(FakeClock()).on_text, 'He')
+    await drive(make_reply(FakeClock()), 'He')
 
     assert json.loads(send.calls.last.request.content) == {
         'chat_id': _CHAT_ID,
@@ -75,9 +77,9 @@ async def test_holds_edits_inside_the_throttle_window() -> None:
     clock = FakeClock()
     streamer = make_reply(clock)
 
-    await drive(streamer.on_text, 'He')
+    await drive(streamer, 'He')
     clock.advance(timedelta(seconds=1.0))
-    await drive(streamer.on_text, 'llo')
+    await drive(streamer, 'llo')
 
     assert not edit.called
 
@@ -89,9 +91,9 @@ async def test_edits_once_the_throttle_window_elapses() -> None:
     clock = FakeClock()
     streamer = make_reply(clock)
 
-    await drive(streamer.on_text, 'He')
+    await drive(streamer, 'He')
     clock.advance(timedelta(seconds=1.2))
-    await drive(streamer.on_text, 'llo', ' there')
+    await drive(streamer, 'llo', ' there')
 
     assert json.loads(edit.calls.last.request.content) == {
         'chat_id': _CHAT_ID,
@@ -107,7 +109,7 @@ async def test_finish_flushes_the_pending_tail() -> None:
     edit = respx.post(f'{_BASE_URL}/editMessageText').mock(return_value=message(7))
     streamer = make_reply(FakeClock())
 
-    await drive(streamer.on_text, 'He', 'llo', ' there')
+    await drive(streamer, 'He', 'llo', ' there')
     await streamer.finish()
 
     assert texts(edit) == ['Hello there']
@@ -119,7 +121,7 @@ async def test_finish_skips_the_edit_when_the_draft_is_current() -> None:
     edit = respx.post(f'{_BASE_URL}/editMessageText').mock(return_value=message(7))
     streamer = make_reply(FakeClock())
 
-    await drive(streamer.on_text, 'Hello')
+    await drive(streamer, 'Hello')
     await streamer.finish()
 
     assert not edit.called
@@ -131,7 +133,7 @@ async def test_sends_nothing_when_the_turn_produced_no_text() -> None:
     edit = respx.post(f'{_BASE_URL}/editMessageText').mock(return_value=message(7))
     streamer = make_reply(FakeClock())
 
-    await drive(streamer.on_text, '', '')
+    await drive(streamer, '', '')
     await streamer.finish()
 
     assert not send.called
@@ -146,7 +148,7 @@ async def test_rolls_over_into_a_new_message_at_a_line_break() -> None:
     edit = respx.post(f'{_BASE_URL}/editMessageText').mock(return_value=message(7))
     streamer = TelegramReply(make_client(), _CHAT_ID, FakeClock(), limit=12)
 
-    await drive(streamer.on_text, 'first line\nsecond line')
+    await drive(streamer, 'first line\nsecond line')
     await streamer.finish()
 
     assert texts(send) == ['first line', 'second line']
@@ -160,7 +162,7 @@ async def test_rollover_cuts_mid_token_when_there_is_no_whitespace() -> None:
     )
     streamer = TelegramReply(make_client(), _CHAT_ID, FakeClock(), limit=5)
 
-    await drive(streamer.on_text, 'abcdefghij')
+    await drive(streamer, 'abcdefghij')
     await streamer.finish()
 
     assert texts(send) == ['abcde', 'fghij']
@@ -173,7 +175,7 @@ async def test_no_message_exceeds_the_telegram_length_limit() -> None:
     )
     streamer = make_reply(FakeClock())
 
-    await drive(streamer.on_text, 'word ' * 1200)
+    await drive(streamer, 'word ' * 1200)
     await streamer.finish()
 
     written = texts(send)
@@ -190,9 +192,9 @@ async def test_keeps_editing_the_continuation_message_after_a_rollover() -> None
     clock = FakeClock()
     streamer = TelegramReply(make_client(), _CHAT_ID, clock, limit=12)
 
-    await drive(streamer.on_text, 'first line\nsecond')
+    await drive(streamer, 'first line\nsecond')
     clock.advance(timedelta(seconds=1.2))
-    await drive(streamer.on_text, ' line')
+    await drive(streamer, ' line')
 
     assert json.loads(edit.calls.last.request.content) == {
         'chat_id': _CHAT_ID,
@@ -212,9 +214,9 @@ async def test_the_reply_milestones_are_measured_from_when_the_round_opened(
 
     with caplog.at_level('INFO'):
         clock.advance(timedelta(seconds=2))
-        await drive(streamer.on_text, 'the ')
+        await drive(streamer, 'the ')
         clock.advance(timedelta(seconds=3))
-        await drive(streamer.on_text, 'answer')
+        await drive(streamer, 'answer')
         await streamer.finish()
 
     # NOTE: the throttle timer restarts on every write, so measuring off it would report
@@ -231,7 +233,7 @@ async def test_a_rollover_does_not_report_itself_as_the_first_draft(
     streamer = TelegramReply(make_client(), _CHAT_ID, FakeClock(), limit=12)
 
     with caplog.at_level('INFO'):
-        await drive(streamer.on_text, 'first line\nsecond line')
+        await drive(streamer, 'first line\nsecond line')
         await streamer.finish()
 
     drafts = [
@@ -248,7 +250,7 @@ async def test_abandon_annotates_the_draft_it_already_sent() -> None:
     edit = respx.post(f'{_BASE_URL}/editMessageText').mock(return_value=message(7))
     streamer = make_reply(FakeClock())
 
-    await drive(streamer.on_text, 'Half an ans')
+    await drive(streamer, 'Half an ans')
     await streamer.abandon()
 
     written = texts(edit)

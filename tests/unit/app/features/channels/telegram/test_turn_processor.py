@@ -24,38 +24,16 @@ from app.features.identities.types import (
     LinkedPrincipal,
     Principal,
 )
+from tests.helpers.replies import RecordingReply
 
 _LINKED = UUID('00000000-0000-7000-8000-000000000001')
-
-
-class FakeReply(ChannelReplyContract):
-    abandoned: bool
-    finished: bool
-    fragments: list[str]
-
-    def __init__(self) -> None:
-        self.abandoned = False
-        self.finished = False
-        self.fragments = []
-
-    @override
-    async def abandon(self) -> None:
-        self.abandoned = True
-
-    @override
-    async def finish(self) -> None:
-        self.finished = True
-
-    @override
-    async def on_text(self, fragment: str) -> None:
-        self.fragments.append(fragment)
 
 
 class FakeGateway(ChannelGatewayContract):
     abandoned: list[str]
     acknowledged: list[str]
     fetched: list[str]
-    replies: list[FakeReply]
+    replies: list[RecordingReply]
 
     def __init__(self) -> None:
         self.abandoned = []
@@ -78,7 +56,7 @@ class FakeGateway(ChannelGatewayContract):
 
     @override
     def reply(self, message: InboundMessage) -> ChannelReplyContract:
-        reply = FakeReply()
+        reply = RecordingReply()
         self.replies.append(reply)
         return reply
 

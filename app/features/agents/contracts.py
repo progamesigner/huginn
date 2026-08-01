@@ -1,16 +1,24 @@
 from abc import ABC, abstractmethod
-from collections.abc import Awaitable, Callable, Sequence
+from collections.abc import Callable, Sequence
 from contextlib import AbstractAsyncContextManager
+from typing import Protocol
 
-from app.contracts.channels import ChannelReplyContract
+from app.contracts.channels import ChannelReplyContract, ToolPhase
 from lib.llm import Message
 
 from .config import AgentConfig
 from .types import Tool, TurnPrompt, TurnRequest
 
 type NamedTool = tuple[str, Tool]
-type TextSink = Callable[[str], Awaitable[None]]
 type ToolSourceFactory = Callable[[], ToolSource]
+
+
+class TurnStream(Protocol):
+    async def on_routed(self, agent: str) -> None: ...
+
+    async def on_text(self, fragment: str) -> None: ...
+
+    async def on_tool(self, name: str, phase: ToolPhase) -> None: ...
 
 
 class ToolSource(ABC):

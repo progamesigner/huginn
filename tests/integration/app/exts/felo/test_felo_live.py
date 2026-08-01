@@ -13,6 +13,7 @@ from lib.http import HTTPClientManager
 from lib.llm.adapters.openai import OpenAIAdapter
 from lib.llm.client import ProviderConfig
 from lib.temporal import ClockManager
+from tests.helpers.replies import RecordingReply
 
 pytestmark = pytest.mark.integration
 
@@ -86,15 +87,12 @@ async def test_agent_loop_with_websearch_live() -> None:
         model=_OPENAI_MODEL,
     )
 
-    fragments = []
+    sink = RecordingReply()
 
-    async def collect(fragment: str) -> None:
-        fragments.append(fragment)
-
-    output = await AgentRunner(llm, tools, ClockManager()).run(turn, collect)
+    output = await AgentRunner(llm, tools, ClockManager()).run(turn, sink)
 
     executions = [record for step in output.steps for record in step.tools]
 
     assert output.completed
-    assert output.text == ''.join(fragments)
+    assert output.text == ''.join(sink.fragments)
     assert any(record.name == 'websearch' and record.ok for record in executions)

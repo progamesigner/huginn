@@ -1,51 +1,31 @@
-from typing import override
-
 from app.contracts.channels import (
-    ChannelReplyContract,
     InboundAttachment,
     InboundCommand,
     InboundMessage,
 )
-from app.features.agents.contracts import TextSink
+from app.features.agents.contracts import TurnStream
+from tests.helpers.replies import RecordingReply
 
 
-class FakeReply(ChannelReplyContract):
-    fragments: list[str]
-    abandoned: bool
-    finished: bool
-
-    def __init__(self) -> None:
-        self.fragments = []
-        self.abandoned = False
-        self.finished = False
-
-    @override
-    async def abandon(self) -> None:
-        self.abandoned = True
-
-    @override
-    async def on_text(self, fragment: str) -> None:
-        self.fragments.append(fragment)
-
-    @override
-    async def finish(self) -> None:
-        self.finished = True
-
-
-# NOTE: typing the parameter is the assertion — it makes ty prove a core reply
-# contract works as the agent loop's sink without either side importing the other
-async def drive(sink: TextSink, *fragments: str) -> None:
+# NOTE: typing the parameter is the assertion — it makes ty prove a core reply contract
+# satisfies the loop's stream without either side importing the other
+async def drive(sink: TurnStream, agent: str, *fragments: str) -> None:
+    await sink.on_routed(agent)
     for fragment in fragments:
-        await sink(fragment)
+        await sink.on_text(fragment)
+    await sink.on_tool('websearch', 'started')
+    await sink.on_tool('websearch', 'finished')
 
 
-async def test_reply_port_is_usable_as_the_agent_text_sink() -> None:
-    reply = FakeReply()
+async def test_reply_port_is_usable_as_the_agent_turn_stream() -> None:
+    reply = RecordingReply()
 
-    await drive(reply.on_text, 'He', 'llo')
+    await drive(reply, 'scout', 'He', 'llo')
     await reply.finish()
 
+    assert reply.routed == ['scout']
     assert reply.fragments == ['He', 'llo']
+    assert reply.tools == [('websearch', 'started'), ('websearch', 'finished')]
     assert reply.finished
     assert not reply.abandoned
 

@@ -9,6 +9,7 @@ from app.contracts.channels import (
     ChannelReplyContract,
     InboundAttachment,
     InboundMessage,
+    ToolPhase,
 )
 from lib.http import HTTPClientContract
 from lib.temporal import ClockContract, Timer
@@ -93,10 +94,18 @@ class TelegramReply(ChannelReplyContract):
         )
 
     @override
+    async def on_routed(self, agent: str) -> None:
+        logger.debug('Routed the turn to agent %s', agent)
+
+    @override
     async def on_text(self, fragment: str) -> None:
         self.pending += fragment
         if self.draft is None or self.timer.elapsed() >= self.interval:
             await self._flush()
+
+    @override
+    async def on_tool(self, name: str, phase: ToolPhase) -> None:
+        logger.debug('Tool %s %s', name, phase)
 
     async def _flush(self) -> None:
         while len(self.pending) > self.limit:

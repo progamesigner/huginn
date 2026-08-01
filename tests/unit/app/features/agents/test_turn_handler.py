@@ -4,7 +4,6 @@ from typing import override
 
 import pytest
 
-from app.contracts.channels import ChannelReplyContract
 from app.features.agents.config import AgentConfig
 from app.features.agents.contracts import (
     ToolSourceRegistry,
@@ -29,31 +28,9 @@ from lib.llm import (
     TextSegment,
 )
 from lib.temporal import ClockManager
+from tests.helpers.replies import RecordingReply
 
 from .test_agent_runner import FakeLLM
-
-
-class FakeReply(ChannelReplyContract):
-    abandoned: bool
-    finished: bool
-    fragments: list[str]
-
-    def __init__(self) -> None:
-        self.abandoned = False
-        self.finished = False
-        self.fragments = []
-
-    @override
-    async def abandon(self) -> None:
-        self.abandoned = True
-
-    @override
-    async def finish(self) -> None:
-        self.finished = True
-
-    @override
-    async def on_text(self, fragment: str) -> None:
-        self.fragments.append(fragment)
 
 
 class FakeModels(LLMContract):
@@ -169,7 +146,7 @@ def request(*texts: str) -> TurnRequest:
 
 async def test_a_turn_streams_the_answer_and_finishes_the_reply() -> None:
     store = FakeStore()
-    reply = FakeReply()
+    reply = RecordingReply()
 
     await make_handler(answering(), store).handle(request('hello'), reply)
 
@@ -178,10 +155,20 @@ async def test_a_turn_streams_the_answer_and_finishes_the_reply() -> None:
     assert not reply.abandoned
 
 
+async def test_a_turn_tells_the_reply_which_agent_took_it() -> None:
+    # NOTE: routing happens before the first token, so a client can name the agent it is
+    # talking to while the answer is still streaming
+    reply = RecordingReply()
+
+    await make_handler(answering(), FakeStore()).handle(request('hello'), reply)
+
+    assert reply.routed == ['scout']
+
+
 async def test_a_turn_opens_the_transcript_of_the_agent_it_routed_to() -> None:
     store = FakeStore()
 
-    await make_handler(answering(), store).handle(request('hello'), FakeReply())
+    await make_handler(answering(), store).handle(request('hello'), RecordingReply())
 
     assert store.opened == [('support_bot', '4242', 'scout')]
 
@@ -191,7 +178,7 @@ async def test_a_turn_records_its_prompts_and_answer() -> None:
 
     await make_handler(answering(), store).handle(
         request('first', 'second'),
-        FakeReply(),
+        RecordingReply(),
     )
 
     assert store.transcript.recorded == [(('first', 'second'), 'answer')]
@@ -202,7 +189,7 @@ async def test_a_turn_replays_the_stored_history_into_the_model() -> None:
     store = FakeStore(FakeTranscript(prior))
     llm = answering()
 
-    await make_handler(llm, store).handle(request('hello'), FakeReply())
+    await make_handler(llm, store).handle(request('hello'), RecordingReply())
 
     sent = llm.requests[0].messages
     # NOTE: system instructions, then the stored history, then this round's prompts
@@ -213,7 +200,10 @@ async def test_a_turn_replays_the_stored_history_into_the_model() -> None:
 async def test_every_prompt_of_a_coalesced_round_reaches_the_model() -> None:
     llm = answering()
 
-    await make_handler(llm, FakeStore()).handle(request('first', 'second'), FakeReply())
+    await make_handler(llm, FakeStore()).handle(
+        request('first', 'second'),
+        RecordingReply(),
+    )
 
     texts = [
         segment.text
@@ -228,14 +218,14 @@ async def test_every_prompt_of_a_coalesced_round_reaches_the_model() -> None:
 async def test_compaction_runs_after_the_turn_committed() -> None:
     store = FakeStore()
 
-    await make_handler(answering(), store).handle(request('hello'), FakeReply())
+    await make_handler(answering(), store).handle(request('hello'), RecordingReply())
 
     assert store.maintained == [('support_bot', '4242', 'scout', 'scout-model')]
 
 
 async def test_a_failed_compaction_does_not_fail_a_delivered_answer() -> None:
     store = FakeStore(maintain_error=RuntimeError('summariser died'))
-    reply = FakeReply()
+    reply = RecordingReply()
 
     await make_handler(answering(), store).handle(request('hello'), reply)
 
@@ -246,7 +236,7 @@ async def test_a_model_without_a_provider_refuses_the_turn() -> None:
     store = FakeStore()
 
     with pytest.raises(UnservableModelError):
-        await make_handler(None, store).handle(request('hello'), FakeReply())
+        await make_handler(None, store).handle(request('hello'), RecordingReply())
 
     assert store.opened == []
 
@@ -254,7 +244,7 @@ async def test_a_model_without_a_provider_refuses_the_turn() -> None:
 async def test_a_round_with_nothing_to_answer_is_not_a_turn() -> None:
     store = FakeStore()
 
-    await make_handler(answering(), store).handle(request(), FakeReply())
+    await make_handler(answering(), store).handle(request(), RecordingReply())
 
     assert store.opened == []
     assert store.maintained == []

@@ -29,11 +29,11 @@ from lib.temporal import ClockContract
 
 from .config import AgentConfig, resolve_model
 from .contracts import (
-    TextSink,
     ToolSource,
     ToolSourceRegistry,
     TranscriptStoreContract,
     TurnHandlerContract,
+    TurnStream,
 )
 from .exceptions import AgentError, TurnTimeoutError, UnservableModelError
 from .router import Router
@@ -105,8 +105,10 @@ async def _execute(
     call: ToolCallSegment,
     tool_timeout: float,
     clock: ClockContract,
+    sink: TurnStream,
 ) -> tuple[ToolResultSegment, ToolExecution]:
     timer = clock.timer()
+    await sink.on_tool(call.name, 'started')
     try:
         async with asyncio.timeout(tool_timeout):
             result = await tools.execute(call)
@@ -129,6 +131,7 @@ async def _execute(
         record.duration,
         record.ok,
     )
+    await sink.on_tool(record.name, 'finished' if record.ok else 'failed')
     return result, record
 
 
@@ -137,8 +140,9 @@ async def _execute_calls(
     calls: tuple[ToolCallSegment, ...],
     tool_timeout: float,
     clock: ClockContract,
+    sink: TurnStream,
 ) -> tuple[tuple[ToolResultSegment, ...], Step]:
-    tasks = (_execute(tools, call, tool_timeout, clock) for call in calls)
+    tasks = (_execute(tools, call, tool_timeout, clock, sink) for call in calls)
     results, records = cast(
         tuple[tuple[ToolResultSegment, ...], tuple[ToolExecution, ...]],
         zip(*await asyncio.gather(*tasks), strict=True),
@@ -147,17 +151,17 @@ async def _execute_calls(
 
 
 async def _consume(
-    stream: AsyncIterator[CompletionChunk],
-    on_text: TextSink,
+    chunks: AsyncIterator[CompletionChunk],
+    sink: TurnStream,
 ) -> tuple[str, tuple[ToolCallSegment, ...]]:
     fragments = []
     calls = {}
 
-    async for chunk in stream:
+    async for chunk in chunks:
         match chunk:
             case TextChunk(text=fragment):
                 fragments.append(fragment)
-                await on_text(fragment)
+                await sink.on_text(fragment)
             case ToolCallChunk(index=index, id=id_, name=name, arguments=arguments):
                 builder = calls.setdefault(index, ToolCallBuilder())
                 if id_ is not None:
@@ -187,11 +191,11 @@ class AgentRunner:
         self.tools = tools
         self.clock = clock
 
-    async def run(self, turn: TurnInput, on_text: TextSink) -> TurnOutput:
+    async def run(self, turn: TurnInput, sink: TurnStream) -> TurnOutput:
         with bound_contextvars(turn_id=_turn_id()):
-            return await self._process(turn, on_text)
+            return await self._process(turn, sink)
 
-    async def _process(self, turn: TurnInput, on_text: TextSink) -> TurnOutput:
+    async def _process(self, turn: TurnInput, sink: TurnStream) -> TurnOutput:
         history = list(_build_messages(turn))
         steps = []
         text = ''
@@ -204,7 +208,7 @@ class AgentRunner:
                         messages=tuple(history),
                         tools=self.tools.schemas(),
                     )
-                    text, tool_calls = await _consume(self.llm.stream(request), on_text)
+                    text, tool_calls = await _consume(self.llm.stream(request), sink)
 
                     if not tool_calls:
                         logger.info(
@@ -223,6 +227,7 @@ class AgentRunner:
                         tool_calls,
                         turn.tool_timeout,
                         self.clock,
+                        sink,
                     )
                     steps.append(step)
                     history.append(_assistant_message(text, tool_calls))
@@ -275,6 +280,7 @@ class TurnHandler(TurnHandlerContract):
             request.chat,
             request.prompts[-1].text,
         )
+        await reply.on_routed(agent.name)
         model = resolve_model(agent.config.model, self.default_model)
         client = self.llm.client_for(model)
         if client is None:
@@ -310,7 +316,7 @@ class TurnHandler(TurnHandlerContract):
                     model=model,
                     prior_turns=history,
                 ),
-                reply.on_text,
+                reply,
             )
             await reply.finish()
             await store.record(request.prompts, output.text)

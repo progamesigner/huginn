@@ -35,6 +35,7 @@ from lib.llm import (
 )
 from lib.temporal import ClockManager
 from tests.helpers.clock import FakeClock
+from tests.helpers.replies import RecordingReply
 
 
 class FakeLLM:
@@ -178,8 +179,8 @@ def answering() -> FakeLLM:
     return FakeLLM([[TextChunk(text='done'), FinishChunk(reason='stop')]])
 
 
-async def discard(fragment: str) -> None:
-    pass
+def discard() -> RecordingReply:
+    return RecordingReply()
 
 
 async def test_run_returns_text_immediately_when_no_tool_calls() -> None:
@@ -193,16 +194,13 @@ async def test_run_returns_text_immediately_when_no_tool_calls() -> None:
         ],
     )
     runner = AgentRunner(llm, make_toolset(), ClockManager())
-    fragments = []
+    sink = RecordingReply()
 
-    async def collect(fragment: str) -> None:
-        fragments.append(fragment)
-
-    output = await runner.run(make_turn(), collect)
+    output = await runner.run(make_turn(), sink)
 
     assert output.text == 'Hello'
     assert output.completed is True
-    assert fragments == ['He', 'llo']
+    assert sink.fragments == ['He', 'llo']
     assert len(llm.requests) == 1
 
 
@@ -220,7 +218,7 @@ async def test_run_executes_single_tool_call_then_finishes() -> None:
     )
     runner = AgentRunner(llm, make_toolset(), ClockManager())
 
-    output = await runner.run(make_turn(), discard)
+    output = await runner.run(make_turn(), discard())
 
     assert output.text == 'done'
     assert output.completed is True
@@ -229,6 +227,49 @@ async def test_run_executes_single_tool_call_then_finishes() -> None:
     result = tool_result(llm.requests[1].messages[-1])
     assert result.tool_call_id == 'call_1'
     assert result.content == 'hi'
+
+
+async def test_run_tells_the_stream_when_a_tool_starts_and_finishes() -> None:
+    llm = FakeLLM(
+        [
+            [
+                ToolCallChunk(
+                    index=0,
+                    id='call_1',
+                    name='echo',
+                    arguments='{"text": "hi"}',
+                ),
+                FinishChunk(reason='tool_calls'),
+            ],
+            [TextChunk(text='done'), FinishChunk(reason='stop')],
+        ],
+    )
+    runner = AgentRunner(llm, make_toolset(), ClockManager())
+    sink = RecordingReply()
+
+    await runner.run(make_turn(), sink)
+
+    assert sink.tools == [('echo', 'started'), ('echo', 'finished')]
+
+
+async def test_run_reports_a_tool_that_answered_with_an_error_as_failed() -> None:
+    # NOTE: a tool failure is a result the model gets to read, not an exception -- the
+    # stream still has to say the step went wrong so a client can show it
+    llm = FakeLLM(
+        [
+            [
+                ToolCallChunk(index=0, id='call_1', name='ghost', arguments='{}'),
+                FinishChunk(reason='tool_calls'),
+            ],
+            [TextChunk(text='done'), FinishChunk(reason='stop')],
+        ],
+    )
+    runner = AgentRunner(llm, make_toolset(), ClockManager())
+    sink = RecordingReply()
+
+    await runner.run(make_turn(), sink)
+
+    assert sink.tools == [('ghost', 'started'), ('ghost', 'failed')]
 
 
 async def test_run_executes_multiple_tool_calls_in_one_turn() -> None:
@@ -254,7 +295,7 @@ async def test_run_executes_multiple_tool_calls_in_one_turn() -> None:
     )
     runner = AgentRunner(llm, make_toolset(), ClockManager())
 
-    output = await runner.run(make_turn(), discard)
+    output = await runner.run(make_turn(), discard())
 
     assert output.text == 'done'
     results = [tool_result(message) for message in llm.requests[1].messages[-2:]]
@@ -288,7 +329,7 @@ async def test_run_executes_tool_calls_concurrently() -> None:
     runner = AgentRunner(llm, make_toolset(), ClockManager())
 
     started = time.monotonic()
-    await runner.run(make_turn(), discard)
+    await runner.run(make_turn(), discard())
     elapsed = time.monotonic() - started
 
     assert elapsed < 0.18
@@ -320,7 +361,7 @@ async def test_run_iterates_across_multiple_turns_until_no_tool_calls() -> None:
     )
     runner = AgentRunner(llm, make_toolset(), ClockManager())
 
-    output = await runner.run(make_turn(), discard)
+    output = await runner.run(make_turn(), discard())
 
     assert output.text == 'done'
     assert output.completed is True
@@ -341,7 +382,7 @@ async def test_run_marks_incomplete_when_max_iterations_exhausted(
     runner = AgentRunner(llm, make_toolset(), ClockManager())
 
     with caplog.at_level('WARNING'):
-        output = await runner.run(make_turn(max_iterations=2), discard)
+        output = await runner.run(make_turn(max_iterations=2), discard())
 
     assert output.completed is False
     assert any('max_iterations' in record.message for record in caplog.records)
@@ -367,7 +408,7 @@ async def test_run_reports_tool_timeout_as_error_and_continues(
     runner = AgentRunner(llm, make_toolset(), ClockManager())
 
     with caplog.at_level('WARNING'):
-        output = await runner.run(make_turn(tool_timeout=0.05), discard)
+        output = await runner.run(make_turn(tool_timeout=0.05), discard())
 
     assert output.text == 'done'
     assert output.completed is True
@@ -398,7 +439,7 @@ async def test_run_raises_turn_timeout_when_whole_turn_exceeds_budget(
     runner = AgentRunner(llm, make_toolset(), ClockManager())
 
     with caplog.at_level('WARNING'), pytest.raises(TurnTimeoutError):
-        await runner.run(make_turn(turn_timeout=0.05), discard)
+        await runner.run(make_turn(turn_timeout=0.05), discard())
 
     assert any('turn_timeout' in record.message for record in caplog.records)
 
@@ -432,7 +473,7 @@ async def test_run_records_steps_for_each_iteration(
     runner = AgentRunner(llm, make_toolset(), ClockManager())
 
     with caplog.at_level('INFO'):
-        output = await runner.run(make_turn(), discard)
+        output = await runner.run(make_turn(), discard())
 
     executions = [tool for step in output.steps for tool in step.tools]
     assert len(output.steps) == 3
@@ -461,7 +502,7 @@ async def test_run_records_failed_tool_execution_in_steps() -> None:
     )
     runner = AgentRunner(llm, make_toolset(), ClockManager())
 
-    output = await runner.run(make_turn(tool_timeout=0.05), discard)
+    output = await runner.run(make_turn(tool_timeout=0.05), discard())
 
     execution = output.steps[0].tools[0]
     assert execution.name == 'sleep'
@@ -483,7 +524,7 @@ async def test_tool_duration_is_measured_by_the_injected_clock() -> None:
     )
     runner = AgentRunner(llm, tools, clock)
 
-    output = await runner.run(make_turn(), discard)
+    output = await runner.run(make_turn(), discard())
 
     execution = output.steps[0].tools[0]
     assert execution.name == 'advance'
@@ -506,7 +547,7 @@ async def test_run_binds_turn_id_during_tool_execution() -> None:
     tools.add('probe', probe)
     runner = AgentRunner(llm, tools, ClockManager())
 
-    await runner.run(make_turn(), discard)
+    await runner.run(make_turn(), discard())
 
     assert probe.seen.get('turn_id')
     assert 'turn_id' not in get_contextvars()
@@ -526,9 +567,9 @@ async def test_run_generates_unique_turn_id_per_turn() -> None:
     tools.add('probe', probe)
     runner = AgentRunner(llm, tools, ClockManager())
 
-    await runner.run(make_turn(), discard)
+    await runner.run(make_turn(), discard())
     first = probe.seen['turn_id']
-    await runner.run(make_turn(), discard)
+    await runner.run(make_turn(), discard())
 
     assert probe.seen['turn_id'] != first
 
@@ -542,7 +583,7 @@ async def test_an_attached_image_reaches_the_model_beside_its_caption() -> None:
         attachments=(attachment(),),
     )
 
-    await runner.run(make_turn(prompts=(prompt,)), discard)
+    await runner.run(make_turn(prompts=(prompt,)), discard())
 
     segments = llm.requests[0].messages[-1].segments
     assert [type(segment) for segment in segments] == [TextSegment, ImageSegment]
@@ -557,7 +598,7 @@ async def test_a_photo_without_a_caption_is_still_a_message() -> None:
     runner = AgentRunner(llm, make_toolset(), ClockManager())
     prompt = TurnPrompt(text='', actor='user:1', attachments=(attachment(),))
 
-    await runner.run(make_turn(prompts=(prompt,)), discard)
+    await runner.run(make_turn(prompts=(prompt,)), discard())
 
     # NOTE: the old shape built the message from text alone, so a caption-less photo
     # reached the model as an empty turn and answered nothing
@@ -575,7 +616,7 @@ async def test_a_transcribed_voice_note_arrives_as_what_it_said() -> None:
         attachments=(replace(voice, transcript='remind me at six'),),
     )
 
-    await runner.run(make_turn(prompts=(prompt,)), discard)
+    await runner.run(make_turn(prompts=(prompt,)), discard())
 
     assert llm.requests[0].messages[-1].segments == (
         TextSegment(text='remind me at six'),
@@ -588,7 +629,7 @@ async def test_an_attachment_the_model_cannot_take_arrives_as_its_hint() -> None
     voice = attachment('audio', mime='audio/ogg', hint='[audio: audio/ogg 12s]')
     prompt = TurnPrompt(text='', actor='user:1', attachments=(voice,))
 
-    await runner.run(make_turn(prompts=(prompt,)), discard)
+    await runner.run(make_turn(prompts=(prompt,)), discard())
 
     assert llm.requests[0].messages[-1].segments == (
         TextSegment(text='[audio: audio/ogg 12s]'),
@@ -600,7 +641,7 @@ async def test_a_prompt_with_nothing_in_it_is_not_a_message() -> None:
     runner = AgentRunner(llm, make_toolset(), ClockManager())
     prompt = TurnPrompt(text='', actor='user:1')
 
-    await runner.run(make_turn(prompts=(prompt,)), discard)
+    await runner.run(make_turn(prompts=(prompt,)), discard())
 
     assert [message.role for message in llm.requests[0].messages] == ['system']
 
@@ -617,6 +658,6 @@ async def test_run_joins_a_turn_id_its_caller_already_bound() -> None:
     runner = AgentRunner(llm, tools, ClockManager())
 
     with bound_contextvars(turn_id='opened-by-the-channel'):
-        await runner.run(make_turn(), discard)
+        await runner.run(make_turn(), discard())
 
     assert probe.seen['turn_id'] == 'opened-by-the-channel'

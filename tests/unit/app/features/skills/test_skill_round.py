@@ -15,7 +15,8 @@ from lib.llm import FinishChunk, TextChunk, ToolCallChunk, ToolResultSegment
 from lib.mcp import MCPClientContract, MCPToolInfo
 from lib.temporal import ClockManager
 from tests.helpers.clock import FakeClock
-from tests.unit.app.features.agents.test_agent_runner import FakeLLM, discard
+from tests.helpers.replies import RecordingReply
+from tests.unit.app.features.agents.test_agent_runner import FakeLLM
 
 
 class FakeSource(SkillSource):
@@ -80,7 +81,7 @@ async def test_agent_loads_a_skill_through_the_tool_loop() -> None:
             prompts=(TurnPrompt(text='help', actor='user:1'),),
             model='test-model',
         ),
-        discard,
+        RecordingReply(),
     )
 
     result = llm.requests[1].messages[-1].segments[0]

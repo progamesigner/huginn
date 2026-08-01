@@ -4,6 +4,7 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict
 
 type AttachmentKind = Literal['audio', 'image']
+type ToolPhase = Literal['started', 'finished', 'failed']
 
 
 class InboundAttachment(BaseModel):
@@ -50,10 +51,16 @@ class ChannelReplyContract(ABC):
     async def abandon(self) -> None: ...
 
     @abstractmethod
+    async def finish(self) -> None: ...
+
+    @abstractmethod
+    async def on_routed(self, agent: str) -> None: ...
+
+    @abstractmethod
     async def on_text(self, fragment: str) -> None: ...
 
     @abstractmethod
-    async def finish(self) -> None: ...
+    async def on_tool(self, name: str, phase: ToolPhase) -> None: ...
 
 
 class ChannelResolverContract(ABC):
