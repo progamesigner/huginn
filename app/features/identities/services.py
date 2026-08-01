@@ -77,13 +77,11 @@ class IdentityLinkingService:
             await self.repository.lock_invite(digest) if digest is not None else None
         )
         if invite is None:
-            await self._audit_failure(provider, realm, 'unknown_token')
-            raise InvalidIdentityLinkError()
+            raise InvalidIdentityLinkError('unknown_token')
 
         reason = self._invalid_reason(invite, provider, realm)
         if reason is not None:
-            await self._audit_failure(provider, realm, reason)
-            raise InvalidIdentityLinkError()
+            raise InvalidIdentityLinkError(reason)
 
         existing = await self.repository.find_external(
             provider,
@@ -93,14 +91,12 @@ class IdentityLinkingService:
         if invite.consumed_at is not None:
             if existing is not None and existing.user_id == invite.user_id:
                 return existing
-            await self._audit_failure(provider, realm, 'consumed')
-            raise InvalidIdentityLinkError()
+            raise InvalidIdentityLinkError('consumed')
         if existing is not None:
             if existing.user_id == invite.user_id:
                 await self.repository.consume_invite(invite.id, self.clock.now())
                 return existing
-            await self._audit_failure(provider, realm, 'identity_conflict')
-            raise InvalidIdentityLinkError()
+            raise InvalidIdentityLinkError('identity_conflict')
 
         try:
             async with self.repository.session.begin_nested():
@@ -112,8 +108,7 @@ class IdentityLinkingService:
                     profile,
                 )
         except IntegrityError:
-            await self._audit_failure(provider, realm, 'identity_conflict')
-            raise InvalidIdentityLinkError() from None
+            raise InvalidIdentityLinkError('identity_conflict') from None
 
         await self.repository.consume_invite(invite.id, self.clock.now())
         await self.repository.record_audit(
@@ -172,14 +167,6 @@ class IdentityLinkingService:
             return 'expired'
         return None
 
-    async def _audit_failure(self, provider: str, realm: str, reason: str) -> None:
-        await self.repository.record_audit(
-            'link_failed',
-            provider,
-            realm,
-            metadata={'reason': reason},
-        )
-
 
 class PrincipalLinker(IdentityLinkingContract):
     clock: ClockContract
@@ -207,15 +194,35 @@ class PrincipalLinker(IdentityLinkingContract):
         realm: str,
         external_user_id: str,
     ) -> LinkedPrincipal:
-        async with self.database.session() as session, session.begin():
-            repository = IdentityRepository(session, self.guid, self.clock)
-            identity = await IdentityLinkingService(
-                repository,
-                self.tokens,
-                self.clock,
-            ).complete(credential, provider, realm, external_user_id)
+        try:
+            async with self.database.session() as session, session.begin():
+                repository = IdentityRepository(session, self.guid, self.clock)
+                identity = await IdentityLinkingService(
+                    repository,
+                    self.tokens,
+                    self.clock,
+                ).complete(credential, provider, realm, external_user_id)
+        except InvalidIdentityLinkError as error:
+            # NOTE: the rejection took its own transaction down with it
+            await self._audit_failure(provider, realm, external_user_id, error.reason)
+            raise
 
         return LinkedPrincipal(identity.user_id, identity.id)
+
+    async def _audit_failure(
+        self,
+        provider: str,
+        realm: str,
+        external_user_id: str,
+        reason: str,
+    ) -> None:
+        async with self.database.session() as session, session.begin():
+            await IdentityRepository(session, self.guid, self.clock).record_audit(
+                'link_failed',
+                provider,
+                realm,
+                metadata={'reason': reason, 'external_user_id': external_user_id},
+            )
 
 
 class PrincipalResolver(IdentityResolverContract):

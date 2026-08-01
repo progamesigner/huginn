@@ -4,6 +4,7 @@ from unittest.mock import AsyncMock, MagicMock
 from uuid import UUID
 
 import pytest
+from sqlalchemy.exc import IntegrityError
 
 from app.features.identities.exceptions import InvalidIdentityLinkError
 from app.features.identities.services import IdentityLinkingService
@@ -120,7 +121,57 @@ async def test_complete_rejects_invalid_invite_with_one_public_error(
 
     assert str(caught.value) == 'This link is invalid or expired. Ask for a new invite.'
     assert token not in repr(caught.value)
-    assert repo.record_audit.await_args.kwargs['metadata'] == {'reason': reason}
+    assert caught.value.reason == reason
+    # NOTE: this service is handed a session it does not own, and the caller rolls that
+    # session back on the way out -- an audit row written here would not survive, so the
+    # reason travels on the exception and the caller records it
+    repo.record_audit.assert_not_awaited()
+
+
+async def test_a_consumed_invite_is_refused_for_another_chat() -> None:
+    repo = repository()
+    repo.lock_invite.return_value = stored_invite(consumed_at=_NOW)
+    linking = service(repo)
+
+    with pytest.raises(InvalidIdentityLinkError) as caught:
+        await linking.complete(linking.tokens.issue()[0], 'telegram', 'primary', '42')
+
+    assert caught.value.reason == 'consumed'
+    repo.record_audit.assert_not_awaited()
+
+
+async def test_a_chat_owned_by_another_account_is_refused() -> None:
+    repo = repository()
+    repo.lock_invite.return_value = stored_invite()
+    repo.find_external.return_value = ExternalIdentity(
+        _IDENTITY_ID,
+        UUID(int=9),
+        'telegram',
+        'primary',
+        '42',
+    )
+    linking = service(repo)
+
+    with pytest.raises(InvalidIdentityLinkError) as caught:
+        await linking.complete(linking.tokens.issue()[0], 'telegram', 'primary', '42')
+
+    assert caught.value.reason == 'identity_conflict'
+    repo.link.assert_not_awaited()
+    repo.record_audit.assert_not_awaited()
+
+
+async def test_a_chat_claimed_by_a_racing_link_is_refused() -> None:
+    repo = repository()
+    repo.lock_invite.return_value = stored_invite()
+    repo.link.side_effect = IntegrityError('insert', (), Exception('duplicate'))
+    linking = service(repo)
+
+    with pytest.raises(InvalidIdentityLinkError) as caught:
+        await linking.complete(linking.tokens.issue()[0], 'telegram', 'primary', '42')
+
+    assert caught.value.reason == 'identity_conflict'
+    repo.consume_invite.assert_not_awaited()
+    repo.record_audit.assert_not_awaited()
 
 
 async def test_consumed_invite_is_idempotent_for_the_same_identity() -> None:
@@ -157,7 +208,7 @@ async def test_revoke_only_changes_an_active_invite() -> None:
     assert repo.record_audit.await_args.args[0] == 'link_revoked'
 
 
-async def test_unknown_credential_is_redacted_and_audited() -> None:
+async def test_unknown_credential_is_redacted_and_named_as_a_reason() -> None:
     repo = repository()
     linking = service(repo)
     credential = 'not-a-valid-credential'
@@ -166,9 +217,8 @@ async def test_unknown_credential_is_redacted_and_audited() -> None:
         await linking.complete(credential, 'telegram', 'primary', '42')
 
     assert credential not in repr(caught.value)
-    assert repo.record_audit.await_args.kwargs['metadata'] == {
-        'reason': 'unknown_token',
-    }
+    assert caught.value.reason == 'unknown_token'
+    repo.record_audit.assert_not_awaited()
 
 
 async def test_issue_invite_rejects_non_positive_ttl() -> None:

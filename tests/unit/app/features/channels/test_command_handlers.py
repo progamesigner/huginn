@@ -85,7 +85,7 @@ class FakeLinking(IdentityLinkingContract):
     ) -> LinkedPrincipal:
         self.calls.append((credential, provider, realm, external_user_id))
         if self.invalid:
-            raise InvalidIdentityLinkError()
+            raise InvalidIdentityLinkError('unknown_token')
 
         return LinkedPrincipal(_LINKED, _IDENTITY)
 
@@ -191,7 +191,7 @@ async def test_a_refused_code_answers_with_what_the_service_said() -> None:
 
     # NOTE: the service already words this for a person; rewording it here would mean
     # two sentences to keep in step
-    assert answer == str(InvalidIdentityLinkError())
+    assert answer == str(InvalidIdentityLinkError('unknown_token'))
 
 
 async def test_identity_reports_the_account_of_a_linked_chat() -> None:

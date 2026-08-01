@@ -3,8 +3,11 @@ class IdentityLinkError(Exception):
 
 
 class InvalidIdentityLinkError(IdentityLinkError):
-    def __init__(self) -> None:
+    reason: str
+
+    def __init__(self, reason: str) -> None:
         super().__init__('This link is invalid or expired. Ask for a new invite.')
+        self.reason = reason
 
 
 class IdentityLinkSecretError(IdentityLinkError):

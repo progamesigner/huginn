@@ -130,6 +130,41 @@ async def test_concurrent_completion_creates_one_link_and_success_event(
         await engine.dispose()
 
 
+async def test_a_rolled_back_link_keeps_none_of_its_audit(
+    session: AsyncSession,
+) -> None:
+    repository = IdentityRepository(session, GUIDManager(), ClockManager())
+    user = await repository.create_user(f'user-{uuid4().hex}', 'Example User')
+    realm = f'realm-{uuid4().hex}'
+    linking = service(session)
+    invite = await linking.issue_invite(
+        user.id,
+        'telegram',
+        realm,
+        timedelta(minutes=10),
+        'operator',
+    )
+
+    await linking.complete(invite.token, 'telegram', realm, '42')
+    await session.rollback()
+
+    # NOTE: the success audit has to live and die with the link it describes -- writing
+    # it in a transaction of its own (the tempting way to keep failure audits alive)
+    # would leave 'link_succeeded' behind for a link nobody ever made
+    events = await session.scalar(
+        select(func.count())
+        .select_from(IdentityAuditEventRecord)
+        .where(IdentityAuditEventRecord.realm == realm),
+    )
+    links = await session.scalar(
+        select(func.count())
+        .select_from(ExternalIdentityRecord)
+        .where(ExternalIdentityRecord.realm == realm),
+    )
+
+    assert (events, links) == (0, 0)
+
+
 async def test_invite_cannot_be_consumed_and_revoked(session: AsyncSession) -> None:
     repository = IdentityRepository(session, GUIDManager(), ClockManager())
     user = await repository.create_user(f'user-{uuid4().hex}', 'Example User')
