@@ -1,6 +1,7 @@
 from datetime import timedelta
 
 import pytest
+from pydantic import ValidationError
 
 from app.exts.telegram.types import (
     MEDIA,
@@ -39,6 +40,16 @@ def test_update_ignores_unknown_vendor_fields() -> None:
     assert update.message.from_ is not None
     assert update.message.from_.first_name == 'Han'
     assert update.message.text == 'hello'
+
+
+def test_the_reader_keeps_the_rejected_input_out_of_its_error_text() -> None:
+    # NOTE: pydantic quotes the offending input by default, which puts what somebody typed
+    # into every line that prints a validation failure -- the payload reaches a log only
+    # when a caller deliberately asks for it
+    with pytest.raises(ValidationError) as raised:
+        Update.model_validate({'update_id': 42, 'message': {'text': 'my private note'}})
+
+    assert 'my private note' not in str(raised.value)
 
 
 # NOTE: literals on purpose — these tests pin the wire contract, so reading them

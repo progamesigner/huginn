@@ -7,7 +7,7 @@ from pydantic import BaseModel, ConfigDict, Field, JsonValue
 
 
 class TelegramValue(BaseModel):
-    model_config = ConfigDict(extra='ignore', frozen=True)
+    model_config = ConfigDict(extra='ignore', frozen=True, hide_input_in_errors=True)
 
 
 @dataclass(frozen=True)

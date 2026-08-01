@@ -5,6 +5,7 @@ from typing import override
 from unittest.mock import AsyncMock, MagicMock
 
 import httpx
+import pytest
 import respx
 from fastapi import FastAPI
 from pydantic import SecretStr
@@ -18,14 +19,21 @@ from bin.server import build
 from lib.mcp import MCPClientContract
 from lib.redis import RedisContract
 from lib.router import RouterContract
+from tests.helpers.logging import recording
 
 _BASE_URL = 'https://api.telegram.org/botbot-token'
 _PATH = '/webhooks/telegram'
 _HEADER = 'X-Telegram-Bot-Api-Secret-Token'
 _CHAT_ID = 4242
+_TYPED = 'a sentence only the sender should keep'
 
 
-def update(update_id: int, *, chat_id: int = _CHAT_ID) -> dict[str, object]:
+def update(
+    update_id: int,
+    *,
+    chat_id: int = _CHAT_ID,
+    text: str = 'hello',
+) -> dict[str, object]:
     # NOTE: a chat message is the only update shape the adapter forwards
     return {
         'update_id': update_id,
@@ -33,7 +41,7 @@ def update(update_id: int, *, chat_id: int = _CHAT_ID) -> dict[str, object]:
             'message_id': update_id,
             'date': 1_721_600_000,
             'chat': {'id': chat_id, 'type': 'private'},
-            'text': 'hello',
+            'text': text,
         },
     }
 
@@ -299,6 +307,37 @@ async def test_processes_when_dedupe_is_unavailable() -> None:
             await handler.finished.wait()
 
     assert handler.calls == ['7']
+
+
+@respx.mock
+async def test_the_log_carries_the_receipt_without_the_message(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    # NOTE: every line a person sends arrives here, so the receipt has to be findable --
+    # channel, size, digest -- without the log becoming a transcript of the chat
+    handler = RecordingActor()
+    config = make_config({'support_bot': telegram('sekret')})
+
+    with caplog.at_level('INFO'):
+        async with webhook_client(config, make_redis(set()), handler) as client:
+            with recording(caplog):
+                response = await client.post(
+                    _PATH,
+                    headers={_HEADER: 'sekret'},
+                    json=update(7, text=_TYPED),
+                )
+                assert response.status_code == 200
+                async with asyncio.timeout(1):
+                    await handler.finished.wait()
+
+    assert _TYPED not in caplog.text
+    receipt = next(
+        record.message
+        for record in caplog.records
+        if record.message.startswith('Received telegram webhook')
+    )
+    assert 'support_bot' in receipt
+    assert 'sha256' in receipt
 
 
 @respx.mock

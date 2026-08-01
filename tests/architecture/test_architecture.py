@@ -7,6 +7,7 @@ from datetime import timedelta
 from importlib import import_module
 from pathlib import Path
 
+from pydantic import BaseModel, ConfigDict
 from sqlalchemy.orm import configure_mappers
 
 from app.core import exceptions
@@ -67,6 +68,14 @@ EXT_CLIENT_HOSTS = frozenset({'repositories', 'sources'})
 # are the vendor's own wire shapes: an ext parses them at its edge and hands over the
 # app's own vocabulary, so a payload type in a feature means the boundary leaked.
 EXT_VENDOR_TYPES_SLICE = 'types'
+# A vendor reader is tolerant by nature -- it takes what the vendor sends and ignores what
+# it does not know -- so what it rejects is somebody's message, a search answer, a
+# transcript of a voice note. Pydantic quotes the rejected input in its error text by
+# default, which hands that content to every caller that logs a validation failure, and
+# `logger.exception` is the ordinary way to report one. Hiding inputs makes the payload
+# reach a log only where a caller deliberately puts it there.
+TOLERANT_EXTRA = 'ignore'
+HIDDEN_INPUT = 'hide_input_in_errors'
 BANNED_MODULE_NAMES = frozenset({'models', 'utils'})
 
 
@@ -352,6 +361,30 @@ def _attribute_reads(source: str) -> Iterator[tuple[str, str]]:
     for node in ast.walk(ast.parse(source)):
         if isinstance(node, ast.Attribute) and isinstance(node.value, ast.Name):
             yield node.value.id, node.attr
+
+
+def _ext_modules() -> Iterator[str]:
+    root = _exts_dir()
+    for path in sorted(root.rglob('*.py')):
+        stem = path.relative_to(root).with_suffix('')
+        parts = stem.parts[:-1] if stem.name == '__init__' else stem.parts
+        yield '.'.join((EXTS_PACKAGE, *parts))
+
+
+def _leaks_rejected_input(model: type[BaseModel]) -> bool:
+    config = model.model_config
+    return config.get('extra') == TOLERANT_EXTRA and not config.get(HIDDEN_INPUT, False)
+
+
+def _readers_of(module: str) -> Iterator[type[BaseModel]]:
+    for member in vars(import_module(module)).values():
+        if (
+            isinstance(member, type)
+            and issubclass(member, BaseModel)
+            # NOTE: an imported model belongs to the module that declares it
+            and member.__module__ == module
+        ):
+            yield member
 
 
 def test_skeleton_imports() -> None:
@@ -690,6 +723,25 @@ def test_ext_client_reach_check_separates_data_sources_from_transports() -> None
     )
 
 
+def test_vendor_readers_keep_rejected_input_out_of_their_errors() -> None:
+    readers = [
+        (module, reader) for module in _ext_modules() for reader in _readers_of(module)
+    ]
+
+    assert readers, 'no vendor reader found; the check would pass vacuously'
+
+    violations = [
+        f'{module}.{reader.__name__}'
+        for module, reader in readers
+        if _leaks_rejected_input(reader)
+    ]
+
+    assert not violations, (
+        'these readers quote the rejected payload in their error text:\n'
+        + '\n'.join(violations)
+    )
+
+
 def test_ext_files_use_ext_vocabulary() -> None:
     root = _exts_dir()
     violations = [
@@ -705,6 +757,22 @@ def test_banned_name_check_flags_models_and_utils() -> None:
     assert _banned_name(Path('tools/repositories.py')) is None
     assert _banned_name(Path('tools/models.py')) is not None
     assert _banned_name(Path('tools/utils/helpers.py')) is not None
+
+
+def test_rejected_input_check_flags_only_a_tolerant_reader() -> None:
+    class Reader(BaseModel):
+        model_config = ConfigDict(extra='ignore')
+
+    class Hiding(BaseModel):
+        model_config = ConfigDict(extra='ignore', hide_input_in_errors=True)
+
+    # our own strict models answer to the type rules, not to this one
+    class Strict(BaseModel):
+        model_config = ConfigDict(extra='forbid')
+
+    assert _leaks_rejected_input(Reader)
+    assert not _leaks_rejected_input(Hiding)
+    assert not _leaks_rejected_input(Strict)
 
 
 def test_ext_vocabulary_check_flags_unknown_names() -> None:

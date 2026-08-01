@@ -1,3 +1,4 @@
+import hashlib
 import logging
 from collections.abc import Iterator
 from typing import Annotated
@@ -22,6 +23,7 @@ _KIND = 'telegram'
 _COMMAND_ENTITY = 'bot_command'
 _COMMAND_MENTION = '@'
 _COMMAND_PREFIX = '/'
+_DIGEST_WIDTH = 12
 
 router = Router()
 
@@ -76,11 +78,20 @@ def _command(message: Message) -> InboundCommand | None:
     )
 
 
+def _digest(body: bytes) -> str:
+    return hashlib.sha256(body).hexdigest()[:_DIGEST_WIDTH]
+
+
 def _inbound(channel: str, body: bytes) -> InboundMessage | None:
     try:
         update = Update.model_validate_json(body)
     except ValidationError as error:
-        logger.error('Discarding unparseable telegram update: %s', error)
+        logger.error(
+            'Discarding unparseable telegram update sha256 %s: %s: %r',
+            _digest(body),
+            error,
+            body,
+        )
         return None
 
     message = update.message
@@ -123,11 +134,11 @@ async def telegram_webhook(
     if channel is None:
         return Response(status_code=WEBHOOK.reject_status)
 
-    # NOTE: land the raw payload before parsing (webhook golden rule)
     logger.info(
-        'Received telegram webhook for %s: %s',
+        'Received telegram webhook for %s: %d bytes sha256 %s',
         channel,
-        body.decode('utf-8', 'replace'),
+        len(body),
+        _digest(body),
     )
 
     if (message := _inbound(channel, body)) is not None:

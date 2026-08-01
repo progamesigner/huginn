@@ -6,7 +6,7 @@ from lib.http import HTTPClientContract
 
 
 class FeloValue(BaseModel):
-    model_config = ConfigDict(extra='ignore', frozen=True)
+    model_config = ConfigDict(extra='ignore', frozen=True, hide_input_in_errors=True)
 
 
 class SearchResource(FeloValue):

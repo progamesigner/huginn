@@ -1,8 +1,7 @@
 import asyncio
 import json
-import logging
-from collections.abc import AsyncIterator, Iterator
-from contextlib import asynccontextmanager, contextmanager
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from typing import override
 from unittest.mock import AsyncMock, MagicMock
 
@@ -25,6 +24,7 @@ from bin.server import build
 from lib.mcp import MCPClientContract
 from lib.redis import RedisContract
 from lib.router import RouterContract
+from tests.helpers.logging import recording
 from tests.helpers.redis import FakeClient
 
 _BASE_URL = 'https://api.telegram.org/botbot-token'
@@ -199,18 +199,6 @@ async def pipeline(turns: TurnHandlerContract) -> AsyncIterator[httpx.AsyncClien
                 base_url='http://huginn',
             ) as client:
                 yield client
-
-
-@contextmanager
-def recording(caplog: pytest.LogCaptureFixture) -> Iterator[None]:
-    # NOTE: building the app configures logging, which drops the handler caplog installed
-    # before the test started -- so it goes back on once the container is wired
-    root = logging.getLogger()
-    root.addHandler(caplog.handler)
-    try:
-        yield
-    finally:
-        root.removeHandler(caplog.handler)
 
 
 @respx.mock

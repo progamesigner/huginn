@@ -1,5 +1,7 @@
 import json
 
+import pytest
+
 from app.exts.telegram.endpoints import _inbound
 
 
@@ -158,6 +160,19 @@ def test_inbound_discards_an_update_without_a_message() -> None:
 
 def test_inbound_discards_an_unparseable_update() -> None:
     assert _inbound('support', b'not json') is None
+
+
+def test_inbound_lands_the_body_of_an_unparseable_update(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    # NOTE: "land the raw payload first" is the point of the webhook rule, and a reader
+    # that cannot parse an update is the only moment anybody needs the bytes back
+    unparseable = b'{"update_id": 42, "message": "a sentence, not an object"}'
+
+    with caplog.at_level('ERROR'):
+        assert _inbound('support', unparseable) is None
+
+    assert 'a sentence, not an object' in caplog.text
 
 
 def entity(offset: int, length: int, type_: str = 'bot_command') -> dict[str, object]:
