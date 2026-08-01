@@ -23,6 +23,7 @@ from fastapi.responses import (
     Response,
     StreamingResponse,
 )
+from fastapi.sse import ServerSentEvent, format_sse_event
 
 from .contracts import RouterContract
 from .exceptions import DuplicateRouteError, RouterError
@@ -53,5 +54,7 @@ __all__ = [
     'RouterError',
     'RouterManager',
     'Security',
+    'ServerSentEvent',
     'StreamingResponse',
+    'format_sse_event',
 ]
