@@ -27,6 +27,7 @@ jobs:
     - run: uv run huginn config validate huginn.example.yaml
       env:
         FELO_API_KEY: dummy-felo-token
+        HUGINN_KEY_WEB: dummy-web-frontend-key
         MEMORY_MCP_TOKEN: dummy-memory-token
         MEMORY_MCP_URL: https://memory.example.internal
         OPENAI_API_KEY: dummy-openai-token

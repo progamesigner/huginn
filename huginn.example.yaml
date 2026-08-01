@@ -58,6 +58,17 @@ agents:
       You are concierge. Greet the user and hand off to scout for
       research questions; answer simple questions yourself.
 
+api_keys:
+  web-frontend:
+    token:
+      value_from:
+        env: HUGINN_KEY_WEB
+    agents:
+    - scout
+    - concierge
+    router:
+      fallback: concierge
+
 transcription:
   kind: openai
   model: gpt-4o-mini-transcribe

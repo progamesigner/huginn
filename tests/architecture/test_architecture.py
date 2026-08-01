@@ -18,6 +18,7 @@ from tests.helpers.schemas import mapped_tables
 # feature absent from this list may not cross the feature boundary at all.
 FEATURE_TIERS: tuple[frozenset[str], ...] = (
     frozenset({'channels', 'skills', 'tools'}),
+    frozenset({'auth'}),
     frozenset({'conversations'}),
     frozenset({'identities'}),
     frozenset({'mcp'}),

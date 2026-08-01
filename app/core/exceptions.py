@@ -54,3 +54,8 @@ class InternalServerError(AppError):
     status = 500
     code = 0
     reason = 'UNKNOWN_ERROR'
+
+
+class UnauthorizedError(AppError):
+    status = 401
+    code = 1
