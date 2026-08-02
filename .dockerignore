@@ -2,8 +2,10 @@
 
 !pyproject.toml
 !uv.lock
+
 !app
 !bin
 !lib
+!migrations
 
 **/__pycache__
