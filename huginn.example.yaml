@@ -1,6 +1,22 @@
 defaults:
   model: gpt-5-mini
 
+providers:
+  openai:
+    adapter: openai
+    api_key:
+      value_from:
+        env: OPENAI_API_KEY
+    models:
+    - gpt-5-mini
+  anthropic:
+    adapter: anthropic
+    api_key:
+      value_from:
+        env: ANTHROPIC_API_KEY
+    models:
+    - claude-sonnet-5
+
 tools:
   websearch:
     kind: websearch

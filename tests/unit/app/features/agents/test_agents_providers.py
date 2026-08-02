@@ -75,7 +75,7 @@ def test_tools_config_provider_contributes_tools_on_top_of_agents() -> None:
 
     keys = {spec.key for spec in app.resolve(SectionRegistry)}
 
-    assert keys == {'agents', 'defaults', 'tools'}
+    assert keys == {'agents', 'defaults', 'providers', 'tools'}
 
 
 def test_agent_provider_contributes_only_its_own_sections() -> None:
@@ -83,7 +83,7 @@ def test_agent_provider_contributes_only_its_own_sections() -> None:
 
     keys = {spec.key for spec in app.resolve(SectionRegistry)}
 
-    assert keys == {'agents', 'channels', 'defaults', 'transcription'}
+    assert keys == {'agents', 'channels', 'defaults', 'providers', 'transcription'}
 
 
 def test_agents_config_provider_accepts_valid_tool_overlay(tmp_path: Path) -> None:

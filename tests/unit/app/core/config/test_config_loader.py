@@ -12,6 +12,7 @@ from app.core.config.exceptions import (
     MissingSectionError,
     UnknownSectionError,
 )
+from app.core.config.llm import PROVIDERS
 from app.core.config.loader import (
     _interpolate,
     _resolve_references,
@@ -126,6 +127,7 @@ def build_section_registry(tools: ToolRegistry | None = None) -> SectionRegistry
     for spec in build_channel_sections(build_channel_registry()):
         registry.register(spec)
     registry.register(MCP_SERVERS)
+    registry.register(PROVIDERS)
     return registry
 
 
@@ -330,6 +332,7 @@ def test_load_config_defaults_optional_sections(tmp_path: Path) -> None:
     assert config.section(TOOLS).root == {}
     assert config.section(MCP_SERVERS).root == {}
     assert config.section(CHANNELS).root == {}
+    assert config.section(PROVIDERS).root == {}
 
 
 def test_load_config_resolves_env_and_value_from_then_validates(
@@ -344,6 +347,12 @@ def test_load_config_resolves_env_and_value_from_then_validates(
         '    kind: websearch\n'
         '    api_key:\n'
         '      value_from: {env: FELO_API_KEY}\n'
+        'providers:\n'
+        '  openai:\n'
+        '    adapter: openai\n'
+        '    api_key:\n'
+        '      value_from: {env: OPENAI_API_KEY}\n'
+        '    models: [gpt-5-mini]\n'
         'mcp_servers:\n'
         '  memory:\n'
         '    transport: http\n'
@@ -370,6 +379,7 @@ def test_load_config_resolves_env_and_value_from_then_validates(
         build_section_registry(),
         {
             'FELO_API_KEY': 'felo-secret',
+            'OPENAI_API_KEY': 'openai-secret',
             'MEMORY_MCP_TOKEN': 'secret-token',
             'AGENT_MODEL': 'claude-sonnet-5',
             'TELEGRAM_BOT_TOKEN': 'telegram-token',
@@ -380,6 +390,7 @@ def test_load_config_resolves_env_and_value_from_then_validates(
     agents = config.section(AGENTS).root
     tools = config.section(TOOLS).root
     channels = config.section(CHANNELS)
+    providers = config.section(PROVIDERS).root
 
     websearch = tools['websearch']
     assert isinstance(websearch, WebSearchToolConfig)
@@ -388,6 +399,7 @@ def test_load_config_resolves_env_and_value_from_then_validates(
     assert websearch.api_key.get_secret_value() == 'felo-secret'
     assert agents['scout'].instructions == 'You speak for claude-sonnet-5.'
     assert channels.root['support_bot'].bindings['12345'] == 'scout'
+    assert providers['openai'].api_key.get_secret_value() == 'openai-secret'
 
 
 def test_new_tool_kind_parses_and_schemas_without_touching_config_module(

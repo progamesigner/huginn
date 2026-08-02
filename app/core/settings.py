@@ -1,25 +1,11 @@
-import json
 from pathlib import Path
 from typing import Annotated, Literal
 
-from pydantic import (
-    Field,
-    PostgresDsn,
-    RedisDsn,
-    Secret,
-    SecretStr,
-    TypeAdapter,
-    computed_field,
-    field_validator,
-)
+from pydantic import Field, PostgresDsn, RedisDsn, Secret, SecretStr, computed_field
 from pydantic_settings import BaseSettings, SettingsConfigDict
-
-from lib.llm import ProviderConfig
 
 type Environment = Literal['dev', 'staging', 'prod']
 type ConnectionName = str | None
-
-_PROVIDERS = TypeAdapter(tuple[ProviderConfig, ...])
 
 
 class HuginnSettings(BaseSettings):
@@ -45,18 +31,6 @@ class HuginnSettings(BaseSettings):
     redis_database: Annotated[int, Field()] = 0
     http_keepalive_expiry: Annotated[float, Field()] = 300.0
     identity_link_secret: Annotated[SecretStr | None, Field()] = None
-    providers: Annotated[tuple[ProviderConfig, ...], Field()] = ()
-
-    @field_validator('providers', mode='before')
-    @classmethod
-    def _read_providers(cls, value: object) -> object:
-        # NOTE: a provider is a strict model, which reads a tuple field from a tuple and
-        # nothing else, while an environment variable arrives here decoded into lists.
-        # JSON-mode validation is how the config loader answers the same problem.
-        if isinstance(value, list) and all(isinstance(entry, dict) for entry in value):
-            return _PROVIDERS.validate_json(json.dumps(value))
-
-        return value
 
     @computed_field
     @property

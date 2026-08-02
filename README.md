@@ -84,7 +84,7 @@ uv run ruff check . && uv run ruff format --check . && uv run lint-imports && uv
 
 ## Configuration
 
-Agents, MCP server connections, tool wiring, channel routing, and the API keys that may call the HTTP surface are declared in one `huginn.yaml`, validated against the `HuginnConfig` Pydantic schema in `app/core/config/schema.py`. `huginn.example.yaml` at the repository root is a fake-named, fully runnable copy of that schema; it is the only config file this repo ever holds. Real agent names and instructions are treated as secrets — `huginn.yaml` itself is gitignored, and CI validates `huginn.example.yaml` on every push so the schema and the example can never drift apart.
+Agents, MCP server connections, tool wiring, channel routing, LLM providers, and the API keys that may call the HTTP surface are declared in one `huginn.yaml`, validated against the `HuginnConfig` Pydantic schema in `app/core/config/schema.py`. `huginn.example.yaml` at the repository root is a fake-named, fully runnable copy of that schema; it is the only config file this repo ever holds. Real agent names and instructions are treated as secrets — `huginn.yaml` itself is gitignored, and CI validates `huginn.example.yaml` on every push so the schema and the example can never drift apart.
 
 Secrets never sit in the YAML directly. Two indirections keep them out:
 
