@@ -2,12 +2,14 @@ from collections.abc import AsyncIterator, Sequence
 from typing import override
 
 import pytest
+from pydantic import SecretStr
 
 from app.features.agents.config import AgentConfig
 from app.features.agents.exceptions import UnroutableError
 from app.features.agents.router import Router
 from app.features.agents.types import RoutingPolicy, SelectionPolicy
 from lib.llm import (
+    Adapter,
     CompletionChunk,
     CompletionRequest,
     LLMClient,
@@ -47,10 +49,16 @@ class FakeClient:
 class FakeLLM(LLMContract):
     client: LLMClient | None
     calls: int
+    provider: ProviderConfig | None
 
-    def __init__(self, client: LLMClient | None = None) -> None:
+    def __init__(
+        self,
+        client: LLMClient | None = None,
+        provider: ProviderConfig | None = None,
+    ) -> None:
         self.client = client
         self.calls = 0
+        self.provider = provider
 
     @override
     def client_for(self, model: str) -> LLMClient | None:
@@ -59,7 +67,7 @@ class FakeLLM(LLMContract):
 
     @override
     def provider_for(self, model: str) -> ProviderConfig | None:
-        return None
+        return self.provider
 
 
 def _agents() -> dict[str, AgentConfig]:
@@ -69,12 +77,24 @@ def _agents() -> dict[str, AgentConfig]:
     }
 
 
-def _selection(model: str | None = None) -> SelectionPolicy:
-    return SelectionPolicy(fallback='concierge', model=model)
+def _selection(
+    model: str | None = None,
+    kind: Adapter | None = None,
+) -> SelectionPolicy:
+    return SelectionPolicy(fallback='concierge', model=model, kind=kind)
 
 
 def _saying(text: str) -> FakeClient:
     return FakeClient([TextChunk(text=text)])
+
+
+def _provider(adapter: Adapter) -> ProviderConfig:
+    return ProviderConfig(
+        name='test-provider',
+        adapter=adapter,
+        api_key=SecretStr('key'),
+        models=('m',),
+    )
 
 
 async def test_resolve_returns_bound_agent_without_calling_the_llm() -> None:
@@ -274,3 +294,46 @@ async def test_resolve_uses_a_configured_router_preamble() -> None:
     assert prompt.text.startswith('Pick the best agent.')
     assert 'Agents:' in prompt.text
     assert '- scout: Research agent' in prompt.text
+
+
+async def test_resolve_uses_router_llm_when_the_model_matches_the_configured_kind() -> (
+    None
+):
+    agents = _agents()
+    client = _saying('scout')
+    llm = FakeLLM(client, provider=_provider('openai'))
+    policy = RoutingPolicy(selection=_selection(kind='openai'))
+
+    agent = await Router(agents, llm, 'm').resolve(policy, '999', 'hi')
+
+    assert agent.config is agents['scout']
+
+
+async def test_resolve_falls_back_when_the_model_does_not_match_the_configured_kind() -> (
+    None
+):
+    # NOTE: this is the runtime mirror of the config-time RouterKindMismatchError --
+    # here the mismatch degrades to the same fallback path as "no provider at all"
+    agents = _agents()
+    client = _saying('scout')
+    llm = FakeLLM(client, provider=_provider('anthropic'))
+    policy = RoutingPolicy(selection=_selection(kind='openai'))
+
+    agent = await Router(agents, llm, 'm').resolve(policy, '999', 'hi')
+
+    assert agent.config is agents['concierge']
+    assert client.requests == []
+
+
+async def test_resolve_falls_back_when_kind_is_configured_and_the_model_has_no_provider() -> (
+    None
+):
+    agents = _agents()
+    client = _saying('scout')
+    llm = FakeLLM(client, provider=None)
+    policy = RoutingPolicy(selection=_selection(kind='openai'))
+
+    agent = await Router(agents, llm, 'm').resolve(policy, '999', 'hi')
+
+    assert agent.config is agents['concierge']
+    assert client.requests == []

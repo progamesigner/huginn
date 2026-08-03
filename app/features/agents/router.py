@@ -137,6 +137,16 @@ class Router:
         routable: Mapping[str, AgentConfig],
     ) -> str | None:
         model = resolve_model(selection.model, self.default_model)
+        if selection.kind is not None:
+            provider = self.llm.provider_for(model)
+            if provider is None or provider.adapter != selection.kind:
+                logger.warning(
+                    'Router model %r does not resolve to a %r provider; using fallback',
+                    model,
+                    selection.kind,
+                )
+                return None
+
         client = self.llm.client_for(model)
         if client is None:
             logger.warning('Router model %r has no provider; using fallback', model)

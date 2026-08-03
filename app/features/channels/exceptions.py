@@ -17,6 +17,10 @@ class IncompleteTranscriptionError(ConfigError):
     pass
 
 
+class RouterKindMismatchError(ConfigError):
+    pass
+
+
 class ChannelError(Exception):
     pass
 

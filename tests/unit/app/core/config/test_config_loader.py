@@ -12,7 +12,7 @@ from app.core.config.exceptions import (
     MissingSectionError,
     UnknownSectionError,
 )
-from app.core.config.llm import PROVIDERS
+from app.core.config.llm import PROVIDERS, ProviderConfig, ProviderConfigList
 from app.core.config.loader import (
     _interpolate,
     _resolve_references,
@@ -45,7 +45,10 @@ from app.features.channels.config import (
     _validate_channels,
 )
 from app.features.channels.config import build_sections as build_channel_sections
-from app.features.channels.exceptions import DuplicateChannelSecretError
+from app.features.channels.exceptions import (
+    DuplicateChannelSecretError,
+    RouterKindMismatchError,
+)
 from app.features.channels.registry import ChannelRegistry
 from app.features.channels.telegram.config import TelegramChannelConfig
 from app.features.mcp.config import (
@@ -158,6 +161,7 @@ def build_app_config(
     mcp_servers: dict[str, MCPServerConfig] | None = None,
     channels: ChannelConfigList | None = None,
     defaults: DefaultsConfig | None = None,
+    providers: dict[str, ProviderConfig] | None = None,
 ) -> HuginnConfig:
     return HuginnConfig(
         {
@@ -166,6 +170,7 @@ def build_app_config(
             'mcp_servers': MCPServerConfigList(mcp_servers or {}),
             'channels': channels or ChannelConfigList({}),
             'defaults': defaults or DefaultsConfig(model='test-model'),
+            'providers': ProviderConfigList(providers or {}),
         },
     )
 
@@ -669,3 +674,99 @@ def test_validate_channels_rejects_duplicate_secret_token() -> None:
         match=r'research_bot\.secret_token',
     ):
         _validate_channels(config, build_channel_registry())
+
+
+def test_validate_channels_rejects_a_router_kind_that_does_not_match_the_model() -> (
+    None
+):
+    config = build_app_config(
+        agents={'scout': build_agent()},
+        channels=ChannelConfigList(
+            {
+                'support_bot': telegram_channel(
+                    router=ChannelRouterConfig(
+                        fallback='scout',
+                        model='claude-sonnet-5',
+                        kind='openai',
+                    ),
+                ),
+            },
+        ),
+        providers={
+            'anthropic': ProviderConfig(
+                adapter='anthropic',
+                api_key=SecretStr('key'),
+                models=('claude-sonnet-5',),
+            ),
+        },
+    )
+
+    with pytest.raises(
+        RouterKindMismatchError,
+        match=r'channels\.support_bot\.router\.kind',
+    ):
+        _validate_channels(config, build_channel_registry())
+
+
+def test_validate_channels_rejects_a_router_kind_for_an_unregistered_model() -> None:
+    config = build_app_config(
+        agents={'scout': build_agent()},
+        channels=ChannelConfigList(
+            {
+                'support_bot': telegram_channel(
+                    router=ChannelRouterConfig(
+                        fallback='scout',
+                        model='ghost-model',
+                        kind='openai',
+                    ),
+                ),
+            },
+        ),
+    )
+
+    with pytest.raises(RouterKindMismatchError, match='ghost-model'):
+        _validate_channels(config, build_channel_registry())
+
+
+def test_validate_channels_accepts_a_router_kind_that_matches_the_model() -> None:
+    config = build_app_config(
+        agents={'scout': build_agent()},
+        channels=ChannelConfigList(
+            {
+                'support_bot': telegram_channel(
+                    router=ChannelRouterConfig(
+                        fallback='scout',
+                        model='gpt-5-mini',
+                        kind='openai',
+                    ),
+                ),
+            },
+        ),
+        providers={
+            'openai': ProviderConfig(
+                adapter='openai',
+                api_key=SecretStr('key'),
+                models=('gpt-5-mini',),
+            ),
+        },
+    )
+
+    _validate_channels(config, build_channel_registry())
+
+
+def test_validate_channels_leaves_the_router_unchecked_without_a_configured_kind() -> (
+    None
+):
+    # NOTE: no providers registered at all -- must not be consulted when kind is unset
+    config = build_app_config(
+        agents={'scout': build_agent()},
+        channels=ChannelConfigList(
+            {
+                'support_bot': telegram_channel(
+                    router=ChannelRouterConfig(fallback='scout', model='gpt-5-mini'),
+                ),
+            },
+        ),
+    )
+
+    _validate_channels(config, build_channel_registry())
