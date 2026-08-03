@@ -19,6 +19,10 @@ logger = logging.getLogger(__name__)
 
 _ROUTER_MAX_TOKENS = 32
 _WORD = re.compile(r'[\w-]+')
+_DEFAULT_PREAMBLE = (
+    'You route a message to exactly one agent.\n'
+    'Reply with only the agent name, exactly as written, and nothing else.'
+)
 
 
 async def _collect_text(stream: AsyncIterator[CompletionChunk]) -> str:
@@ -27,10 +31,9 @@ async def _collect_text(stream: AsyncIterator[CompletionChunk]) -> str:
     )
 
 
-def _prompt(agents: Mapping[str, AgentConfig]) -> str:
+def _prompt(agents: Mapping[str, AgentConfig], preamble: str | None = None) -> str:
     lines = [
-        'You route a message to exactly one agent.',
-        'Reply with only the agent name, exactly as written, and nothing else.',
+        preamble or _DEFAULT_PREAMBLE,
         '',
         'Agents:',
         *(f'- {name}: {agent.description}' for name, agent in agents.items()),
@@ -51,16 +54,19 @@ class Router:
     agents: Mapping[str, AgentConfig]
     llm: LLMContract
     default_model: str | None
+    prompt: str | None
 
     def __init__(
         self,
         agents: Mapping[str, AgentConfig],
         llm: LLMContract,
         default_model: str | None = None,
+        prompt: str | None = None,
     ) -> None:
         self.agents = agents
         self.llm = llm
         self.default_model = default_model
+        self.prompt = prompt
 
     async def resolve(
         self,
@@ -141,7 +147,7 @@ class Router:
             messages=(
                 Message(
                     role='system',
-                    segments=(TextSegment(text=_prompt(routable)),),
+                    segments=(TextSegment(text=_prompt(routable, self.prompt)),),
                 ),
                 Message(role='user', segments=(TextSegment(text=message),)),
             ),

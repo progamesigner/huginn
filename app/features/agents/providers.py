@@ -28,6 +28,7 @@ def _router(container: ContainerContract) -> Router:
         config.section(AGENTS).root,
         container.resolve(LLMContract),
         _default_model(container),
+        config.section(DEFAULTS).router_prompt,
     )
 
 

@@ -5,6 +5,7 @@ import pytest
 
 from app.core.config.registry import HuginnConfig
 from app.features.agents.config import AgentConfig, AgentConfigList, DefaultsConfig
+from app.features.conversations.config import CompactionConfig
 from app.features.conversations.repositories import (
     BlobRepository,
     ConversationRepository,
@@ -72,6 +73,7 @@ def _config() -> HuginnConfig:
                 },
             ),
             'defaults': DefaultsConfig(model='test-model'),
+            'compaction': CompactionConfig(),
         },
     )
 

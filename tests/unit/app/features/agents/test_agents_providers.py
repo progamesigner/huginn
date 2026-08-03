@@ -7,6 +7,7 @@ from app.core.config.registry import HuginnConfig, SectionRegistry
 from app.core.providers.config import ConfigProvider
 from app.features.agents.config import AGENTS
 from app.features.agents.providers import AgentProvider
+from app.features.agents.router import Router
 from app.features.channels.providers import ChannelProvider
 from app.features.tools.exceptions import InvalidToolOverlayError
 from app.features.tools.providers import (
@@ -51,6 +52,16 @@ agents:
         bogus: 1
 """
 
+_ROUTER_PROMPT_OVERLAY = """
+defaults:
+  model: gpt-5-mini
+  router_prompt: Choose the agent best suited to the request.
+agents:
+  scout:
+    description: Research agent
+    instructions: You are scout.
+"""
+
 
 def test_tool_registry_provider_binds_registry() -> None:
     app = App().build(ToolRegistryProvider())
@@ -83,7 +94,14 @@ def test_agent_provider_contributes_only_its_own_sections() -> None:
 
     keys = {spec.key for spec in app.resolve(SectionRegistry)}
 
-    assert keys == {'agents', 'channels', 'defaults', 'providers', 'transcription'}
+    assert keys == {
+        'agents',
+        'channels',
+        'compaction',
+        'defaults',
+        'providers',
+        'transcription',
+    }
 
 
 def test_agents_config_provider_accepts_valid_tool_overlay(tmp_path: Path) -> None:
@@ -103,3 +121,27 @@ def test_agents_config_provider_rejects_invalid_tool_overlay(tmp_path: Path) -> 
 
     with pytest.raises(InvalidToolOverlayError):
         app.resolve(HuginnConfig)
+
+
+def test_agent_provider_threads_a_configured_router_prompt_into_the_router(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / 'huginn.yaml'
+    path.write_text(_ROUTER_PROMPT_OVERLAY)
+    app = App().build(ConfigProvider(path), AgentProvider())
+
+    router = app.resolve(Router)
+
+    assert router.prompt == 'Choose the agent best suited to the request.'
+
+
+def test_agent_provider_leaves_the_router_prompt_unset_without_configuration(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / 'huginn.yaml'
+    path.write_text(_VALID_OVERLAY)
+    app = App().build(ConfigProvider(path), ToolProvider(), AgentProvider())
+
+    router = app.resolve(Router)
+
+    assert router.prompt is None

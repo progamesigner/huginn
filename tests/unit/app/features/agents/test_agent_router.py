@@ -245,3 +245,32 @@ async def test_resolve_leaves_every_agent_routable_when_nothing_narrows_it() -> 
     routed = await Router(_agents(), FakeLLM()).resolve(policy, '999', 'hello')
 
     assert routed.name == 'scout'
+
+
+async def test_resolve_falls_back_to_the_default_preamble_without_configuration() -> (
+    None
+):
+    client = _saying('scout')
+    policy = RoutingPolicy(selection=_selection())
+
+    await Router(_agents(), FakeLLM(client), 'm').resolve(policy, '999', 'hi')
+
+    prompt = client.requests[0].messages[0].segments[0]
+    assert isinstance(prompt, TextSegment)
+    assert prompt.text.startswith('You route a message to exactly one agent.')
+
+
+async def test_resolve_uses_a_configured_router_preamble() -> None:
+    client = _saying('scout')
+    policy = RoutingPolicy(selection=_selection())
+    router = Router(_agents(), FakeLLM(client), 'm', prompt='Pick the best agent.')
+
+    await router.resolve(policy, '999', 'hi')
+
+    prompt = client.requests[0].messages[0].segments[0]
+    assert isinstance(prompt, TextSegment)
+    # NOTE: the configured preamble replaces the default wording, but the agent
+    # roster is always appended -- _parse_choice depends on it being there
+    assert prompt.text.startswith('Pick the best agent.')
+    assert 'Agents:' in prompt.text
+    assert '- scout: Research agent' in prompt.text

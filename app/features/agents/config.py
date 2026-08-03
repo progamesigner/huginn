@@ -12,6 +12,7 @@ from .exceptions import AmbiguousInstructionsError, MissingModelError
 
 class DefaultsConfig(ConfigValue):
     model: Annotated[str | None, Field()] = None
+    router_prompt: Annotated[str | None, Field()] = None
 
 
 class ToolRef(ConfigValue):

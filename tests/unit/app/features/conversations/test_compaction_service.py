@@ -49,13 +49,23 @@ def prompt_text(message: Message) -> str:
 def build_service(
     llm: LLMContract,
     repository: FakeConversationRepository,
-    **kwargs: int,
+    keep_turns: int = 8,
+    token_threshold: int = 50_000,
+    max_retries: int = 1,
+    instruction: str | None = None,
 ) -> CompactionService:
     # NOTE: FakeConversationRepository duck-types ConversationRepository's surface;
     # cast is type-only, matching the established fake-injection pattern (e.g.
     # ScopedSession(cast(AsyncSession, FakeSession())) in
     # tests/unit/lib/database/test_database_manager.py).
-    return CompactionService(llm, cast(ConversationRepository, repository), **kwargs)
+    return CompactionService(
+        llm,
+        cast(ConversationRepository, repository),
+        keep_turns=keep_turns,
+        token_threshold=token_threshold,
+        max_retries=max_retries,
+        instruction=instruction,
+    )
 
 
 async def test_compact_persists_summary_turn_and_advances_boundary() -> None:
@@ -345,6 +355,33 @@ async def test_summary_request_leads_with_cacheable_transcript_then_instruction(
     assert 'UTC+8' in prompt_text(messages[0])
     assert messages[1].cacheable is False
     assert 'JSON object' in prompt_text(messages[1])
+
+
+async def test_a_configured_summary_prompt_replaces_the_default_instruction() -> None:
+    repository = FakeConversationRepository()
+    conversation = await repository.get_or_create('telegram', '11', 'scout')
+    turn = await repository.append_turn(
+        conversation,
+        [Part(role='user', kind='text', payload={'text': 'hi'})],
+    )
+    llm_client = FakeLLM(
+        [
+            [
+                TextChunk(text='{"summary": "ok", "key_facts": [], "open_items": []}'),
+                FinishChunk(reason='stop'),
+            ],
+        ],
+    )
+    service = build_service(
+        FakeLLMContract(llm_client),
+        repository,
+        instruction='Summarize in exactly one sentence.',
+    )
+
+    await service.compact(conversation, None, (turn,), 'test-model')
+
+    messages = llm_client.requests[0].messages
+    assert prompt_text(messages[1]) == 'Summarize in exactly one sentence.'
 
 
 async def test_compact_returns_uncompacted_when_no_client_for_model() -> None:

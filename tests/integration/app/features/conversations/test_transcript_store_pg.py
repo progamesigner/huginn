@@ -7,7 +7,9 @@ import pytest
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config.registry import HuginnConfig
 from app.features.agents.types import PromptAttachment, TurnPrompt
+from app.features.conversations.config import CompactionConfig
 from app.features.conversations.repositories import (
     BlobRepository,
     ConversationRepository,
@@ -66,6 +68,7 @@ def _store(database: DatabaseContract) -> ConversationTranscriptStore:
         GUIDManager(),
         ClockManager(),
         NoModels(),
+        HuginnConfig(sections={'compaction': CompactionConfig()}),
         _blobs,
     )
 

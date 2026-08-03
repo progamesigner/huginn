@@ -19,6 +19,7 @@ from lib.llm import LLMContract, Message, TextSegment
 from lib.temporal import ClockContract
 
 from .compaction import CompactionService
+from .config import COMPACTION
 from .contracts import (
     BlobStoreContract,
     BlobStoreFactory,
@@ -158,7 +159,11 @@ class ConversationControl(ConversationControlContract):
         compacted = 0
         async with self.database.session() as session, session.begin():
             repository = ConversationRepository(session, self.guid, self.clock)
-            service = CompactionService(self.llm, repository)
+            service = CompactionService(
+                self.llm,
+                repository,
+                instruction=self.config.section(COMPACTION).summary_prompt,
+            )
             for conversation in await repository.list_by_chat(channel, chat):
                 model = self._model(conversation.agent)
                 if model is None:
@@ -196,6 +201,7 @@ class ConversationControl(ConversationControlContract):
 class ConversationTranscriptStore(TranscriptStoreContract):
     blobs: BlobStoreFactory
     clock: ClockContract
+    config: HuginnConfig
     database: DatabaseContract
     guid: GUIDContract
     llm: LLMContract
@@ -206,10 +212,12 @@ class ConversationTranscriptStore(TranscriptStoreContract):
         guid: GUIDContract,
         clock: ClockContract,
         llm: LLMContract,
+        config: HuginnConfig,
         blobs: BlobStoreFactory,
     ) -> None:
         self.blobs = blobs
         self.clock = clock
+        self.config = config
         self.database = database
         self.guid = guid
         self.llm = llm
@@ -234,10 +242,12 @@ class ConversationTranscriptStore(TranscriptStoreContract):
         async with self.database.session() as session, session.begin():
             repository = self._repository(session)
             conversation = await repository.get_or_create(channel, chat, agent)
-            result = await CompactionService(self.llm, repository).maybe_compact(
-                conversation,
-                model,
+            service = CompactionService(
+                self.llm,
+                repository,
+                instruction=self.config.section(COMPACTION).summary_prompt,
             )
+            result = await service.maybe_compact(conversation, model)
 
         if result.compacted:
             logger.info('Compacted conversation %s', conversation.id)

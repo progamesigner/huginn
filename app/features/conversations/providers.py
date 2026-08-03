@@ -1,6 +1,6 @@
 from typing import override
 
-from app.core.config.registry import HuginnConfig
+from app.core.config.registry import HuginnConfig, SectionRegistry
 from app.core.providers.config import ConfigProvider
 from app.core.providers.database import DatabaseProvider
 from app.core.providers.guid import GUIDProvider
@@ -15,6 +15,7 @@ from lib.llm import LLMContract
 from lib.temporal import ClockContract
 
 from .compaction import CompactionService
+from .config import COMPACTION
 from .contracts import BlobStoreContract, ConversationControlContract
 from .repositories import BlobRepository, ConversationRepository
 from .services import ConversationControl, ConversationTranscriptStore
@@ -38,9 +39,18 @@ def _store(container: ContainerContract) -> ConversationTranscriptStore:
         guid,
         container.resolve(ClockContract),
         container.resolve(LLMContract),
+        container.resolve(HuginnConfig),
         # NOTE: the transcript owns the turn's session, blobs not reusing it
         lambda session: BlobRepository(session, guid),
     )
+
+
+class ConversationsConfigProvider(ProviderContract):
+    dependencies = (AgentProvider, ConfigProvider)
+
+    @override
+    def __call__(self, container: ContainerContract) -> None:
+        container.resolve(SectionRegistry).register(COMPACTION)
 
 
 class ConversationProvider(ProviderContract):
@@ -48,6 +58,7 @@ class ConversationProvider(ProviderContract):
         AgentProvider,
         ClockProvider,
         ConfigProvider,
+        ConversationsConfigProvider,
         DatabaseProvider,
         GUIDProvider,
         LLMProvider,

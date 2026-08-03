@@ -80,6 +80,7 @@ def _transcript(
 def _summary_messages(
     prior_summary: SummaryOutput | None,
     turns_to_fold: tuple[Turn, ...],
+    instruction: str,
 ) -> Iterator[Message]:
     transcript = '\n\n'.join(_transcript(prior_summary, turns_to_fold))
     yield Message(
@@ -87,7 +88,7 @@ def _summary_messages(
         segments=(TextSegment(text=transcript),),
         cacheable=True,
     )
-    yield Message(role='user', segments=(TextSegment(text=_INSTRUCTION),))
+    yield Message(role='user', segments=(TextSegment(text=instruction),))
 
 
 class CompactionService:
@@ -96,6 +97,7 @@ class CompactionService:
     keep_turns: int
     token_threshold: int
     max_retries: int
+    instruction: str
 
     def __init__(
         self,
@@ -104,12 +106,14 @@ class CompactionService:
         keep_turns: int = _DEFAULT_KEEP_TURNS,
         token_threshold: int = _DEFAULT_TOKEN_THRESHOLD,
         max_retries: int = _DEFAULT_MAX_RETRIES,
+        instruction: str | None = None,
     ) -> None:
         self.llm = llm
         self.repository = repository
         self.keep_turns = keep_turns
         self.token_threshold = token_threshold
         self.max_retries = max_retries
+        self.instruction = instruction or _INSTRUCTION
 
     async def maybe_compact(
         self,
@@ -203,7 +207,9 @@ class CompactionService:
         model: str,
         client: LLMClient,
     ) -> SummaryOutput | None:
-        messages = tuple(_summary_messages(prior_summary, turns_to_fold))
+        messages = tuple(
+            _summary_messages(prior_summary, turns_to_fold, self.instruction),
+        )
 
         for attempt in range(self.max_retries + 1):
             request = CompletionRequest(
