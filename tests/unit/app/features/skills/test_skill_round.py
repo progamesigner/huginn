@@ -80,6 +80,8 @@ async def test_agent_loads_a_skill_through_the_tool_loop() -> None:
             instructions='be helpful',
             prompts=(TurnPrompt(text='help', actor='user:1'),),
             model='test-model',
+            now=FakeClock().now(),
+            channel='support_bot',
         ),
         RecordingReply(),
     )

@@ -2,6 +2,7 @@ import logging
 from abc import ABC, abstractmethod
 from collections.abc import Mapping
 from dataclasses import dataclass, field
+from datetime import datetime
 from typing import override
 
 from pydantic import BaseModel, ConfigDict, JsonValue, ValidationError
@@ -87,6 +88,8 @@ class TurnInput:
     instructions: str
     prompts: tuple[TurnPrompt, ...]
     model: str
+    now: datetime
+    channel: str
     prior_turns: tuple[Message, ...] = ()
     max_iterations: int = _DEFAULT_MAX_ITERATIONS
     turn_timeout: float = _DEFAULT_TURN_TIMEOUT

@@ -24,7 +24,7 @@ from lib.llm import (
     ToolCallSegment,
     ToolResultSegment,
 )
-from lib.temporal import ClockContract
+from lib.temporal import ClockContract, isoformat
 
 from .config import AgentConfig, load_instructions, resolve_model
 from .contracts import (
@@ -78,9 +78,11 @@ def _prompt_segments(prompt: TurnPrompt) -> Iterator[Segment]:
 def _build_messages(turn: TurnInput) -> Iterator[Message]:
     yield Message(role='system', segments=(TextSegment(text=turn.instructions),))
     yield from turn.prior_turns
+    dt = isoformat(turn.now)
     for prompt in turn.prompts:
         if segments := tuple(_prompt_segments(prompt)):
-            yield Message(role='user', segments=segments)
+            header = TextSegment(text=f'[{dt}] ({turn.channel}) {prompt.actor}:\n\n')
+            yield Message(role='user', segments=(header, *segments))
 
 
 def _assistant_message(text: str, tool_calls: tuple[ToolCallSegment, ...]) -> Message:
@@ -317,6 +319,8 @@ class TurnHandler(TurnHandlerContract):
                     instructions=load_instructions(agent.config),
                     prompts=request.prompts,
                     model=model,
+                    now=self.clock.now(),
+                    channel=request.channel,
                     prior_turns=history,
                 ),
                 reply,

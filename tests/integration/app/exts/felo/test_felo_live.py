@@ -85,6 +85,8 @@ async def test_agent_loop_with_websearch_live() -> None:
             ),
         ),
         model=_OPENAI_MODEL,
+        now=ClockManager().now(),
+        channel='support_bot',
     )
 
     sink = RecordingReply()

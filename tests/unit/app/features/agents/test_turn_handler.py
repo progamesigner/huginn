@@ -1,6 +1,7 @@
 from collections.abc import AsyncIterator, Sequence
 from contextlib import AbstractAsyncContextManager, asynccontextmanager
 from dataclasses import replace
+from datetime import UTC, datetime
 from typing import override
 
 import pytest
@@ -30,7 +31,8 @@ from lib.llm import (
     TextChunk,
     TextSegment,
 )
-from lib.temporal import ClockManager
+from lib.temporal import ClockContract, ClockManager
+from tests.helpers.clock import FakeClock
 from tests.helpers.replies import RecordingReply
 
 from .test_agent_runner import EchoTool, FakeLLM
@@ -162,13 +164,14 @@ def handler_with(llm: FakeLLM, source: ToolSource) -> TurnHandler:
 def make_handler(
     llm: FakeLLM | None,
     store: FakeStore,
+    clock: ClockContract | None = None,
 ) -> TurnHandler:
     return TurnHandler(
         llm=FakeModels(llm),
         router=Router(agents(), FakeModels(llm), 'default-model'),
         sources=ToolSourceRegistry(),
         store=store,
-        clock=ClockManager(),
+        clock=clock or ClockManager(),
     )
 
 
@@ -270,7 +273,8 @@ async def test_every_prompt_of_a_coalesced_round_reaches_the_model() -> None:
         segment.text
         for message in llm.requests[0].messages
         if message.role == 'user'
-        for segment in message.segments
+        # NOTE: segments[0] is the current-time stamp every user message carries
+        for segment in message.segments[1:]
         if isinstance(segment, TextSegment)
     ]
     assert texts == ['first', 'second']
@@ -309,3 +313,25 @@ async def test_a_round_with_nothing_to_answer_is_not_a_turn() -> None:
 
     assert store.opened == []
     assert store.maintained == []
+
+
+async def test_every_user_message_of_the_round_carries_the_same_header() -> None:
+    now = datetime(2026, 3, 4, 12, 30, tzinfo=UTC)
+    llm = answering()
+
+    await make_handler(llm, FakeStore(), FakeClock(now)).handle(
+        request('first', 'second'),
+        RecordingReply(),
+    )
+
+    headers = [
+        segment.text
+        for message in llm.requests[0].messages
+        if message.role == 'user'
+        for segment in message.segments[:1]
+        if isinstance(segment, TextSegment)
+    ]
+    assert headers == [
+        '[2026-03-04T12:30:00+00:00] (support_bot) user:1:\n\n',
+        '[2026-03-04T12:30:00+00:00] (support_bot) user:1:\n\n',
+    ]

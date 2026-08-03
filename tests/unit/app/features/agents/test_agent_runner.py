@@ -3,7 +3,7 @@ import time
 from base64 import b64decode
 from collections.abc import AsyncIterator, Sequence
 from dataclasses import replace
-from datetime import timedelta
+from datetime import UTC, datetime, timedelta
 from typing import Annotated, override
 
 import pytest
@@ -136,6 +136,8 @@ def make_turn(
     *,
     prompts: tuple[TurnPrompt, ...] = (TurnPrompt(text='hello', actor='user:1'),),
     model: str = 'test-model',
+    now: datetime = datetime(2026, 1, 1, tzinfo=UTC),
+    channel: str = 'support_bot',
     prior_turns: tuple[Message, ...] = (),
     max_iterations: int = 10,
     turn_timeout: float = 300.0,
@@ -145,6 +147,8 @@ def make_turn(
         instructions='be helpful',
         prompts=prompts,
         model=model,
+        now=now,
+        channel=channel,
         prior_turns=prior_turns,
         max_iterations=max_iterations,
         turn_timeout=turn_timeout,
@@ -585,7 +589,8 @@ async def test_an_attached_image_reaches_the_model_beside_its_caption() -> None:
 
     await runner.run(make_turn(prompts=(prompt,)), discard())
 
-    segments = llm.requests[0].messages[-1].segments
+    # NOTE: segments[0] is the current-time stamp every user message carries
+    segments = llm.requests[0].messages[-1].segments[1:]
     assert [type(segment) for segment in segments] == [TextSegment, ImageSegment]
     image = segments[1]
     assert isinstance(image, ImageSegment)
@@ -601,8 +606,9 @@ async def test_a_photo_without_a_caption_is_still_a_message() -> None:
     await runner.run(make_turn(prompts=(prompt,)), discard())
 
     # NOTE: the old shape built the message from text alone, so a caption-less photo
-    # reached the model as an empty turn and answered nothing
-    segments = llm.requests[0].messages[-1].segments
+    # reached the model as an empty turn and answered nothing. segments[0] is the
+    # current-time stamp every user message carries.
+    segments = llm.requests[0].messages[-1].segments[1:]
     assert [type(segment) for segment in segments] == [ImageSegment]
 
 
@@ -618,7 +624,8 @@ async def test_a_transcribed_voice_note_arrives_as_what_it_said() -> None:
 
     await runner.run(make_turn(prompts=(prompt,)), discard())
 
-    assert llm.requests[0].messages[-1].segments == (
+    # NOTE: segments[0] is the current-time stamp every user message carries
+    assert llm.requests[0].messages[-1].segments[1:] == (
         TextSegment(text='remind me at six'),
     )
 
@@ -631,7 +638,8 @@ async def test_an_attachment_the_model_cannot_take_arrives_as_its_hint() -> None
 
     await runner.run(make_turn(prompts=(prompt,)), discard())
 
-    assert llm.requests[0].messages[-1].segments == (
+    # NOTE: segments[0] is the current-time stamp every user message carries
+    assert llm.requests[0].messages[-1].segments[1:] == (
         TextSegment(text='[audio: audio/ogg 12s]'),
     )
 
