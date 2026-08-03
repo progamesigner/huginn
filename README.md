@@ -117,7 +117,7 @@ Streaming details worth knowing: a keepalive comment goes out every 15 seconds s
 
 The service ships as a container image at `ghcr.io/progamesigner/huginn`, built from the multi-stage `Dockerfile` at the repository root. The image is multi-arch (`linux/amd64` and `linux/arm64`), so a mixed cluster pulls the right architecture per node from a single manifest.
 
-CI builds the image on every push and pull request, which surfaces packaging breakage (a missing arm64 wheel, a broken layer) as early as any other check. It only pushes to the registry on `main` and on tags; pull requests build without pushing. Each push is tagged `sha-<short>` for the commit, and `main` additionally moves `latest`.
+CI builds the image on every push and pull request, which surfaces packaging breakage (a missing arm64 wheel, a broken layer) as early as any other check. The build waits for `lint` and `test`, so a commit that fails either never reaches the registry, and it only pushes on `main` and on release tags; pull requests build without pushing. Every push is tagged `sha-<short>` for the commit, `main` additionally moves `latest`, and a release tag adds its semantic versions.
 
 The runtime stage runs as a non-root user and defaults `HUGINN_SERVER_HOST` to `0.0.0.0` so the process binds inside the container. Override the `HUGINN_SERVER_` knobs (see [Development](#development)) through the environment at deploy time.
 
@@ -134,6 +134,24 @@ Inspect the published multi-arch manifest with:
 ```sh
 docker buildx imagetools inspect ghcr.io/progamesigner/huginn:latest
 ```
+
+### Releasing
+
+A release is a signed tag on `main`, and pushing the tag is the whole procedure — there is nothing to click afterwards. `pyproject.toml` holds the version of record, and CI refuses to publish a tag that disagrees with it, so the bump and the tag travel together:
+
+```sh
+# set version = "X.Y.Z" in pyproject.toml and commit it, then
+git tag -s vX.Y.Z -m 'Release vX.Y.Z'
+git push origin vX.Y.Z
+```
+
+Tag `vX.Y.Z` publishes the immutable `X.Y.Z`, the floating `X.Y` that follows its patch releases, and the floating `X` that follows its minor releases, alongside the usual `sha-<short>`. The leading `v` is stripped, so `v1.2.3` publishes `1.2.3` and not `v1.2.3` — that part matches how `progamesigner/muninn` names its release images, though the floating tags are huginn's own and muninn publishes neither. `X` is withheld below `1.0.0`, where a floating `0` would claim compatibility across every minor release the project has yet to make.
+
+`vX.Y.Z` is the only accepted spelling, and a tag CI cannot read that way fails rather than publishing. Pre-release tags are deliberately absent, because PEP 440 writes `0.1.0rc1` where semver writes `0.1.0-rc.1` and no single `pyproject.toml` version can match both spellings; `sha-<short>` already names an exact build to try.
+
+`latest` tracks `main`, not the newest release, and a tag does not move it — which is why the workflow sets `flavor: latest=false`, since the default `latest=auto` would move `latest` onto every semver tag. Note that `ghcr.io/progamesigner/muninn:latest` means the newest *release*, so the two images do not read the same way.
+
+Publishing a release does not deploy it. The manifests repository pins an explicit tag through kustomize `newTag`, so a rollout is a separate, deliberate change there — and it should pin an immutable `X.Y.Z` rather than a floating `X.Y` or `X`, so that a pinned deployment cannot drift underneath itself.
 
 ## Identity administration
 
