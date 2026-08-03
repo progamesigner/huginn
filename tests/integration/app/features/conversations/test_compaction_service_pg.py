@@ -194,11 +194,18 @@ async def test_second_compaction_folds_prior_summary_turn(
 
     assert second_result.compacted is True
     assert len(second_llm.requests) == 1
-    segment = second_llm.requests[0].messages[0].segments[0]
-    assert isinstance(segment, TextSegment)
-    assert 'first recap' in segment.text
-    assert 'fact-a' in segment.text
-    assert 'todo-a' in segment.text
+    messages = second_llm.requests[0].messages
+    # NOTE: the narrative recap opens history (messages[1], right after system) exactly
+    # like a normal turn would replay it; the richer key_facts/open_items detail needed
+    # to write a new summary lives in the trailing fold instruction instead
+    opening = messages[1].segments[0]
+    assert isinstance(opening, TextSegment)
+    assert 'first recap' in opening.text
+
+    closing = messages[-1].segments[0]
+    assert isinstance(closing, TextSegment)
+    assert 'fact-a' in closing.text
+    assert 'todo-a' in closing.text
 
     remaining = await repository.load_turns_since_summary(second_result.conversation)
     assert len(remaining) == 1

@@ -34,9 +34,11 @@ pytestmark = pytest.mark.integration
 
 class Summarizer(LLMClient):
     calls: int
+    requests: list[CompletionRequest]
 
     def __init__(self) -> None:
         self.calls = 0
+        self.requests = []
 
     @override
     async def stream(
@@ -44,6 +46,7 @@ class Summarizer(LLMClient):
         request: CompletionRequest,
     ) -> AsyncIterator[CompletionChunk]:
         self.calls += 1
+        self.requests.append(request)
         yield TextChunk(text='{"summary": "they said things"}')
         yield FinishChunk(reason='stop')
 
@@ -69,7 +72,10 @@ def _config() -> HuginnConfig:
             'agents': AgentConfigList(
                 {
                     'scout': AgentConfig(description='scouts', instructions='be brief'),
-                    'sage': AgentConfig(description='sages', instructions='be brief'),
+                    'sage': AgentConfig(
+                        description='sages',
+                        instructions='be thorough',
+                    ),
                 },
             ),
             'defaults': DefaultsConfig(model='test-model'),
@@ -183,6 +189,33 @@ async def test_compact_folds_every_agent_of_the_chat_once(
         assert await _history(database, '903', 'scout') == [
             'Summary of the conversation so far: they said things',
         ]
+    finally:
+        await database.dispose()
+
+
+@pytest.mark.usefixtures('_migrated')
+async def test_compact_uses_each_conversations_own_agent_instructions(
+    database_url: str,
+) -> None:
+    # NOTE: CompactionService is built fresh per conversation inside compact()'s loop
+    # specifically so each agent's own system prompt reaches the summarizer -- this
+    # pins that down against a regression back to one shared instance for the batch
+    database = DatabaseManager({None: database_url})
+    llm = Summarizer()
+    try:
+        await _said(database, '905', 'scout')
+        await _said(database, '905', 'sage')
+
+        await _control(database, Models(llm)).compact('support_bot', '905')
+
+        assert all(request.messages[0].role == 'system' for request in llm.requests)
+        texts = sorted(
+            segment.text
+            for request in llm.requests
+            for segment in [request.messages[0].segments[0]]
+            if isinstance(segment, TextSegment)
+        )
+        assert texts == ['be brief', 'be thorough']
     finally:
         await database.dispose()
 

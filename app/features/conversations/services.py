@@ -1,13 +1,17 @@
 import logging
-from collections.abc import AsyncIterator, Iterator, Mapping, Sequence
+from collections.abc import AsyncIterator, Sequence
 from contextlib import AbstractAsyncContextManager, asynccontextmanager
 from typing import override
 
-from pydantic import JsonValue
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config.registry import HuginnConfig
-from app.features.agents.config import AGENTS, DEFAULTS, resolve_model
+from app.features.agents.config import (
+    AGENTS,
+    DEFAULTS,
+    load_instructions,
+    resolve_model,
+)
 from app.features.agents.contracts import (
     TranscriptContract,
     TranscriptStoreContract,
@@ -15,10 +19,15 @@ from app.features.agents.contracts import (
 from app.features.agents.types import PromptAttachment, TurnPrompt
 from lib.database import DatabaseContract
 from lib.guid import GUIDContract
-from lib.llm import LLMContract, Message, TextSegment
+from lib.llm import LLMContract, Message
 from lib.temporal import ClockContract
 
-from .compaction import CompactionService
+from .compaction import (
+    CompactionService,
+    SummaryOutput,
+    replay_messages,
+    summary_message,
+)
 from .config import COMPACTION
 from .contracts import (
     BlobStoreContract,
@@ -26,46 +35,11 @@ from .contracts import (
     ConversationControlContract,
 )
 from .repositories import ConversationRepository
-from .types import Conversation, Part, Turn
-
-logger = logging.getLogger(__name__)
+from .types import Conversation, Part
 
 _TEXT = 'text'
-_REPLAYED = ('audio', 'image', _TEXT)
 
-
-def _messages(turns: Sequence[Turn]) -> Iterator[Message]:
-    for turn in turns:
-        for part in turn.parts:
-            # NOTE: role is a constrained column, not a literal type, so replaying it
-            # into a model turn has to narrow it back to the two roles that can speak
-            if (text := _text_of(part)) is None:
-                continue
-
-            if part.role == 'assistant':
-                yield Message(role='assistant', segments=(TextSegment(text=text),))
-            elif part.role == 'user':
-                yield Message(role='user', segments=(TextSegment(text=text),))
-
-
-def _summary_message(summary: Mapping[str, JsonValue]) -> Message | None:
-    text = summary.get('summary')
-    if not isinstance(text, str) or not text:
-        return None
-
-    return Message(
-        role='user',
-        segments=(TextSegment(text=f'Summary of the conversation so far: {text}'),),
-        cacheable=True,
-    )
-
-
-def _text_of(part: Part) -> str | None:
-    if part.kind not in _REPLAYED:
-        return None
-
-    text = part.payload.get('text')
-    return text if isinstance(text, str) and text else None
+logger = logging.getLogger(__name__)
 
 
 class ConversationTranscript(TranscriptContract):
@@ -85,13 +59,17 @@ class ConversationTranscript(TranscriptContract):
 
     @override
     async def history(self) -> tuple[Message, ...]:
-        summary = await self.repository.load_current_summary(self.conversation)
+        payload = await self.repository.load_current_summary(self.conversation)
         turns = await self.repository.load_turns_since_summary(self.conversation)
-        opening = None if summary is None else _summary_message(summary)
+        summary = (
+            None
+            if payload is None
+            else SummaryOutput.model_validate(payload, strict=False)
+        )
 
         return (
-            *(() if opening is None else (opening,)),
-            *_messages(turns),
+            *(() if summary is None else (summary_message(summary),)),
+            *replay_messages(turns),
         )
 
     @override
@@ -159,14 +137,9 @@ class ConversationControl(ConversationControlContract):
         compacted = 0
         async with self.database.session() as session, session.begin():
             repository = ConversationRepository(session, self.guid, self.clock)
-            service = CompactionService(
-                self.llm,
-                repository,
-                instruction=self.config.section(COMPACTION).summary_prompt,
-            )
             for conversation in await repository.list_by_chat(channel, chat):
-                model = self._model(conversation.agent)
-                if model is None:
+                configured = self.config.section(AGENTS).root.get(conversation.agent)
+                if configured is None:
                     logger.warning(
                         'Conversation %s names agent %s, which is not configured',
                         conversation.id,
@@ -174,6 +147,16 @@ class ConversationControl(ConversationControlContract):
                     )
                     continue
 
+                model = resolve_model(
+                    configured.model,
+                    self.config.section(DEFAULTS).model,
+                )
+                service = CompactionService(
+                    self.llm,
+                    repository,
+                    instructions=load_instructions(configured),
+                    instruction=self.config.section(COMPACTION).summary_prompt,
+                )
                 result = await service.force(conversation, model)
                 compacted += int(result.compacted)
 
@@ -189,13 +172,6 @@ class ConversationControl(ConversationControlContract):
             ]
 
         return sum(1 for conversation in reset if conversation is not None)
-
-    def _model(self, agent: str) -> str | None:
-        configured = self.config.section(AGENTS).root.get(agent)
-        if configured is None:
-            return None
-
-        return resolve_model(configured.model, self.config.section(DEFAULTS).model)
 
 
 class ConversationTranscriptStore(TranscriptStoreContract):
@@ -242,9 +218,11 @@ class ConversationTranscriptStore(TranscriptStoreContract):
         async with self.database.session() as session, session.begin():
             repository = self._repository(session)
             conversation = await repository.get_or_create(channel, chat, agent)
+            configured = self.config.section(AGENTS).root[agent]
             service = CompactionService(
                 self.llm,
                 repository,
+                instructions=load_instructions(configured),
                 instruction=self.config.section(COMPACTION).summary_prompt,
             )
             result = await service.maybe_compact(conversation, model)

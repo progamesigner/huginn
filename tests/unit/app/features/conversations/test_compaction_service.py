@@ -52,6 +52,7 @@ def build_service(
     keep_turns: int = 8,
     token_threshold: int = 50_000,
     max_retries: int = 1,
+    instructions: str = 'be helpful',
     instruction: str | None = None,
 ) -> CompactionService:
     # NOTE: FakeConversationRepository duck-types ConversationRepository's surface;
@@ -64,6 +65,7 @@ def build_service(
         keep_turns=keep_turns,
         token_threshold=token_threshold,
         max_retries=max_retries,
+        instructions=instructions,
         instruction=instruction,
     )
 
@@ -313,10 +315,14 @@ async def test_maybe_compact_folds_prior_summary_and_accumulates_context() -> No
 
     assert second_result.compacted is True
     assert len(second_llm.requests) == 1
-    prompt = prompt_text(second_llm.requests[0].messages[0])
-    assert 'first recap' in prompt
-    assert 'fact-a' in prompt
-    assert 'todo-a' in prompt
+    messages = second_llm.requests[0].messages
+    # NOTE: the narrative recap opens history (messages[1], right after system) exactly
+    # like a normal turn would replay it; the richer key_facts/open_items detail needed
+    # to write a new summary lives in the trailing fold instruction instead
+    assert 'first recap' in prompt_text(messages[1])
+    closing = prompt_text(messages[-1])
+    assert 'fact-a' in closing
+    assert 'todo-a' in closing
 
     remaining = await repository.load_turns_since_summary(second_result.conversation)
     assert len(remaining) == 1
@@ -348,13 +354,17 @@ async def test_summary_request_leads_with_cacheable_transcript_then_instruction(
     await service.compact(conversation, None, (turn,), 'test-model')
 
     messages = llm_client.requests[0].messages
-    # NOTE: transcript leads as a cacheable prefix, instruction trails — the prompt
-    # ordering that lets provider caches be reused (see _summary_messages).
-    assert len(messages) == 2
-    assert messages[0].cacheable is True
-    assert 'UTC+8' in prompt_text(messages[0])
-    assert messages[1].cacheable is False
-    assert 'JSON object' in prompt_text(messages[1])
+    # NOTE: system + replayed history lead as a cacheable prefix (matching the shape a
+    # normal turn's own request would have used), the fold instruction trails uncached
+    # — this is what lets a provider's prompt cache carry over from the real turn that
+    # just ran (see _summary_messages).
+    assert len(messages) == 3
+    assert messages[0].role == 'system'
+    assert messages[0].cacheable is False
+    assert messages[1].cacheable is True
+    assert 'UTC+8' in prompt_text(messages[1])
+    assert messages[2].cacheable is False
+    assert 'JSON object' in prompt_text(messages[2])
 
 
 async def test_a_configured_summary_prompt_replaces_the_default_instruction() -> None:
@@ -381,7 +391,7 @@ async def test_a_configured_summary_prompt_replaces_the_default_instruction() ->
     await service.compact(conversation, None, (turn,), 'test-model')
 
     messages = llm_client.requests[0].messages
-    assert prompt_text(messages[1]) == 'Summarize in exactly one sentence.'
+    assert prompt_text(messages[-1]) == 'Summarize in exactly one sentence.'
 
 
 async def test_compact_returns_uncompacted_when_no_client_for_model() -> None:

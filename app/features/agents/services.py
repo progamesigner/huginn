@@ -2,7 +2,6 @@ import asyncio
 import logging
 from base64 import b64encode
 from collections.abc import AsyncIterator, Iterator, Sequence
-from pathlib import Path
 from typing import cast, override
 from uuid import uuid4
 
@@ -27,7 +26,7 @@ from lib.llm import (
 )
 from lib.temporal import ClockContract
 
-from .config import AgentConfig, resolve_model
+from .config import AgentConfig, load_instructions, resolve_model
 from .contracts import (
     ToolSource,
     ToolSourceRegistry,
@@ -35,7 +34,7 @@ from .contracts import (
     TurnHandlerContract,
     TurnStream,
 )
-from .exceptions import AgentError, TurnTimeoutError, UnservableModelError
+from .exceptions import TurnTimeoutError, UnservableModelError
 from .router import Router
 from .types import (
     RoutedAgent,
@@ -341,13 +340,3 @@ async def build_tool_set(
             tools.add(name, tool)
 
     return tools
-
-
-def load_instructions(agent: AgentConfig) -> str:
-    if agent.instructions is not None:
-        return agent.instructions
-
-    if agent.instructions_file is not None:
-        return Path(agent.instructions_file).read_text(encoding='utf-8')
-
-    raise AgentError('agent has neither instructions nor instructions_file')

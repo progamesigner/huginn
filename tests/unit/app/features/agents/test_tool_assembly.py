@@ -5,10 +5,10 @@ from typing import Annotated, override
 import pytest
 from pydantic import Field
 
-from app.features.agents.config import AgentConfig, SkillsConfig
+from app.features.agents.config import AgentConfig, SkillsConfig, load_instructions
 from app.features.agents.contracts import NamedTool, ToolSource
 from app.features.agents.exceptions import AgentError, DuplicateToolNameError
-from app.features.agents.services import build_tool_set, load_instructions
+from app.features.agents.services import build_tool_set
 from app.features.agents.types import ToolOutput, ToolParams, TypedTool
 
 

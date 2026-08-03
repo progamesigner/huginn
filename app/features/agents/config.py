@@ -1,5 +1,6 @@
 from collections.abc import Iterator
 from dataclasses import replace
+from pathlib import Path
 from typing import Annotated
 
 from pydantic import BaseModel, Field, JsonValue, RootModel
@@ -7,7 +8,7 @@ from pydantic import BaseModel, Field, JsonValue, RootModel
 from app.core.config.registry import HuginnConfig, SectionSpec
 from app.core.config.schema import ConfigValue
 
-from .exceptions import AmbiguousInstructionsError, MissingModelError
+from .exceptions import AgentError, AmbiguousInstructionsError, MissingModelError
 
 
 class DefaultsConfig(ConfigValue):
@@ -88,6 +89,16 @@ def resolve_model(explicit: str | None, default: str | None) -> str:
         return model
 
     raise MissingModelError('no model configured; set the model or defaults.model')
+
+
+def load_instructions(agent: AgentConfig) -> str:
+    if agent.instructions is not None:
+        return agent.instructions
+
+    if agent.instructions_file is not None:
+        return Path(agent.instructions_file).read_text(encoding='utf-8')
+
+    raise AgentError('agent has neither instructions nor instructions_file')
 
 
 AGENTS = SectionSpec(
