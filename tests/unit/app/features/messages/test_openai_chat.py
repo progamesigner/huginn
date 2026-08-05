@@ -83,6 +83,23 @@ async def test_an_openai_request_without_streaming_answers_in_one_body() -> None
     assert body['id'].startswith('chatcmpl-')
     assert body['created'] > 0
 
+    async def test_an_openai_request_forwards_max_completion_tokens() -> None:
+        turns = StreamingTurns()
+
+        async with chat_client(make_config(api_key(agent='scout')), turns) as client:
+            response = await client.post(
+                _PATH,
+                headers=_AUTH,
+                json={
+                    'model': 'scout',
+                    'max_completion_tokens': 4096,
+                    'messages': [{'role': 'user', 'content': 'hi'}],
+                },
+            )
+
+        assert response.status_code == 200
+        assert turns.requests[0].max_completion_tokens == 4096
+
 
 async def test_a_failed_turn_without_streaming_is_a_real_error_status() -> None:
     turns = StreamingTurns('half an ', fail=True)

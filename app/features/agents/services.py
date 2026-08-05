@@ -208,6 +208,7 @@ class AgentRunner:
                         model=turn.model,
                         messages=tuple(history),
                         tools=self.tools.schemas(),
+                        max_completion_tokens=turn.max_completion_tokens,
                     )
                     text, tool_calls = await _consume(self.llm.stream(request), sink)
 
@@ -253,6 +254,7 @@ class TurnHandler(TurnHandlerContract):
     sources: ToolSourceRegistry
     store: TranscriptStoreContract
     default_model: str | None
+    default_max_completion_tokens: int | None
 
     def __init__(
         self,
@@ -262,9 +264,11 @@ class TurnHandler(TurnHandlerContract):
         store: TranscriptStoreContract,
         clock: ClockContract,
         default_model: str | None = None,
+        default_max_completion_tokens: int | None = None,
     ) -> None:
         self.clock = clock
         self.default_model = default_model
+        self.default_max_completion_tokens = default_max_completion_tokens
         self.llm = llm
         self.router = router
         self.sources = sources
@@ -322,6 +326,11 @@ class TurnHandler(TurnHandlerContract):
                     now=self.clock.now(),
                     channel=request.channel,
                     prior_turns=history,
+                    max_completion_tokens=(
+                        request.max_completion_tokens
+                        or agent.config.max_completion_tokens
+                        or self.default_max_completion_tokens
+                    ),
                 ),
                 reply,
             )

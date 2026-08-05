@@ -139,6 +139,7 @@ def make_turn(
     now: datetime = datetime(2026, 1, 1, tzinfo=UTC),
     channel: str = 'support_bot',
     prior_turns: tuple[Message, ...] = (),
+    max_completion_tokens: int | None = None,
     max_iterations: int = 10,
     turn_timeout: float = 300.0,
     tool_timeout: float = 60.0,
@@ -150,6 +151,7 @@ def make_turn(
         now=now,
         channel=channel,
         prior_turns=prior_turns,
+        max_completion_tokens=max_completion_tokens,
         max_iterations=max_iterations,
         turn_timeout=turn_timeout,
         tool_timeout=tool_timeout,
@@ -206,6 +208,30 @@ async def test_run_returns_text_immediately_when_no_tool_calls() -> None:
     assert output.completed is True
     assert sink.fragments == ['He', 'llo']
     assert len(llm.requests) == 1
+
+
+async def test_run_sends_the_token_limit_on_every_tool_loop_iteration() -> None:
+    llm = FakeLLM(
+        [
+            [
+                ToolCallChunk(
+                    index=0,
+                    id='call_1',
+                    name='echo',
+                    arguments='{"text": "hi"}',
+                ),
+                FinishChunk(reason='tool_calls'),
+            ],
+            [TextChunk(text='done'), FinishChunk(reason='stop')],
+        ],
+    )
+
+    await AgentRunner(llm, make_toolset(), ClockManager()).run(
+        make_turn(max_completion_tokens=4096),
+        discard(),
+    )
+
+    assert [request.max_completion_tokens for request in llm.requests] == [4096, 4096]
 
 
 async def test_run_executes_single_tool_call_then_finishes() -> None:

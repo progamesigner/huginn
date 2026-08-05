@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 from typing import Annotated, Literal
 
-from pydantic import Field
+from pydantic import AliasChoices, Field
 
 from app.contracts.channels import ToolPhase
 from app.core.schema import AppRequest, AppResponse
@@ -11,6 +11,7 @@ class ChatRequest(AppRequest):
     message: Annotated[str, Field()]
     conversation: Annotated[str | None, Field()] = None
     agent: Annotated[str | None, Field()] = None
+    max_completion_tokens: Annotated[int | None, Field(gt=0)] = None
 
 
 class ContentPart(AppRequest):
@@ -35,6 +36,13 @@ class CompatibleRequest(AppRequest):
     stream: Annotated[bool, Field()] = False
     conversation: Annotated[str | None, Field()] = None
     user: Annotated[str | None, Field()] = None
+    max_completion_tokens: Annotated[
+        int | None,
+        Field(
+            gt=0,
+            validation_alias=AliasChoices('max_completion_tokens', 'max_tokens'),
+        ),
+    ] = None
 
     def latest(self) -> str:
         return next(

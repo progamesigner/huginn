@@ -37,6 +37,14 @@ def test_defaults_config_defaults_to_no_model() -> None:
     assert DefaultsConfig().model is None
 
 
+def test_completion_token_limits_must_be_positive() -> None:
+    with pytest.raises(ValidationError):
+        DefaultsConfig(max_completion_tokens=0)
+
+    with pytest.raises(ValidationError):
+        AgentConfig(description='x', max_completion_tokens=-1)
+
+
 def test_agent_config_requires_description() -> None:
     with pytest.raises(ValidationError, match='description'):
         AgentConfig.model_validate({})

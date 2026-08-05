@@ -1,5 +1,6 @@
 defaults:
   model: gpt-5-mini
+  max_completion_tokens: 16384
 
 providers:
   openai:
@@ -47,6 +48,7 @@ skills:
 agents:
   scout:
     description: Research agent — answers questions with web search and recall.
+    max_completion_tokens: 32768
     instructions: |
       You are scout, a research assistant.
       Use websearch for anything time-sensitive.

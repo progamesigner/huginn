@@ -165,6 +165,8 @@ def make_handler(
     llm: FakeLLM | None,
     store: FakeStore,
     clock: ClockContract | None = None,
+    *,
+    default_max_completion_tokens: int | None = None,
 ) -> TurnHandler:
     return TurnHandler(
         llm=FakeModels(llm),
@@ -172,6 +174,7 @@ def make_handler(
         sources=ToolSourceRegistry(),
         store=store,
         clock=clock or ClockManager(),
+        default_max_completion_tokens=default_max_completion_tokens,
     )
 
 
@@ -193,6 +196,63 @@ async def test_a_turn_streams_the_answer_and_finishes_the_reply() -> None:
     assert reply.fragments == ['answer']
     assert reply.finished
     assert not reply.abandoned
+
+
+async def test_request_token_limit_overrides_agent_and_default() -> None:
+    llm = answering()
+    configured = agents()['scout'].model_copy(update={'max_completion_tokens': 8192})
+    handler = TurnHandler(
+        llm=FakeModels(llm),
+        router=Router({'scout': configured}, FakeModels(llm), 'default-model'),
+        sources=ToolSourceRegistry(),
+        store=FakeStore(),
+        clock=ClockManager(),
+        default_max_completion_tokens=16384,
+    )
+
+    await handler.handle(
+        replace(request('hello'), max_completion_tokens=4096),
+        RecordingReply(),
+    )
+
+    assert llm.requests[0].max_completion_tokens == 4096
+
+
+async def test_agent_token_limit_overrides_default() -> None:
+    llm = answering()
+    configured = agents()['scout'].model_copy(update={'max_completion_tokens': 8192})
+    handler = TurnHandler(
+        llm=FakeModels(llm),
+        router=Router({'scout': configured}, FakeModels(llm), 'default-model'),
+        sources=ToolSourceRegistry(),
+        store=FakeStore(),
+        clock=ClockManager(),
+        default_max_completion_tokens=16384,
+    )
+
+    await handler.handle(request('hello'), RecordingReply())
+
+    assert llm.requests[0].max_completion_tokens == 8192
+
+
+async def test_default_token_limit_is_used_when_request_and_agent_omit_it() -> None:
+    llm = answering()
+
+    await make_handler(
+        llm,
+        FakeStore(),
+        default_max_completion_tokens=16384,
+    ).handle(request('hello'), RecordingReply())
+
+    assert llm.requests[0].max_completion_tokens == 16384
+
+
+async def test_omitted_token_limit_preserves_the_provider_default() -> None:
+    llm = answering()
+
+    await make_handler(llm, FakeStore()).handle(request('hello'), RecordingReply())
+
+    assert llm.requests[0].max_completion_tokens is None
 
 
 async def test_a_turn_tells_the_reply_which_agent_took_it() -> None:

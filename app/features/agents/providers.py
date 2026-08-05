@@ -22,6 +22,10 @@ def _default_model(container: ContainerContract) -> str | None:
     return container.resolve(HuginnConfig).section(DEFAULTS).model
 
 
+def _default_max_completion_tokens(container: ContainerContract) -> int | None:
+    return container.resolve(HuginnConfig).section(DEFAULTS).max_completion_tokens
+
+
 def _router(container: ContainerContract) -> Router:
     config = container.resolve(HuginnConfig)
     return Router(
@@ -40,6 +44,7 @@ def _turns(container: ContainerContract) -> TurnHandler:
         store=container.resolve(TranscriptStoreContract),
         clock=container.resolve(ClockContract),
         default_model=_default_model(container),
+        default_max_completion_tokens=_default_max_completion_tokens(container),
     )
 
 

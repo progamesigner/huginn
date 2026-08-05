@@ -218,6 +218,20 @@ async def test_a_turn_streams_its_whole_life_as_events() -> None:
     ]
 
 
+async def test_native_request_forwards_max_completion_tokens() -> None:
+    turns = StreamingTurns()
+
+    async with chat_client(make_config(api_key(agent='scout')), turns) as client:
+        response = await client.post(
+            _PATH,
+            headers={'Authorization': f'Bearer {_CREDENTIAL}'},
+            json={'message': 'hello', 'max_completion_tokens': 4096},
+        )
+
+    assert response.status_code == 200
+    assert turns.requests[0].max_completion_tokens == 4096
+
+
 async def test_the_stream_is_not_buffered_on_the_way_out() -> None:
     # NOTE: an ingress that buffers turns a stream back into one late answer
     async with chat_client(make_config(api_key(agent='scout')), StreamingTurns()) as (

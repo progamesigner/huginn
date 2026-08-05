@@ -1,5 +1,8 @@
 import json
 
+import pytest
+from pydantic import ValidationError
+
 from app.features.messages.types import CompatibleRequest
 
 
@@ -65,3 +68,24 @@ def test_the_user_field_keeps_a_compatible_client_on_one_thread() -> None:
     ask = CompatibleRequest.model_validate_json(json.dumps({'user': 'u-1'}))
 
     assert ask.thread() == 'u-1'
+
+
+@pytest.mark.parametrize('field', ['max_completion_tokens', 'max_tokens'])
+def test_compatible_token_limit_names_are_normalized(field: str) -> None:
+    ask = CompatibleRequest.model_validate({field: 4096})
+
+    assert ask.max_completion_tokens == 4096
+
+
+def test_canonical_token_limit_wins_when_both_names_are_sent() -> None:
+    ask = CompatibleRequest.model_validate(
+        {'max_completion_tokens': 8192, 'max_tokens': 4096},
+    )
+
+    assert ask.max_completion_tokens == 8192
+
+
+@pytest.mark.parametrize('value', [0, -1])
+def test_compatible_token_limit_must_be_positive(value: int) -> None:
+    with pytest.raises(ValidationError):
+        CompatibleRequest.model_validate({'max_completion_tokens': value})

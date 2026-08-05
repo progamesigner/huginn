@@ -14,6 +14,7 @@ from .exceptions import AgentError, AmbiguousInstructionsError, MissingModelErro
 class DefaultsConfig(ConfigValue):
     model: Annotated[str | None, Field()] = None
     router_prompt: Annotated[str | None, Field()] = None
+    max_completion_tokens: Annotated[int | None, Field(gt=0)] = None
 
 
 class ToolRef(ConfigValue):
@@ -36,6 +37,7 @@ class SkillsConfig(ConfigValue):
 class AgentConfig(ConfigValue):
     description: Annotated[str, Field()]
     model: Annotated[str | None, Field()] = None
+    max_completion_tokens: Annotated[int | None, Field(gt=0)] = None
     instructions: Annotated[str | None, Field()] = None
     instructions_file: Annotated[str | None, Field()] = None
     tools: Annotated[tuple[ToolRef, ...], Field()] = ()

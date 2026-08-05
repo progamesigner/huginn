@@ -69,6 +69,7 @@ class TurnRequest:
     policy: RoutingPolicy
     prompts: tuple[TurnPrompt, ...]
     denied_tools: frozenset[str] = field(default_factory=frozenset)
+    max_completion_tokens: int | None = None
 
 
 @dataclass(frozen=True)
@@ -91,6 +92,7 @@ class TurnInput:
     now: datetime
     channel: str
     prior_turns: tuple[Message, ...] = ()
+    max_completion_tokens: int | None = None
     max_iterations: int = _DEFAULT_MAX_ITERATIONS
     turn_timeout: float = _DEFAULT_TURN_TIMEOUT
     tool_timeout: float = _DEFAULT_TOOL_TIMEOUT

@@ -72,6 +72,7 @@ class ChatHandlers:
             ask.message,
             conversation=ask.conversation,
             agent=ask.agent,
+            max_completion_tokens=ask.max_completion_tokens,
         )
 
         return self._streaming(prepared, NativePresenter())
@@ -140,6 +141,7 @@ class ChatHandlers:
             ask.latest(),
             conversation=ask.thread(),
             agent=ask.model if ask.model in client.agents else None,
+            max_completion_tokens=ask.max_completion_tokens,
         )
 
     def _streaming(

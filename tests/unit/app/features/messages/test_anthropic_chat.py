@@ -33,6 +33,7 @@ async def test_an_anthropic_stream_opens_and_closes_its_message() -> None:
         )
 
     assert response.status_code == 200
+    assert turns.requests[0].max_completion_tokens == 64
     assert [name for name, _ in events(response.text)] == [
         'message_start',
         'content_block_start',

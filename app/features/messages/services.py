@@ -80,6 +80,7 @@ class ChatService:
         *,
         conversation: str | None = None,
         agent: str | None = None,
+        max_completion_tokens: int | None = None,
     ) -> PreparedTurn:
         agent = agent or client.agent
         if agent is not None and agent not in client.agents:
@@ -107,6 +108,7 @@ class ChatService:
                 policy=_policy(agent, client),
                 prompts=(TurnPrompt(text=message, actor=_actor(client)),),
                 denied_tools=client.denied_tools,
+                max_completion_tokens=max_completion_tokens,
             ),
             lock=lock,
         )
