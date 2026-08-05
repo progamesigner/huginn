@@ -3,24 +3,26 @@ from typing import cast
 
 from httpx import Timeout
 from openai import AsyncOpenAI, omit
-from openai.types.chat import (
-    ChatCompletionAssistantMessageParam,
-    ChatCompletionChunk,
-    ChatCompletionContentPartImageParam,
-    ChatCompletionContentPartParam,
-    ChatCompletionContentPartTextParam,
-    ChatCompletionFunctionToolParam,
-    ChatCompletionMessageFunctionToolCallParam,
-    ChatCompletionMessageParam,
-    ChatCompletionSystemMessageParam,
-    ChatCompletionToolMessageParam,
-    ChatCompletionToolUnionParam,
-    ChatCompletionUserMessageParam,
+from openai.types.responses import (
+    EasyInputMessageParam,
+    FunctionToolParam,
+    ResponseCompletedEvent,
+    ResponseErrorEvent,
+    ResponseFailedEvent,
+    ResponseFunctionCallArgumentsDeltaEvent,
+    ResponseFunctionToolCall,
+    ResponseFunctionToolCallParam,
+    ResponseIncompleteEvent,
+    ResponseInputImageParam,
+    ResponseInputItemParam,
+    ResponseInputMessageContentListParam,
+    ResponseInputTextParam,
+    ResponseOutputItemAddedEvent,
+    ResponseReasoningTextDeltaEvent,
+    ResponseStreamEvent,
+    ResponseTextConfigParam,
+    ResponseTextDeltaEvent,
 )
-from openai.types.chat.chat_completion_content_part_image_param import ImageURL
-from openai.types.chat.chat_completion_message_function_tool_call_param import Function
-from openai.types.shared_params import ResponseFormatJSONSchema
-from openai.types.shared_params.response_format_json_schema import JSONSchema
 from pydantic import JsonValue
 
 from lib.http import HTTPClientContract
@@ -29,137 +31,139 @@ from lib.llm.types import (
     CompletionChunk,
     CompletionRequest,
     FinishChunk,
-    FinishReason,
     ImageSegment,
     Message,
     TextChunk,
     TextSegment,
+    ThinkingChunk,
     ToolCallChunk,
     ToolCallSegment,
     ToolResultSegment,
 )
 
-_FINISH_REASONS: dict[str, FinishReason] = {
-    'stop': 'stop',
-    'length': 'length',
-    'tool_calls': 'tool_calls',
-    'function_call': 'tool_calls',
-    'content_filter': 'error',
-}
 
-
-def build_messages(
-    messages: tuple[Message, ...],
-) -> Iterator[ChatCompletionMessageParam]:
-    def content_parts(
-        text: str | None,
-        images: list[ChatCompletionContentPartImageParam],
-    ) -> Iterator[ChatCompletionContentPartParam]:
-        if text is not None:
-            yield ChatCompletionContentPartTextParam(type='text', text=text)
-        yield from images
-
-    def image_entries(
-        message: Message,
-    ) -> Iterator[ChatCompletionContentPartImageParam]:
-        for segment in message.segments:
-            match segment:
-                case ImageSegment(media_type=media_type, data=data):
-                    yield ChatCompletionContentPartImageParam(
-                        type='image_url',
-                        image_url=ImageURL(url=f'data:{media_type};base64,{data}'),
-                    )
-
-    def text_fragments(message: Message) -> Iterator[str]:
-        for segment in message.segments:
-            match segment:
-                case TextSegment(text=fragment):
-                    yield fragment
-
-    def tool_call_entries(
-        message: Message,
-    ) -> Iterator[ChatCompletionMessageFunctionToolCallParam]:
-        for segment in message.segments:
-            match segment:
-                case ToolCallSegment(id=id_, name=name, arguments=arguments):
-                    yield ChatCompletionMessageFunctionToolCallParam(
-                        id=id_,
-                        type='function',
-                        function=Function(name=name, arguments=arguments),
-                    )
-
+def build_messages(messages: tuple[Message, ...]) -> Iterator[ResponseInputItemParam]:
     for message in messages:
         if message.role == 'tool':
-            match message.segments[0]:
-                case ToolResultSegment(tool_call_id=tool_call_id, content=content):
-                    yield ChatCompletionToolMessageParam(
-                        role='tool',
+            for segment in message.segments:
+                match segment:
+                    case ToolResultSegment(
                         tool_call_id=tool_call_id,
                         content=content,
-                    )
+                    ):
+                        yield cast(
+                            ResponseInputItemParam,
+                            {
+                                'type': 'function_call_output',
+                                'call_id': tool_call_id,
+                                'output': content,
+                            },
+                        )
             continue
 
-        texts = list(text_fragments(message))
-        tool_calls = list(tool_call_entries(message))
-        # NOTE: only a user turn can hold an image
-        images = list(image_entries(message)) if message.role == 'user' else []
-
-        if not texts and not tool_calls and not images:
-            continue
-
-        content = '\n'.join(texts) or None
-        match message.role:
-            case 'system':
-                yield ChatCompletionSystemMessageParam(
-                    role=message.role,
-                    content=content or '',
+        texts = [
+            segment.text
+            for segment in message.segments
+            if isinstance(segment, TextSegment)
+        ]
+        images = (
+            [
+                ResponseInputImageParam(
+                    type='input_image',
+                    detail='auto',
+                    image_url=f'data:{segment.media_type};base64,{segment.data}',
                 )
-            case 'user' if images:
-                yield ChatCompletionUserMessageParam(
+                for segment in message.segments
+                if isinstance(segment, ImageSegment)
+            ]
+            if message.role == 'user'
+            else []
+        )
+        if texts or images:
+            if images:
+                entry = EasyInputMessageParam(
                     role=message.role,
-                    content=list(content_parts(content, images)),
+                    content=cast(
+                        ResponseInputMessageContentListParam,
+                        [
+                            *(
+                                ResponseInputTextParam(type='input_text', text=text)
+                                for text in texts
+                            ),
+                            *images,
+                        ],
+                    ),
                 )
-            case 'user':
-                yield ChatCompletionUserMessageParam(
+            else:
+                entry = EasyInputMessageParam(
                     role=message.role,
-                    content=content or '',
+                    content='\n'.join(texts),
                 )
-            case 'assistant':
-                entry = ChatCompletionAssistantMessageParam(
-                    role=message.role,
-                    content=content,
-                )
-                if tool_calls:
-                    entry['tool_calls'] = tool_calls
-                yield entry
+            yield cast(ResponseInputItemParam, entry)
+
+        if message.role == 'assistant':
+            for segment in message.segments:
+                match segment:
+                    case ToolCallSegment(id=id_, name=name, arguments=arguments):
+                        yield ResponseFunctionToolCallParam(
+                            type='function_call',
+                            call_id=id_,
+                            name=name,
+                            arguments=arguments,
+                        )
 
 
-def build_tools(tools: tuple[JsonValue, ...]) -> Iterator[ChatCompletionToolUnionParam]:
+def build_tools(tools: tuple[JsonValue, ...]) -> Iterator[FunctionToolParam]:
     for tool in tools:
-        yield cast(ChatCompletionFunctionToolParam, tool)
-
-
-def decode_chunk(chunk: ChatCompletionChunk) -> Iterator[CompletionChunk]:
-    if not chunk.choices:
-        return
-
-    choice = chunk.choices[0]
-    delta = choice.delta
-
-    if delta.content:
-        yield TextChunk(text=delta.content)
-
-    for call in delta.tool_calls or ():
-        function = call.function
-        yield ToolCallChunk(
-            index=call.index,
-            id=call.id,
-            name=function.name if function else None,
-            arguments=(function.arguments if function else None) or '',
+        entry = cast(dict[str, object], tool)
+        function = cast(dict[str, object], entry['function'])
+        yield FunctionToolParam(
+            type='function',
+            name=cast(str, function['name']),
+            description=cast(str | None, function.get('description')),
+            parameters=cast(dict[str, object] | None, function.get('parameters')),
+            strict=cast(bool | None, function.get('strict')),
         )
 
-    if choice.finish_reason is not None:
-        yield FinishChunk(reason=_FINISH_REASONS[choice.finish_reason])
+
+def decode_chunk(event: ResponseStreamEvent) -> Iterator[CompletionChunk]:
+    match event:
+        case ResponseTextDeltaEvent(delta=delta):
+            yield TextChunk(text=delta)
+        case ResponseReasoningTextDeltaEvent(delta=delta):
+            yield ThinkingChunk(text=delta)
+        case ResponseOutputItemAddedEvent(
+            output_index=index,
+            item=ResponseFunctionToolCall(call_id=call_id, name=name),
+        ):
+            yield ToolCallChunk(index=index, id=call_id, name=name)
+        case ResponseFunctionCallArgumentsDeltaEvent(
+            output_index=index,
+            delta=delta,
+        ):
+            yield ToolCallChunk(index=index, arguments=delta)
+        case ResponseCompletedEvent(response=response):
+            yield FinishChunk(
+                reason=(
+                    'tool_calls'
+                    if any(
+                        isinstance(item, ResponseFunctionToolCall)
+                        for item in response.output
+                    )
+                    else 'stop'
+                ),
+            )
+        case ResponseIncompleteEvent(response=response):
+            details = response.incomplete_details
+            yield FinishChunk(
+                reason=(
+                    'length'
+                    if details is not None and details.reason == 'max_output_tokens'
+                    else 'error'
+                ),
+            )
+        case ResponseFailedEvent() | ResponseErrorEvent():
+            yield FinishChunk(reason='error')
 
 
 class OpenAIAdapter:
@@ -181,18 +185,18 @@ class OpenAIAdapter:
         self,
         request: CompletionRequest,
     ) -> AsyncIterator[CompletionChunk]:
-        response_format = omit
+        text = omit
         if request.output_schema is not None:
-            response_format = ResponseFormatJSONSchema(
-                type='json_schema',
-                json_schema=JSONSchema(
-                    name=request.output_schema.name,
-                    schema=cast(
+            text = ResponseTextConfigParam(
+                format={
+                    'type': 'json_schema',
+                    'name': request.output_schema.name,
+                    'schema': cast(
                         dict[str, object],
                         dict(request.output_schema.json_schema),
                     ),
-                    strict=True,
-                ),
+                    'strict': True,
+                },
             )
 
         async with self.http.connect() as http_client:
@@ -204,16 +208,18 @@ class OpenAIAdapter:
                 http_client=http_client,
                 timeout=timeout,
             )
-            completion = await client.chat.completions.create(
+            response = await client.responses.create(
                 model=request.model,
-                messages=build_messages(request.messages),
-                tools=build_tools(request.tools) if request.tools else omit,
-                reasoning_effort=request.effort if request.effort != 'none' else omit,
-                max_completion_tokens=request.max_completion_tokens or omit,
-                response_format=response_format,
+                input=list(build_messages(request.messages)),
+                tools=list(build_tools(request.tools)) if request.tools else omit,
+                reasoning=(
+                    {'effort': request.effort} if request.effort != 'none' else omit
+                ),
+                max_output_tokens=request.max_completion_tokens or omit,
+                text=text,
                 stream=True,
             )
 
-            async for chunk in completion:
-                for piece in decode_chunk(chunk):
+            async for event in response:
+                for piece in decode_chunk(event):
                     yield piece

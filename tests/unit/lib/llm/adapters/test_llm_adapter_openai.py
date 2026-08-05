@@ -4,41 +4,55 @@ from typing import cast
 
 from httpx import Timeout
 from openai import AsyncOpenAI, omit
-from openai.types.chat.chat_completion_chunk import (
-    ChatCompletionChunk,
-    Choice,
-    ChoiceDelta,
-    ChoiceDeltaToolCall,
-    ChoiceDeltaToolCallFunction,
+from openai.types.responses import (
+    Response,
+    ResponseCompletedEvent,
+    ResponseErrorEvent,
+    ResponseFailedEvent,
+    ResponseFunctionCallArgumentsDeltaEvent,
+    ResponseFunctionToolCall,
+    ResponseIncompleteEvent,
+    ResponseOutputItemAddedEvent,
+    ResponseReasoningTextDeltaEvent,
+    ResponseStreamEvent,
+    ResponseTextDeltaEvent,
 )
-from pydantic import SecretStr
+from openai.types.responses.response import IncompleteDetails
+from pydantic import JsonValue, SecretStr
 
 from lib.http import HTTPClientManager
 from lib.llm import (
     CompletionRequest,
+    Effort,
     FinishChunk,
     ImageSegment,
     Message,
     OutputSchema,
     TextChunk,
     TextSegment,
+    ThinkingChunk,
     ThinkingSegment,
     ToolCallChunk,
     ToolCallSegment,
     ToolResultSegment,
 )
-from lib.llm.adapters.openai import OpenAIAdapter, build_messages, decode_chunk
+from lib.llm.adapters.openai import (
+    OpenAIAdapter,
+    build_messages,
+    build_tools,
+    decode_chunk,
+)
 from lib.llm.client import ProviderConfig
 
-
-def make_chunk(*choices: Choice) -> ChatCompletionChunk:
-    return ChatCompletionChunk(
-        id='chunk_1',
-        choices=list(choices),
-        created=0,
-        model='gpt-5',
-        object='chat.completion.chunk',
-    )
+_TOOL: JsonValue = {
+    'type': 'function',
+    'function': {
+        'name': 'search',
+        'description': 'Search the web',
+        'parameters': {'type': 'object', 'properties': {}},
+        'strict': True,
+    },
+}
 
 
 def test_build_messages_flattens_text_segments_into_content() -> None:
@@ -57,15 +71,32 @@ def test_build_messages_collects_tool_call_segments() -> None:
 
     assert list(build_messages(messages)) == [
         {
-            'role': 'assistant',
-            'content': None,
-            'tool_calls': [
-                {
-                    'id': 'call_1',
-                    'type': 'function',
-                    'function': {'name': 'search', 'arguments': '{}'},
-                },
-            ],
+            'type': 'function_call',
+            'call_id': 'call_1',
+            'name': 'search',
+            'arguments': '{}',
+        },
+    ]
+
+
+def test_build_messages_places_assistant_text_before_its_tool_call() -> None:
+    messages = (
+        Message(
+            role='assistant',
+            segments=(
+                TextSegment(text='I will search.'),
+                ToolCallSegment(id='call_1', name='search', arguments='{}'),
+            ),
+        ),
+    )
+
+    assert list(build_messages(messages)) == [
+        {'role': 'assistant', 'content': 'I will search.'},
+        {
+            'type': 'function_call',
+            'call_id': 'call_1',
+            'name': 'search',
+            'arguments': '{}',
         },
     ]
 
@@ -79,7 +110,7 @@ def test_build_messages_maps_tool_result_to_tool_role_entry() -> None:
     )
 
     assert list(build_messages(messages)) == [
-        {'role': 'tool', 'tool_call_id': 'call_1', 'content': '42'},
+        {'type': 'function_call_output', 'call_id': 'call_1', 'output': '42'},
     ]
 
 
@@ -109,10 +140,11 @@ def test_build_messages_turns_an_image_into_content_parts() -> None:
         {
             'role': 'user',
             'content': [
-                {'type': 'text', 'text': 'what is this'},
+                {'type': 'input_text', 'text': 'what is this'},
                 {
-                    'type': 'image_url',
-                    'image_url': {'url': 'data:image/jpeg;base64,YQ=='},
+                    'type': 'input_image',
+                    'detail': 'auto',
+                    'image_url': 'data:image/jpeg;base64,YQ==',
                 },
             ],
         },
@@ -132,8 +164,9 @@ def test_build_messages_sends_an_image_without_a_caption() -> None:
             'role': 'user',
             'content': [
                 {
-                    'type': 'image_url',
-                    'image_url': {'url': 'data:image/png;base64,Yg=='},
+                    'type': 'input_image',
+                    'detail': 'auto',
+                    'image_url': 'data:image/png;base64,Yg==',
                 },
             ],
         },
@@ -187,100 +220,125 @@ def test_build_messages_preserves_order_across_messages() -> None:
         ),
     )
 
-    built = build_messages(messages)
+    built = cast(list[dict[str, object]], list(build_messages(messages)))
 
-    assert [entry['role'] for entry in built] == ['user', 'assistant', 'tool']
+    assert [entry['type'] if 'type' in entry else entry['role'] for entry in built] == [
+        'user',
+        'function_call',
+        'function_call_output',
+    ]
 
 
 def test_decode_chunk_yields_text_delta() -> None:
-    chunk = make_chunk(
-        Choice(index=0, delta=ChoiceDelta(content='hi'), finish_reason=None),
+    event = ResponseTextDeltaEvent.model_construct(
+        type='response.output_text.delta',
+        delta='hi',
     )
 
-    assert list(decode_chunk(chunk)) == [TextChunk(text='hi')]
+    assert list(decode_chunk(event)) == [TextChunk(text='hi')]
 
 
-def test_decode_chunk_skips_empty_choices() -> None:
-    chunk = make_chunk()
-
-    assert list(decode_chunk(chunk)) == []
-
-
-def test_decode_chunk_yields_single_tool_call_fragment() -> None:
-    delta = ChoiceDelta(
-        tool_calls=[
-            ChoiceDeltaToolCall(
-                index=0,
-                id='call_1',
-                function=ChoiceDeltaToolCallFunction(name='search', arguments='{"q'),
-                type='function',
-            ),
-        ],
+def test_decode_chunk_yields_reasoning_delta() -> None:
+    event = ResponseReasoningTextDeltaEvent.model_construct(
+        type='response.reasoning_text.delta',
+        delta='considering',
     )
-    chunk = make_chunk(Choice(index=0, delta=delta, finish_reason=None))
 
-    assert list(decode_chunk(chunk)) == [
-        ToolCallChunk(index=0, id='call_1', name='search', arguments='{"q'),
+    assert list(decode_chunk(event)) == [ThinkingChunk(text='considering')]
+
+
+def test_decode_chunk_starts_a_tool_call_from_an_output_item() -> None:
+    item = ResponseFunctionToolCall.model_construct(
+        type='function_call',
+        call_id='call_1',
+        name='search',
+        arguments='',
+    )
+    event = ResponseOutputItemAddedEvent.model_construct(
+        type='response.output_item.added',
+        output_index=0,
+        item=item,
+    )
+
+    assert list(decode_chunk(event)) == [
+        ToolCallChunk(index=0, id='call_1', name='search'),
     ]
 
 
-def test_decode_chunk_yields_interleaved_multi_tool_calls_in_order() -> None:
-    delta = ChoiceDelta(
-        tool_calls=[
-            ChoiceDeltaToolCall(
-                index=0,
-                function=ChoiceDeltaToolCallFunction(arguments='"}'),
-            ),
-            ChoiceDeltaToolCall(
-                index=1,
-                id='call_2',
-                function=ChoiceDeltaToolCallFunction(name='other', arguments=''),
-                type='function',
-            ),
-        ],
+def test_decode_chunk_yields_a_tool_call_argument_fragment() -> None:
+    event = ResponseFunctionCallArgumentsDeltaEvent.model_construct(
+        type='response.function_call_arguments.delta',
+        output_index=1,
+        delta='{"q',
     )
-    chunk = make_chunk(Choice(index=0, delta=delta, finish_reason=None))
 
-    assert list(decode_chunk(chunk)) == [
-        ToolCallChunk(index=0, id=None, name=None, arguments='"}'),
-        ToolCallChunk(index=1, id='call_2', name='other', arguments=''),
+    assert list(decode_chunk(event)) == [
+        ToolCallChunk(index=1, arguments='{"q'),
     ]
 
 
-def test_decode_chunk_maps_stop_finish_reason() -> None:
-    chunk = make_chunk(Choice(index=0, delta=ChoiceDelta(), finish_reason='stop'))
+def test_decode_chunk_maps_completed_text_to_stop() -> None:
+    response = Response.model_construct(output=[])
+    event = ResponseCompletedEvent.model_construct(response=response)
 
-    assert list(decode_chunk(chunk)) == [FinishChunk(reason='stop')]
-
-
-def test_decode_chunk_maps_length_finish_reason() -> None:
-    chunk = make_chunk(Choice(index=0, delta=ChoiceDelta(), finish_reason='length'))
-
-    assert list(decode_chunk(chunk)) == [FinishChunk(reason='length')]
+    assert list(decode_chunk(event)) == [FinishChunk(reason='stop')]
 
 
-def test_decode_chunk_maps_tool_calls_finish_reason() -> None:
-    chunk = make_chunk(Choice(index=0, delta=ChoiceDelta(), finish_reason='tool_calls'))
-
-    assert list(decode_chunk(chunk)) == [FinishChunk(reason='tool_calls')]
-
-
-def test_decode_chunk_maps_deprecated_function_call_finish_reason_to_tool_calls() -> (
-    None
-):
-    chunk = make_chunk(
-        Choice(index=0, delta=ChoiceDelta(), finish_reason='function_call'),
+def test_decode_chunk_maps_completed_function_call_to_tool_calls() -> None:
+    call = ResponseFunctionToolCall.model_construct(
+        type='function_call',
+        call_id='call_1',
+        name='search',
+        arguments='{}',
     )
+    response = Response.model_construct(output=[call])
+    event = ResponseCompletedEvent.model_construct(response=response)
 
-    assert list(decode_chunk(chunk)) == [FinishChunk(reason='tool_calls')]
+    assert list(decode_chunk(event)) == [FinishChunk(reason='tool_calls')]
 
 
-def test_decode_chunk_maps_content_filter_finish_reason_to_error() -> None:
-    chunk = make_chunk(
-        Choice(index=0, delta=ChoiceDelta(), finish_reason='content_filter'),
+def test_decode_chunk_maps_max_output_tokens_to_length() -> None:
+    response = Response.model_construct(
+        output=[],
+        incomplete_details=IncompleteDetails(reason='max_output_tokens'),
     )
+    event = ResponseIncompleteEvent.model_construct(response=response)
 
-    assert list(decode_chunk(chunk)) == [FinishChunk(reason='error')]
+    assert list(decode_chunk(event)) == [FinishChunk(reason='length')]
+
+
+def test_decode_chunk_maps_content_filter_to_error() -> None:
+    response = Response.model_construct(
+        output=[],
+        incomplete_details=IncompleteDetails(reason='content_filter'),
+    )
+    event = ResponseIncompleteEvent.model_construct(response=response)
+
+    assert list(decode_chunk(event)) == [FinishChunk(reason='error')]
+
+
+def test_decode_chunk_maps_failed_response_to_error() -> None:
+    event = ResponseFailedEvent.model_construct()
+
+    assert list(decode_chunk(event)) == [FinishChunk(reason='error')]
+
+
+def test_decode_chunk_maps_stream_error_to_error() -> None:
+    event = ResponseErrorEvent.model_construct()
+
+    assert list(decode_chunk(event)) == [FinishChunk(reason='error')]
+
+
+def test_build_tools_flattens_chat_completion_function_tools() -> None:
+    assert list(build_tools((_TOOL,))) == [
+        {
+            'type': 'function',
+            'name': 'search',
+            'description': 'Search the web',
+            'parameters': {'type': 'object', 'properties': {}},
+            'strict': True,
+        },
+    ]
 
 
 def _provider() -> ProviderConfig:
@@ -295,30 +353,33 @@ def _provider() -> ProviderConfig:
 
 def _request(
     max_completion_tokens: int | None = None,
+    effort: Effort = 'none',
     output_schema: OutputSchema | None = None,
+    tools: tuple[JsonValue, ...] = (),
 ) -> CompletionRequest:
     return CompletionRequest(
         model='gpt-5',
         messages=(Message(role='user', segments=(TextSegment(text='hi'),)),),
         max_completion_tokens=max_completion_tokens,
+        effort=effort,
         output_schema=output_schema,
+        tools=tools,
     )
 
 
 def _fake_client(recorded: dict[str, object]) -> Callable[..., AsyncOpenAI]:
-    async def create(**kwargs: object) -> AsyncIterator[ChatCompletionChunk]:
+    async def create(**kwargs: object) -> AsyncIterator[ResponseStreamEvent]:
         recorded.clear()
         recorded.update(kwargs)
 
-        async def stream() -> AsyncIterator[ChatCompletionChunk]:
-            for chunk in ():
-                yield chunk
+        async def stream() -> AsyncIterator[ResponseStreamEvent]:
+            for event in ():
+                yield event
 
         return stream()
 
     def factory(**_: object) -> SimpleNamespace:
-        completions = SimpleNamespace(create=create)
-        return SimpleNamespace(chat=SimpleNamespace(completions=completions))
+        return SimpleNamespace(responses=SimpleNamespace(create=create))
 
     return cast(Callable[..., AsyncOpenAI], factory)
 
@@ -376,7 +437,7 @@ async def test_stream_forwards_max_completion_tokens() -> None:
         _request(max_completion_tokens=64),
     )
 
-    assert recorded['max_completion_tokens'] == 64
+    assert recorded['max_output_tokens'] == 64
 
 
 async def test_stream_omits_max_completion_tokens_when_unset() -> None:
@@ -391,10 +452,26 @@ async def test_stream_omits_max_completion_tokens_when_unset() -> None:
         _request(),
     )
 
-    assert recorded['max_completion_tokens'] is omit
+    assert recorded['max_output_tokens'] is omit
 
 
-async def test_stream_omits_response_format_when_no_schema() -> None:
+async def test_stream_forwards_reasoning_effort_with_tools() -> None:
+    recorded = {}
+
+    await _drain(
+        OpenAIAdapter(
+            _provider(),
+            HTTPClientManager(),
+            client_factory=_fake_client(recorded),
+        ),
+        _request(effort='high', tools=(_TOOL,)),
+    )
+
+    assert recorded['reasoning'] == {'effort': 'high'}
+    assert recorded['tools'] == list(build_tools((_TOOL,)))
+
+
+async def test_stream_omits_text_format_when_no_schema() -> None:
     recorded = {}
 
     await _drain(
@@ -406,7 +483,7 @@ async def test_stream_omits_response_format_when_no_schema() -> None:
         _request(),
     )
 
-    assert recorded['response_format'] is omit
+    assert recorded['text'] is omit
 
 
 async def test_stream_sets_response_format_json_schema_with_name_and_schema_and_strict() -> (
@@ -427,9 +504,9 @@ async def test_stream_sets_response_format_json_schema_with_name_and_schema_and_
         _request(output_schema=output_schema),
     )
 
-    assert recorded['response_format'] == {
-        'type': 'json_schema',
-        'json_schema': {
+    assert recorded['text'] == {
+        'format': {
+            'type': 'json_schema',
             'name': 'summary_output',
             'schema': {'type': 'object', 'properties': {}},
             'strict': True,
