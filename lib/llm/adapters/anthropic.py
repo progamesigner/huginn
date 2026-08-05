@@ -26,6 +26,7 @@ from anthropic.types import (
     ToolUseBlock,
     ToolUseBlockParam,
 )
+from httpx import Timeout
 from pydantic import JsonValue
 
 from lib.http import HTTPClientContract
@@ -214,10 +215,13 @@ class AnthropicAdapter:
             output_config = OutputConfigParam(format=output_format)
 
         async with self.http.connect() as http_client:
+            timeout = Timeout(http_client.timeout)
+            timeout.read = None
             client = self.client_factory(
                 api_key=self.provider.api_key.get_secret_value(),
                 base_url=self.provider.base_url,
                 http_client=http_client,
+                timeout=timeout,
             )
             message = await client.messages.create(
                 model=request.model,

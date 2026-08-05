@@ -18,6 +18,7 @@ from anthropic.types import (
     ToolUseBlock,
 )
 from anthropic.types.raw_message_delta_event import Delta
+from httpx import Timeout
 from pydantic import SecretStr
 
 from lib.http import HTTPClientManager
@@ -383,9 +384,45 @@ def _fake_client(recorded: dict[str, object]) -> Callable[..., AsyncAnthropic]:
     return cast(Callable[..., AsyncAnthropic], factory)
 
 
+def _recording_client(
+    recorded: dict[str, object],
+    client_options: dict[str, object],
+) -> Callable[..., AsyncAnthropic]:
+    client = _fake_client(recorded)
+
+    def factory(**kwargs: object) -> object:
+        client_options.update(kwargs)
+        return client(**kwargs)
+
+    return cast(Callable[..., AsyncAnthropic], factory)
+
+
 async def _drain(adapter: AnthropicAdapter, request: CompletionRequest) -> None:
     async for _ in adapter.stream(request):
         pass
+
+
+async def test_stream_disables_only_the_ai_client_read_timeout() -> None:
+    recorded = {}
+    client_options = {}
+    http = HTTPClientManager()
+
+    await _drain(
+        AnthropicAdapter(
+            _provider(),
+            http,
+            client_factory=_recording_client(recorded, client_options),
+        ),
+        _request(),
+    )
+
+    timeout = client_options['timeout']
+    assert isinstance(timeout, Timeout)
+    assert timeout.connect == http.timeout.connect
+    assert timeout.read is None
+    assert timeout.write == http.timeout.write
+    assert timeout.pool == http.timeout.pool
+    assert http.timeout.read == 30.0
 
 
 async def test_stream_forwards_max_completion_tokens_as_max_tokens() -> None:

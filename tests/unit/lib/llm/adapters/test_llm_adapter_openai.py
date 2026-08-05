@@ -2,6 +2,7 @@ from collections.abc import AsyncIterator, Callable
 from types import SimpleNamespace
 from typing import cast
 
+from httpx import Timeout
 from openai import AsyncOpenAI, omit
 from openai.types.chat.chat_completion_chunk import (
     ChatCompletionChunk,
@@ -322,9 +323,45 @@ def _fake_client(recorded: dict[str, object]) -> Callable[..., AsyncOpenAI]:
     return cast(Callable[..., AsyncOpenAI], factory)
 
 
+def _recording_client(
+    recorded: dict[str, object],
+    client_options: dict[str, object],
+) -> Callable[..., AsyncOpenAI]:
+    client = _fake_client(recorded)
+
+    def factory(**kwargs: object) -> object:
+        client_options.update(kwargs)
+        return client(**kwargs)
+
+    return cast(Callable[..., AsyncOpenAI], factory)
+
+
 async def _drain(adapter: OpenAIAdapter, request: CompletionRequest) -> None:
     async for _ in adapter.stream(request):
         pass
+
+
+async def test_stream_disables_only_the_ai_client_read_timeout() -> None:
+    recorded = {}
+    client_options = {}
+    http = HTTPClientManager()
+
+    await _drain(
+        OpenAIAdapter(
+            _provider(),
+            http,
+            client_factory=_recording_client(recorded, client_options),
+        ),
+        _request(),
+    )
+
+    timeout = client_options['timeout']
+    assert isinstance(timeout, Timeout)
+    assert timeout.connect == http.timeout.connect
+    assert timeout.read is None
+    assert timeout.write == http.timeout.write
+    assert timeout.pool == http.timeout.pool
+    assert http.timeout.read == 30.0
 
 
 async def test_stream_forwards_max_completion_tokens() -> None:

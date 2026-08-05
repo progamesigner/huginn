@@ -1,6 +1,7 @@
 from collections.abc import AsyncIterator, Callable, Iterator
 from typing import cast
 
+from httpx import Timeout
 from openai import AsyncOpenAI, omit
 from openai.types.chat import (
     ChatCompletionAssistantMessageParam,
@@ -195,10 +196,13 @@ class OpenAIAdapter:
             )
 
         async with self.http.connect() as http_client:
+            timeout = Timeout(http_client.timeout)
+            timeout.read = None
             client = self.client_factory(
                 api_key=self.provider.api_key.get_secret_value(),
                 base_url=self.provider.base_url,
                 http_client=http_client,
+                timeout=timeout,
             )
             completion = await client.chat.completions.create(
                 model=request.model,
