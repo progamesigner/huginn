@@ -1,4 +1,3 @@
-from collections.abc import Sequence
 from pathlib import Path
 from typing import Annotated, override
 
@@ -6,7 +5,7 @@ import pytest
 from pydantic import Field
 
 from app.features.agents.config import AgentConfig, SkillsConfig, load_instructions
-from app.features.agents.contracts import NamedTool, ToolSource
+from app.features.agents.contracts import NamedTool, ToolHarvest, ToolSource
 from app.features.agents.exceptions import AgentError, DuplicateToolNameError
 from app.features.agents.services import build_tool_set
 from app.features.agents.types import ToolOutput, ToolParams, TypedTool
@@ -29,15 +28,17 @@ class EchoTool(TypedTool[EchoParams]):
 class FakeSource(ToolSource):
     named: tuple[NamedTool, ...]
     seen: list[AgentConfig]
+    unreachable: tuple[str, ...]
 
-    def __init__(self, *names: str) -> None:
+    def __init__(self, *names: str, unreachable: tuple[str, ...] = ()) -> None:
         self.named = tuple((name, EchoTool()) for name in names)
         self.seen = []
+        self.unreachable = unreachable
 
     @override
-    async def collect(self, agent: AgentConfig) -> Sequence[NamedTool]:
+    async def collect(self, agent: AgentConfig) -> ToolHarvest:
         self.seen.append(agent)
-        return self.named
+        return ToolHarvest(tools=self.named, unreachable=self.unreachable)
 
 
 def _agent(*, skills: SkillsConfig | None = None) -> AgentConfig:
@@ -49,18 +50,31 @@ def _agent(*, skills: SkillsConfig | None = None) -> AgentConfig:
 
 
 async def test_build_tool_set_merges_every_source() -> None:
-    tools = await build_tool_set(
+    tools, unreachable = await build_tool_set(
         (FakeSource('echo'), FakeSource('recall', 'skill')),
         _agent(),
     )
 
     assert set(tools.tools) == {'echo', 'recall', 'skill'}
+    assert unreachable == ()
+
+
+async def test_build_tool_set_gathers_what_every_source_could_not_reach() -> None:
+    _, unreachable = await build_tool_set(
+        (
+            FakeSource('echo', unreachable=('muninn',)),
+            FakeSource('recall', unreachable=('skills',)),
+        ),
+        _agent(),
+    )
+
+    assert unreachable == ('muninn', 'skills')
 
 
 async def test_build_tool_set_drops_a_denied_tool() -> None:
     # NOTE: the denial narrows what the agent is configured with -- a caller may take
     # tools away from a turn, never add one the agent does not already have
-    tools = await build_tool_set(
+    tools, _ = await build_tool_set(
         (FakeSource('echo', 'recall'),),
         _agent(),
         frozenset({'recall'}),
@@ -70,7 +84,7 @@ async def test_build_tool_set_drops_a_denied_tool() -> None:
 
 
 async def test_build_tool_set_denying_an_absent_tool_adds_nothing() -> None:
-    tools = await build_tool_set(
+    tools, _ = await build_tool_set(
         (FakeSource('echo'),),
         _agent(),
         frozenset({'recall'}),
@@ -80,7 +94,7 @@ async def test_build_tool_set_denying_an_absent_tool_adds_nothing() -> None:
 
 
 async def test_build_tool_set_is_empty_without_sources() -> None:
-    tools = await build_tool_set((), _agent())
+    tools, _ = await build_tool_set((), _agent())
 
     assert tools.tools == {}
 

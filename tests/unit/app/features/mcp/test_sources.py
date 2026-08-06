@@ -62,9 +62,9 @@ async def test_collect_namespaces_and_applies_allowlist() -> None:
     client = FakeClient({'memory': (_info('recall'), _info('forget'))})
     agent = _agent(MCPRef(server='memory', allow=('recall',), inject={'user': 'swag'}))
 
-    named = await MCPToolSource(client).collect(agent)
+    harvest = await MCPToolSource(client).collect(agent)
 
-    assert [name for name, _ in named] == ['mcp__memory__recall']
+    assert [name for name, _ in harvest.tools] == ['mcp__memory__recall']
 
 
 async def test_collect_skips_unavailable_servers() -> None:
@@ -74,9 +74,10 @@ async def test_collect_skips_unavailable_servers() -> None:
         MCPRef(server='memory', allow=('recall',)),
     )
 
-    named = await MCPToolSource(client).collect(agent)
+    harvest = await MCPToolSource(client).collect(agent)
 
-    assert [name for name, _ in named] == ['mcp__memory__recall']
+    assert [name for name, _ in harvest.tools] == ['mcp__memory__recall']
+    assert harvest.unreachable == ('stock',)
 
 
 # NOTE: the live failure -- a configured server whose session had died raised
@@ -92,7 +93,8 @@ async def test_collect_skips_a_server_that_lost_its_session(
     )
 
     with caplog.at_level('WARNING'):
-        named = await MCPToolSource(client).collect(agent)
+        harvest = await MCPToolSource(client).collect(agent)
 
-    assert [name for name, _ in named] == ['mcp__memory__recall']
+    assert [name for name, _ in harvest.tools] == ['mcp__memory__recall']
+    assert harvest.unreachable == ('muninn',)
     assert any('muninn' in message for message in caplog.messages)

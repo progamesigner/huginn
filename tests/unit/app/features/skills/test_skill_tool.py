@@ -1,6 +1,8 @@
 from datetime import timedelta
 from typing import override
 
+import pytest
+
 from app.features.agents.config import AgentConfig, SkillsConfig
 from app.features.agents.types import ToolSet
 from app.features.skills.repositories import SkillRepository
@@ -66,6 +68,20 @@ async def test_loading_a_skill_returns_its_body() -> None:
     assert 'do the thing' in result.content
 
 
+class BrokenSource(SkillSource):
+    @override
+    async def list(self) -> tuple[SkillMeta, ...]:
+        raise RuntimeError('memory: not connected')
+
+    @override
+    async def load(self, path: str) -> Skill:
+        raise RuntimeError('memory: not connected')
+
+
+def _broken_repository() -> SkillRepository:
+    return SkillRepository(BrokenSource(), FakeClock(), ttl=timedelta(minutes=15))
+
+
 def _source(*names: str) -> SkillToolSource:
     source = FakeSource(tuple(_meta(name) for name in names))
     repository = SkillRepository(source, FakeClock(), ttl=timedelta(minutes=15))
@@ -81,29 +97,45 @@ def _agent(*, enabled: bool = True, allow: tuple[str, ...] = ()) -> AgentConfig:
 
 
 async def test_source_narrows_the_inventory_to_the_allowlist() -> None:
-    named = await _source('triage', 'report').collect(_agent(allow=('triage',)))
+    harvest = await _source('triage', 'report').collect(_agent(allow=('triage',)))
 
-    assert 'triage' in named[0][1].description
-    assert 'report' not in named[0][1].description
+    assert 'triage' in harvest.tools[0][1].description
+    assert 'report' not in harvest.tools[0][1].description
 
 
 async def test_source_offers_everything_when_the_allowlist_is_empty() -> None:
-    named = await _source('triage', 'report').collect(_agent())
+    harvest = await _source('triage', 'report').collect(_agent())
 
-    assert 'triage' in named[0][1].description
-    assert 'report' in named[0][1].description
+    assert 'triage' in harvest.tools[0][1].description
+    assert 'report' in harvest.tools[0][1].description
 
 
 async def test_source_names_the_tool_so_agents_need_not_hardcode_it() -> None:
-    named = await _source('triage').collect(_agent())
+    harvest = await _source('triage').collect(_agent())
 
-    assert [name for name, _ in named] == ['skill']
+    assert [name for name, _ in harvest.tools] == ['skill']
 
 
 async def test_source_contributes_nothing_when_the_agent_disables_skills() -> None:
-    named = await _source('triage').collect(_agent(enabled=False))
+    harvest = await _source('triage').collect(_agent(enabled=False))
 
-    assert named == ()
+    assert harvest.tools == ()
+    assert harvest.unreachable == ()
+
+
+# NOTE: the inventory is read off a remote server, so this is a thing that happens --
+# raising took the whole turn down over a library the agent could have answered without
+async def test_a_source_that_cannot_read_the_inventory_offers_no_skills(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    source = SkillToolSource(lambda: _broken_repository())
+
+    with caplog.at_level('ERROR'):
+        harvest = await source.collect(_agent())
+
+    assert harvest.tools == ()
+    assert harvest.unreachable == ('skills',)
+    assert any('skill inventory' in message for message in caplog.messages)
 
 
 async def test_unknown_skill_lists_the_available_ones() -> None:

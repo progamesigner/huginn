@@ -27,7 +27,7 @@ class BoomTool(TypedTool[EchoParams]):
 
     @override
     async def run(self, params: EchoParams) -> ToolOutput:
-        raise RuntimeError('boom')
+        raise RuntimeError('muninn: not connected')
 
 
 def make_toolset() -> ToolSet:
@@ -68,14 +68,17 @@ async def test_execute_reports_missing_field_as_error_result() -> None:
     assert 'text' in result.content
 
 
-async def test_execute_reports_tool_exception_as_error_result() -> None:
+# NOTE: the reason has to travel -- 'failed' alone leaves the model unable to tell an
+# unreachable server from a call it built wrong, so it can neither retry nor route around
+async def test_execute_reports_why_a_tool_raised_not_only_that_it_did() -> None:
     tools = make_toolset()
     call = ToolCallSegment(id='call_1', name='boom', arguments='{"text": "x"}')
 
     result = await tools.execute(call)
 
     assert result.error is True
-    assert 'boom' in result.content
+    assert "tool 'boom' failed" in result.content
+    assert 'muninn: not connected' in result.content
 
 
 async def test_execute_reports_unknown_tool_with_available_list() -> None:

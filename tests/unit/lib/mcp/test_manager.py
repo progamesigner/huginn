@@ -1,3 +1,4 @@
+import asyncio
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
@@ -39,20 +40,29 @@ class _FlakyConnector:
     attempts: int
     failures: int
     server: FastMCP
+    tried: asyncio.Condition
 
     def __init__(self, server: FastMCP, failures: int) -> None:
         self.attempts = 0
         self.failures = failures
         self.server = server
+        self.tried = asyncio.Condition()
 
     @asynccontextmanager
     async def __call__(self, _: MCPServer) -> AsyncIterator[ClientSession]:
-        self.attempts += 1
+        async with self.tried:
+            self.attempts += 1
+            self.tried.notify_all()
+
         if self.attempts <= self.failures:
             raise ConnectionError('connection refused')
 
         async with create_connected_server_and_client_session(self.server) as session:
             yield session
+
+    async def wait_for(self, attempts: int) -> None:
+        async with self.tried:
+            await self.tried.wait_for(lambda: self.attempts >= attempts)
 
 
 def _flaky_connector(server: FastMCP, failures: int) -> _FlakyConnector:
@@ -185,6 +195,88 @@ async def test_a_dead_server_is_not_retried_until_the_cooldown_lapses() -> None:
         assert connector.attempts == 1
     finally:
         await manager.dispose()
+
+
+# NOTE: without this pass a recovered server stays 'unavailable' until a turn happens to
+# ask, which makes the readiness probe lie and makes that turn pay the reconnect
+async def test_a_refresh_reopens_a_server_nobody_asked_for() -> None:
+    connector = _flaky_connector(_echo_server(), failures=1)
+    manager = MCPManager(
+        [MCPServer('memory', 'http://memory.test')],
+        connector,
+        cooldown=0.0,
+    )
+
+    await manager.start()
+    try:
+        assert manager.unavailable() == ('memory',)
+        await manager.refresh()
+        assert manager.unavailable() == ()
+    finally:
+        await manager.dispose()
+
+
+async def test_a_server_that_stays_down_is_announced_once_not_once_per_attempt(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    manager = MCPManager(
+        [MCPServer('memory', 'http://memory.test')],
+        _failing_connector,
+        cooldown=0.0,
+    )
+
+    with caplog.at_level('INFO', logger='lib.mcp.manager'):
+        await manager.start()
+        try:
+            await manager.refresh()
+            await manager.refresh()
+        finally:
+            await manager.dispose()
+
+    assert [message for message in caplog.messages if 'unavailable' in message] == [
+        'MCP server memory is unavailable; its tools will be absent'
+        ' (memory: ConnectionError: connection refused)',
+    ]
+
+
+async def test_a_server_that_comes_back_says_so(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    connector = _flaky_connector(_echo_server(), failures=1)
+    manager = MCPManager(
+        [MCPServer('memory', 'http://memory.test')],
+        connector,
+        cooldown=0.0,
+    )
+
+    with caplog.at_level('INFO', logger='lib.mcp.manager'):
+        await manager.start()
+        try:
+            await manager.refresh()
+        finally:
+            await manager.dispose()
+
+    assert any('answered again' in message for message in caplog.messages)
+
+
+async def test_the_heartbeat_refreshes_without_anyone_asking() -> None:
+    connector = _flaky_connector(_echo_server(), failures=1)
+    manager = MCPManager(
+        [MCPServer('memory', 'http://memory.test')],
+        connector,
+        cooldown=0.0,
+        interval=0.01,
+    )
+
+    await manager.start()
+    try:
+        assert connector.attempts == 1
+        # NOTE: nothing below touches the manager -- the second attempt is the heartbeat
+        await connector.wait_for(2)
+    finally:
+        await manager.dispose()
+
+    assert manager.heartbeat is None
 
 
 async def test_degraded_start_logs_the_underlying_error(

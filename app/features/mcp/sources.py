@@ -1,9 +1,8 @@
 import logging
-from collections.abc import Sequence
 from typing import override
 
 from app.features.agents.config import AgentConfig
-from app.features.agents.contracts import NamedTool, ToolSource
+from app.features.agents.contracts import ToolHarvest, ToolSource
 from lib.mcp import MCPClientContract, MCPError
 
 from .bridge import build_mcp_tools
@@ -18,8 +17,9 @@ class MCPToolSource(ToolSource):
         self.client = client
 
     @override
-    async def collect(self, agent: AgentConfig) -> Sequence[NamedTool]:
+    async def collect(self, agent: AgentConfig) -> ToolHarvest:
         collected = []
+        unreachable = []
         for ref in agent.mcp:
             try:
                 infos = await self.client.list_tools(ref.server)
@@ -30,6 +30,7 @@ class MCPToolSource(ToolSource):
                     ref.server,
                     error,
                 )
+                unreachable.append(ref.server)
                 continue
 
             tools = build_mcp_tools(
@@ -47,4 +48,4 @@ class MCPToolSource(ToolSource):
                 )
             collected.extend((tool.name, tool) for tool in tools)
 
-        return collected
+        return ToolHarvest(tools=tuple(collected), unreachable=tuple(unreachable))

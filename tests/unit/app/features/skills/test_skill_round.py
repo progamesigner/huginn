@@ -58,7 +58,7 @@ async def test_agent_loads_a_skill_through_the_tool_loop() -> None:
         instructions='y',
         skills=SkillsConfig(enabled=True),
     )
-    tools = await build_tool_set((SkillToolSource(lambda: repository),), agent)
+    tools, _ = await build_tool_set((SkillToolSource(lambda: repository),), agent)
     llm = FakeLLM(
         [
             [

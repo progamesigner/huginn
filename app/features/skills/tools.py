@@ -1,14 +1,19 @@
+import logging
 from collections.abc import Callable, Sequence
 from typing import Annotated, override
 
 from pydantic import Field
 
 from app.features.agents.config import AgentConfig
-from app.features.agents.contracts import NamedTool, ToolSource
+from app.features.agents.contracts import ToolHarvest, ToolSource
 from app.features.agents.types import ToolOutput, ToolParams, TypedTool
 
 from .repositories import SkillRepository
 from .types import SkillMeta
+
+logger = logging.getLogger(__name__)
+
+_LIBRARY = 'skills'
 
 
 def _build_skill_tool(
@@ -82,9 +87,14 @@ class SkillToolSource(ToolSource):
         self.repository = repository
 
     @override
-    async def collect(self, agent: AgentConfig) -> Sequence[NamedTool]:
+    async def collect(self, agent: AgentConfig) -> ToolHarvest:
         if not agent.skills.enabled:
-            return ()
+            return ToolHarvest()
 
-        tool = await _build_agent_skills(self.repository(), agent.skills.allow)
-        return ((tool.name, tool),)
+        try:
+            tool = await _build_agent_skills(self.repository(), agent.skills.allow)
+        except Exception:
+            logger.exception('Could not read the skill inventory; offering no skills')
+            return ToolHarvest(unreachable=(_LIBRARY,))
+
+        return ToolHarvest(tools=((tool.name, tool),))

@@ -1,7 +1,7 @@
 import asyncio
 import logging
 from collections.abc import AsyncIterator, Callable, Mapping, Sequence
-from contextlib import AbstractAsyncContextManager, asynccontextmanager
+from contextlib import AbstractAsyncContextManager, asynccontextmanager, suppress
 from typing import override
 
 from mcp import ClientSession
@@ -20,6 +20,7 @@ logger = logging.getLogger(__name__)
 type Connector = Callable[[MCPServer], AbstractAsyncContextManager[ClientSession]]
 
 _RECONNECT_COOLDOWN = 30.0
+_HEARTBEAT_INTERVAL = 30.0
 
 
 def streamable_http_connector(http: HTTPClientContract) -> Connector:
@@ -64,6 +65,7 @@ class _Connection:
     error: BaseException | None
     lock: asyncio.Lock
     retry_at: float
+    announced: bool
 
     def __init__(
         self,
@@ -81,6 +83,7 @@ class _Connection:
         self.error = None
         self.lock = asyncio.Lock()
         self.retry_at = 0.0
+        self.announced = False
 
     @property
     def connected(self) -> bool:
@@ -105,12 +108,14 @@ class _Connection:
                 raise MCPConnectionError(f'{self.server.name}: not connected')
 
             await self.aclose()
-            logger.info('Opening a session to MCP server %s', self.server.name)
             try:
                 await self._launch()
-            except MCPConnectionError:
+            except MCPConnectionError as error:
                 self.retry_at = loop.time() + self.cooldown
+                self._announce(error)
                 raise
+
+            self._recovered()
 
     async def call_tool(self, tool: str, arguments: Mapping[str, JsonValue]) -> str:
         result = await self._require().call_tool(tool, dict(arguments))
@@ -126,6 +131,24 @@ class _Connection:
             )
             for tool in result.tools
         )
+
+    def _announce(self, error: MCPConnectionError) -> None:
+        if self.announced:
+            return
+
+        self.announced = True
+        logger.warning(
+            'MCP server %s is unavailable; its tools will be absent (%s)',
+            self.server.name,
+            error,
+        )
+
+    def _recovered(self) -> None:
+        if not self.announced:
+            return
+
+        self.announced = False
+        logger.info('MCP server %s answered again', self.server.name)
 
     async def _launch(self) -> None:
         self.error = None
@@ -160,29 +183,40 @@ class MCPManager(MCPClientContract):
     connections: dict[str, _Connection]
     connector: Connector
     servers: tuple[MCPServer, ...]
+    interval: float
+    heartbeat: asyncio.Task[None] | None
 
     def __init__(
         self,
         servers: Sequence[MCPServer],
         connector: Connector,
         cooldown: float = _RECONNECT_COOLDOWN,
+        interval: float = _HEARTBEAT_INTERVAL,
     ) -> None:
         self.connector = connector
         self.servers = tuple(servers)
+        self.interval = interval
+        self.heartbeat = None
         self.connections = {
             server.name: _Connection(server, connector, cooldown)
             for server in self.servers
         }
 
     async def dispose(self) -> None:
+        await self._stop_beating()
         await asyncio.gather(
             *(connection.aclose() for connection in self.connections.values()),
         )
         self.connections.clear()
 
     async def start(self) -> None:
+        await self.refresh()
+        if self.connections:
+            self.heartbeat = asyncio.create_task(self._beat())
+
+    async def refresh(self) -> None:
         await asyncio.gather(
-            *(self._connect(connection) for connection in self.connections.values()),
+            *(self._reach(connection) for connection in self.connections.values()),
         )
 
     @override
@@ -210,16 +244,22 @@ class MCPManager(MCPClientContract):
             if not connection.connected
         )
 
-    async def _connect(self, connection: _Connection) -> None:
-        try:
+    async def _beat(self) -> None:
+        while True:
+            await asyncio.sleep(self.interval)
+            await self.refresh()
+
+    async def _reach(self, connection: _Connection) -> None:
+        with suppress(MCPConnectionError):
             await connection.ensure()
-        except MCPConnectionError as error:
-            # NOTE: not fail to boot because a tool server is briefly unreachable
-            logger.warning(
-                'MCP server %s is unavailable; its tools will be absent (%s)',
-                connection.server.name,
-                error,
-            )
+
+    async def _stop_beating(self) -> None:
+        if self.heartbeat is None:
+            return
+
+        self.heartbeat.cancel()
+        await asyncio.gather(self.heartbeat, return_exceptions=True)
+        self.heartbeat = None
 
     def _connection(self, server: str) -> _Connection:
         if server not in self.connections:

@@ -8,6 +8,7 @@ import pytest
 from app.features.agents.config import AgentConfig
 from app.features.agents.contracts import (
     NamedTool,
+    ToolHarvest,
     ToolSource,
     ToolSourceRegistry,
     TranscriptStoreContract,
@@ -143,13 +144,20 @@ def answering(text: str = 'answer') -> FakeLLM:
 
 class FakeSource(ToolSource):
     named: tuple[NamedTool, ...]
+    unreachable: tuple[str, ...]
 
-    def __init__(self, *names: str, tool: Tool | None = None) -> None:
+    def __init__(
+        self,
+        *names: str,
+        tool: Tool | None = None,
+        unreachable: tuple[str, ...] = (),
+    ) -> None:
         self.named = tuple((name, tool or EchoTool()) for name in names)
+        self.unreachable = unreachable
 
     @override
-    async def collect(self, agent: AgentConfig) -> Sequence[NamedTool]:
-        return self.named
+    async def collect(self, agent: AgentConfig) -> ToolHarvest:
+        return ToolHarvest(tools=self.named, unreachable=self.unreachable)
 
 
 def offered(llm: FakeLLM) -> list[str]:
@@ -316,6 +324,43 @@ async def test_a_turn_offers_the_model_every_tool_the_request_left_alone() -> No
     assert offered(llm) == ['echo', 'recall']
 
 
+# NOTE: silence here was the actively harmful part of an outage -- the agent answered as
+# though it had consulted a memory server it never reached
+async def test_a_turn_tells_the_model_which_servers_it_could_not_reach() -> None:
+    llm = answering()
+
+    await handler_with(
+        llm,
+        FakeSource('echo', unreachable=('muninn', 'skills')),
+    ).handle(request('hello'), RecordingReply())
+
+    instructions = llm.requests[0].messages[0]
+    assert instructions.role == 'system'
+    said = ' '.join(
+        segment.text
+        for segment in instructions.segments
+        if isinstance(segment, TextSegment)
+    )
+    assert 'muninn, skills' in said
+    assert 'be helpful' in said
+
+
+async def test_a_turn_with_every_server_reachable_says_nothing_extra() -> None:
+    llm = answering()
+
+    await handler_with(llm, FakeSource('echo')).handle(
+        request('hello'),
+        RecordingReply(),
+    )
+
+    instructions = llm.requests[0].messages[0]
+    assert [
+        segment.text
+        for segment in instructions.segments
+        if isinstance(segment, TextSegment)
+    ] == ['be helpful']
+
+
 async def test_a_turn_never_offers_the_model_a_denied_tool() -> None:
     # NOTE: the api key that opened the turn may take a tool away from the agent, and
     # the only place that can be observed is what the model was offered
@@ -424,7 +469,7 @@ async def test_a_turn_that_raises_before_answering_records_the_prompt_alone() ->
 
 class BrokenSource(ToolSource):
     @override
-    async def collect(self, agent: AgentConfig) -> Sequence[NamedTool]:
+    async def collect(self, agent: AgentConfig) -> ToolHarvest:
         raise RuntimeError('the tool server is unreachable')
 
 

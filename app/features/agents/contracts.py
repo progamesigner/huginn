@@ -1,5 +1,6 @@
 from abc import ABC, abstractmethod
 from collections.abc import Callable, Sequence
+from dataclasses import dataclass
 from typing import Protocol
 
 from app.contracts.channels import ChannelReplyContract, ToolPhase
@@ -20,9 +21,15 @@ class TurnStream(Protocol):
     async def on_tool(self, name: str, phase: ToolPhase) -> None: ...
 
 
+@dataclass(frozen=True)
+class ToolHarvest:
+    tools: tuple[NamedTool, ...] = ()
+    unreachable: tuple[str, ...] = ()
+
+
 class ToolSource(ABC):
     @abstractmethod
-    async def collect(self, agent: AgentConfig) -> Sequence[NamedTool]: ...
+    async def collect(self, agent: AgentConfig) -> ToolHarvest: ...
 
 
 class TranscriptStoreContract(ABC):

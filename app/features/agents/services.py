@@ -50,6 +50,22 @@ from .types import (
 
 logger = logging.getLogger(__name__)
 
+_UNREACHABLE_NOTE = (
+    '\n\nUnavailable for this turn, and not because the agent lacks them: {missing}.'
+    ' Any tool they would have offered is absent. Say what you could not reach rather'
+    ' than answering as though you had checked it.'
+)
+
+
+def _instructions(agent: AgentConfig, unreachable: Sequence[str]) -> str:
+    instructions = load_instructions(agent)
+    if not unreachable:
+        return instructions
+
+    # NOTE: this moves the static cache breakpoint
+    logger.warning('Telling the model it cannot reach %s', ', '.join(unreachable))
+    return instructions + _UNREACHABLE_NOTE.format(missing=', '.join(unreachable))
+
 
 class AnswerRecorder(TurnStream):
     stream: TurnStream
@@ -403,18 +419,15 @@ class TurnHandler(TurnHandlerContract):
         history = await self.store.history(request.channel, request.chat, agent.name)
         witness = AnswerRecorder(reply)
         try:
-            runner = AgentRunner(
-                client,
-                await build_tool_set(
-                    self.sources.sources(),
-                    agent.config,
-                    request.denied_tools,
-                ),
-                self.clock,
+            tools, unreachable = await build_tool_set(
+                self.sources.sources(),
+                agent.config,
+                request.denied_tools,
             )
+            runner = AgentRunner(client, tools, self.clock)
             output = await runner.run(
                 TurnInput(
-                    instructions=load_instructions(agent.config),
+                    instructions=_instructions(agent.config, unreachable),
                     prompts=request.prompts,
                     model=model,
                     now=self.clock.now(),
@@ -463,14 +476,17 @@ async def build_tool_set(
     sources: Sequence[ToolSource],
     agent: AgentConfig,
     denied: frozenset[str] = frozenset(),
-) -> ToolSet:
+) -> tuple[ToolSet, tuple[str, ...]]:
     tools = ToolSet()
+    unreachable = []
     for source in sources:
-        for name, tool in await source.collect(agent):
+        harvest = await source.collect(agent)
+        unreachable.extend(harvest.unreachable)
+        for name, tool in harvest.tools:
             if name in denied:
                 logger.info('Tool %s is denied for this turn', name)
                 continue
 
             tools.add(name, tool)
 
-    return tools
+    return tools, tuple(unreachable)

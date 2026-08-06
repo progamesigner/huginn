@@ -198,11 +198,11 @@ class ToolSet:
                 content=str(error),
                 error=True,
             )
-        except Exception:
+        except Exception as error:
             logger.exception('Tool %s raised while executing', call.name)
             return ToolResultSegment(
                 tool_call_id=call.id,
-                content=f'tool {call.name!r} failed',
+                content=f'tool {call.name!r} failed: {error}',
                 error=True,
             )
 
