@@ -13,10 +13,6 @@ class MalformedToolCallError(AgentError):
     pass
 
 
-class TurnTimeoutError(AgentError):
-    pass
-
-
 class UnroutableError(AgentError):
     pass
 

@@ -18,6 +18,7 @@ logger = logging.getLogger(__name__)
 _DEFAULT_MAX_ITERATIONS = 10
 _DEFAULT_TURN_TIMEOUT = 300.0
 _DEFAULT_TOOL_TIMEOUT = 60.0
+_DEFAULT_MIN_ITERATION_BUDGET = 15.0
 
 type Instances = dict[str, Tool]
 type ToolOutput = str
@@ -85,6 +86,23 @@ class Step:
 
 
 @dataclass(frozen=True)
+class TurnBudget:
+    max_iterations: int = _DEFAULT_MAX_ITERATIONS
+    turn_timeout: float = _DEFAULT_TURN_TIMEOUT
+    tool_timeout: float = _DEFAULT_TOOL_TIMEOUT
+    min_iteration_budget: float = _DEFAULT_MIN_ITERATION_BUDGET
+
+
+def resolve_budget(agent: AgentConfig) -> TurnBudget:
+    default = TurnBudget()
+    return TurnBudget(
+        max_iterations=agent.max_iterations or default.max_iterations,
+        turn_timeout=agent.turn_timeout or default.turn_timeout,
+        tool_timeout=agent.tool_timeout or default.tool_timeout,
+    )
+
+
+@dataclass(frozen=True)
 class TurnInput:
     instructions: str
     prompts: tuple[TurnPrompt, ...]
@@ -93,9 +111,7 @@ class TurnInput:
     channel: str
     prior_turns: tuple[Message, ...] = ()
     max_completion_tokens: int | None = None
-    max_iterations: int = _DEFAULT_MAX_ITERATIONS
-    turn_timeout: float = _DEFAULT_TURN_TIMEOUT
-    tool_timeout: float = _DEFAULT_TOOL_TIMEOUT
+    budget: TurnBudget = field(default_factory=TurnBudget)
 
 
 @dataclass(frozen=True)

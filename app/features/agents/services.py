@@ -34,11 +34,7 @@ from .contracts import (
     TurnHandlerContract,
     TurnStream,
 )
-from .exceptions import (
-    MalformedToolCallError,
-    TurnTimeoutError,
-    UnservableModelError,
-)
+from .exceptions import MalformedToolCallError, UnservableModelError
 from .router import Router
 from .types import (
     RoutedAgent,
@@ -49,6 +45,7 @@ from .types import (
     TurnOutput,
     TurnPrompt,
     TurnRequest,
+    resolve_budget,
 )
 
 logger = logging.getLogger(__name__)
@@ -63,6 +60,38 @@ class ToolCallBuilder:
         self.id = ''
         self.name = ''
         self.arguments = ''
+
+
+class TurnDraft:
+    fragments: list[str]
+    calls: dict[int, ToolCallBuilder]
+
+    def __init__(self) -> None:
+        self.fragments = []
+        self.calls = {}
+
+    @property
+    def text(self) -> str:
+        return ''.join(self.fragments)
+
+    def tool_calls(self) -> tuple[ToolCallSegment, ...]:
+        segments = []
+        for index, builder in sorted(self.calls.items()):
+            if not builder.id:
+                raise MalformedToolCallError(
+                    f'tool call {builder.name or "<unnamed>"!r} at index {index} '
+                    'arrived without a call id',
+                )
+
+            segments.append(
+                ToolCallSegment(
+                    id=builder.id,
+                    name=builder.name,
+                    arguments=builder.arguments,
+                ),
+            )
+
+        return tuple(segments)
 
 
 def _prompt_segments(prompt: TurnPrompt) -> Iterator[Segment]:
@@ -169,17 +198,15 @@ async def _execute_calls(
 async def _consume(
     chunks: AsyncIterator[CompletionChunk],
     sink: TurnStream,
-) -> tuple[str, tuple[ToolCallSegment, ...]]:
-    fragments = []
-    calls = {}
-
+    draft: TurnDraft,
+) -> None:
     async for chunk in chunks:
         match chunk:
             case TextChunk(text=fragment):
-                fragments.append(fragment)
+                draft.fragments.append(fragment)
                 await sink.on_text(fragment)
             case ToolCallChunk(index=index, id=id_, name=name, arguments=arguments):
-                builder = calls.setdefault(index, ToolCallBuilder())
+                builder = draft.calls.setdefault(index, ToolCallBuilder())
                 if id_ is not None:
                     builder.id = id_
                 if name is not None:
@@ -190,23 +217,9 @@ async def _consume(
             case FinishChunk():
                 pass
 
-    tool_calls = []
-    for index, builder in sorted(calls.items()):
-        if not builder.id:
-            raise MalformedToolCallError(
-                f'tool call {builder.name or "<unnamed>"!r} at index {index} '
-                'arrived without a call id',
-            )
 
-        tool_calls.append(
-            ToolCallSegment(
-                id=builder.id,
-                name=builder.name,
-                arguments=builder.arguments,
-            ),
-        )
-
-    return ''.join(fragments), tuple(tool_calls)
+def _affordable(deadline: float, minimum: float) -> bool:
+    return deadline - asyncio.get_running_loop().time() >= minimum
 
 
 class AgentRunner:
@@ -224,27 +237,43 @@ class AgentRunner:
             return await self._process(turn, sink)
 
     async def _process(self, turn: TurnInput, sink: TurnStream) -> TurnOutput:
+        budget = turn.budget
         history = list(_build_messages(turn))
         steps = []
         text = ''
+        deadline = asyncio.get_running_loop().time() + budget.turn_timeout
 
-        try:
-            async with asyncio.timeout(turn.turn_timeout):
-                for iteration in range(turn.max_iterations):
+        for iteration in range(budget.max_iterations):
+            # NOTE: the first iteration always opens -- a turn that never reached the
+            # model has nothing to hand back, however little budget it was given
+            if iteration and not _affordable(deadline, budget.min_iteration_budget):
+                logger.warning(
+                    'Stopping after %d iterations with under %.1fs of'
+                    ' turn_timeout=%.1fs left',
+                    iteration,
+                    budget.min_iteration_budget,
+                    budget.turn_timeout,
+                )
+                return TurnOutput(text=text, completed=False, steps=tuple(steps))
+
+            draft = TurnDraft()
+            try:
+                async with asyncio.timeout_at(deadline):
                     request = CompletionRequest(
                         model=turn.model,
                         messages=_rolling_breakpoint(history),
                         tools=self.tools.schemas(),
                         max_completion_tokens=turn.max_completion_tokens,
                     )
-                    text, tool_calls = await _consume(self.llm.stream(request), sink)
+                    await _consume(self.llm.stream(request), sink, draft)
+                    tool_calls = draft.tool_calls()
 
                     if not tool_calls:
                         logger.info(
                             'Turn completed after %d iterations',
                             iteration + 1,
                         )
-                        return TurnOutput(text=text, steps=(*steps, Step()))
+                        return TurnOutput(text=draft.text, steps=(*steps, Step()))
 
                     logger.info(
                         'Iteration %d executing %d tool calls',
@@ -254,22 +283,29 @@ class AgentRunner:
                     results, step = await _execute_calls(
                         self.tools,
                         tool_calls,
-                        turn.tool_timeout,
+                        budget.tool_timeout,
                         self.clock,
                         sink,
                     )
-                    steps.append(step)
-                    history.append(_assistant_message(text, tool_calls))
-                    history.extend(_tool_result_messages(results))
-        except TimeoutError as error:
-            logger.warning('Turn exceeded turn_timeout=%.1fs', turn.turn_timeout)
-            raise TurnTimeoutError(
-                f'turn exceeded turn_timeout={turn.turn_timeout}s',
-            ) from error
+            except TimeoutError:
+                logger.warning(
+                    'Turn exceeded turn_timeout=%.1fs; delivering what it had',
+                    budget.turn_timeout,
+                )
+                return TurnOutput(
+                    text=draft.text or text,
+                    completed=False,
+                    steps=tuple(steps),
+                )
+
+            text = draft.text
+            steps.append(step)
+            history.append(_assistant_message(text, tool_calls))
+            history.extend(_tool_result_messages(results))
 
         logger.warning(
             'Turn hit max_iterations=%d without finishing',
-            turn.max_iterations,
+            budget.max_iterations,
         )
         return TurnOutput(text=text, completed=False, steps=tuple(steps))
 
@@ -358,6 +394,7 @@ class TurnHandler(TurnHandlerContract):
                         or agent.config.max_completion_tokens
                         or self.default_max_completion_tokens
                     ),
+                    budget=resolve_budget(agent.config),
                 ),
                 reply,
             )

@@ -11,13 +11,14 @@ from pydantic import Field, JsonValue
 from structlog.contextvars import bound_contextvars, get_contextvars
 
 from app.contracts.channels import AttachmentKind
-from app.features.agents.exceptions import MalformedToolCallError, TurnTimeoutError
+from app.features.agents.exceptions import MalformedToolCallError
 from app.features.agents.services import AgentRunner
 from app.features.agents.types import (
     PromptAttachment,
     ToolOutput,
     ToolParams,
     ToolSet,
+    TurnBudget,
     TurnInput,
     TurnPrompt,
     TypedTool,
@@ -53,6 +54,27 @@ class FakeLLM:
         self.requests.append(request)
         for chunk in self.responses.pop(0):
             yield chunk
+
+    async def dispose(self) -> None:
+        pass
+
+
+class StallingLLM:
+    fragments: tuple[str, ...]
+    requests: list[CompletionRequest]
+
+    def __init__(self, *fragments: str) -> None:
+        self.fragments = fragments
+        self.requests = []
+
+    async def stream(
+        self,
+        request: CompletionRequest,
+    ) -> AsyncIterator[CompletionChunk]:
+        self.requests.append(request)
+        for fragment in self.fragments:
+            yield TextChunk(text=fragment)
+        await asyncio.sleep(60)
 
     async def dispose(self) -> None:
         pass
@@ -143,6 +165,7 @@ def make_turn(
     max_iterations: int = 10,
     turn_timeout: float = 300.0,
     tool_timeout: float = 60.0,
+    min_iteration_budget: float = 0.0,
 ) -> TurnInput:
     return TurnInput(
         instructions='be helpful',
@@ -152,9 +175,12 @@ def make_turn(
         channel=channel,
         prior_turns=prior_turns,
         max_completion_tokens=max_completion_tokens,
-        max_iterations=max_iterations,
-        turn_timeout=turn_timeout,
-        tool_timeout=tool_timeout,
+        budget=TurnBudget(
+            max_iterations=max_iterations,
+            turn_timeout=turn_timeout,
+            tool_timeout=tool_timeout,
+            min_iteration_budget=min_iteration_budget,
+        ),
     )
 
 
@@ -583,7 +609,49 @@ async def test_run_reports_tool_timeout_as_error_and_continues(
     assert any('timed out' in record.message for record in caplog.records)
 
 
-async def test_run_raises_turn_timeout_when_whole_turn_exceeds_budget(
+# NOTE: this is the shape that broke a live round -- the budget expired while the final
+# answer was streaming, the runner raised, and the whole turn (prompts included) rolled
+# out of the transcript. An expired turn keeps what it said.
+async def test_run_delivers_the_partial_answer_when_the_turn_budget_expires(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    llm = StallingLLM('half an ')
+    runner = AgentRunner(llm, make_toolset(), ClockManager())
+    sink = RecordingReply()
+
+    with caplog.at_level('WARNING'):
+        output = await runner.run(make_turn(turn_timeout=0.05), sink)
+
+    assert output.text == 'half an '
+    assert output.completed is False
+    assert sink.fragments == ['half an ']
+    assert any('turn_timeout' in record.message for record in caplog.records)
+
+
+async def test_run_keeps_the_streamed_text_when_the_budget_expires_in_a_tool() -> None:
+    llm = FakeLLM(
+        [
+            [
+                TextChunk(text='let me look'),
+                ToolCallChunk(
+                    index=0,
+                    id='call_1',
+                    name='sleep',
+                    arguments='{"seconds": 5.0}',
+                ),
+                FinishChunk(reason='tool_calls'),
+            ],
+        ],
+    )
+    runner = AgentRunner(llm, make_toolset(), ClockManager())
+
+    output = await runner.run(make_turn(turn_timeout=0.05), discard())
+
+    assert output.text == 'let me look'
+    assert output.completed is False
+
+
+async def test_run_does_not_open_an_iteration_it_cannot_afford(
     caplog: pytest.LogCaptureFixture,
 ) -> None:
     llm = FakeLLM(
@@ -593,18 +661,38 @@ async def test_run_raises_turn_timeout_when_whole_turn_exceeds_budget(
                     index=0,
                     id='call_1',
                     name='sleep',
-                    arguments='{"seconds": 1.0}',
+                    arguments='{"seconds": 0.1}',
                 ),
                 FinishChunk(reason='tool_calls'),
             ],
+            [TextChunk(text='never asked'), FinishChunk(reason='stop')],
         ],
     )
     runner = AgentRunner(llm, make_toolset(), ClockManager())
 
-    with caplog.at_level('WARNING'), pytest.raises(TurnTimeoutError):
-        await runner.run(make_turn(turn_timeout=0.05), discard())
+    with caplog.at_level('WARNING'):
+        output = await runner.run(
+            make_turn(turn_timeout=5.0, min_iteration_budget=4.95),
+            discard(),
+        )
 
+    assert output.completed is False
+    assert len(llm.requests) == 1
     assert any('turn_timeout' in record.message for record in caplog.records)
+
+
+async def test_run_always_opens_the_first_iteration_however_small_the_budget() -> None:
+    llm = answering()
+    runner = AgentRunner(llm, make_toolset(), ClockManager())
+
+    output = await runner.run(
+        make_turn(turn_timeout=300.0, min_iteration_budget=600.0),
+        discard(),
+    )
+
+    assert output.text == 'done'
+    assert output.completed is True
+    assert len(llm.requests) == 1
 
 
 async def test_run_records_steps_for_each_iteration(

@@ -45,6 +45,33 @@ def test_completion_token_limits_must_be_positive() -> None:
         AgentConfig(description='x', max_completion_tokens=-1)
 
 
+def test_turn_budget_limits_must_be_positive() -> None:
+    for field, value in (
+        ('max_iterations', 0),
+        ('turn_timeout', 0),
+        ('tool_timeout', -1),
+    ):
+        with pytest.raises(ValidationError, match=field):
+            AgentConfig.model_validate({'description': 'x', field: value})
+
+
+def test_agent_config_leaves_the_turn_budget_to_the_built_in_defaults() -> None:
+    agent = AgentConfig(description='x')
+
+    assert agent.max_iterations is None
+    assert agent.turn_timeout is None
+    assert agent.tool_timeout is None
+
+
+def test_agent_config_takes_a_whole_number_of_seconds_for_its_timeouts() -> None:
+    agent = AgentConfig.model_validate(
+        {'description': 'x', 'turn_timeout': 900, 'tool_timeout': 120},
+    )
+
+    assert agent.turn_timeout == 900.0
+    assert agent.tool_timeout == 120.0
+
+
 def test_agent_config_requires_description() -> None:
     with pytest.raises(ValidationError, match='description'):
         AgentConfig.model_validate({})

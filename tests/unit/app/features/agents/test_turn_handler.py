@@ -19,10 +19,14 @@ from app.features.agents.router import Router
 from app.features.agents.services import TurnHandler
 from app.features.agents.types import (
     RoutingPolicy,
+    Tool,
+    TurnBudget,
     TurnPrompt,
     TurnRequest,
+    resolve_budget,
 )
 from lib.llm import (
+    CompletionChunk,
     FinishChunk,
     LLMClient,
     LLMContract,
@@ -30,12 +34,13 @@ from lib.llm import (
     ProviderConfig,
     TextChunk,
     TextSegment,
+    ToolCallChunk,
 )
 from lib.temporal import ClockContract, ClockManager
 from tests.helpers.clock import FakeClock
 from tests.helpers.replies import RecordingReply
 
-from .test_agent_runner import EchoTool, FakeLLM
+from .test_agent_runner import EchoTool, FakeLLM, SleepTool, StallingLLM
 
 
 class FakeModels(LLMContract):
@@ -130,8 +135,8 @@ def answering(text: str = 'answer') -> FakeLLM:
 class FakeSource(ToolSource):
     named: tuple[NamedTool, ...]
 
-    def __init__(self, *names: str) -> None:
-        self.named = tuple((name, EchoTool()) for name in names)
+    def __init__(self, *names: str, tool: Tool | None = None) -> None:
+        self.named = tuple((name, tool or EchoTool()) for name in names)
 
     @override
     async def collect(self, agent: AgentConfig) -> Sequence[NamedTool]:
@@ -175,6 +180,26 @@ def make_handler(
         store=store,
         clock=clock or ClockManager(),
         default_max_completion_tokens=default_max_completion_tokens,
+    )
+
+
+def configured_handler(
+    llm: FakeLLM | StallingLLM,
+    store: FakeStore,
+    source: ToolSource | None = None,
+    **overrides: object,
+) -> TurnHandler:
+    agent = agents()['scout'].model_copy(update=overrides)
+    sources = ToolSourceRegistry()
+    if source is not None:
+        sources.register(lambda: source)
+
+    return TurnHandler(
+        llm=FakeModels(llm),
+        router=Router({'scout': agent}, FakeModels(llm), 'default-model'),
+        sources=sources,
+        store=store,
+        clock=ClockManager(),
     )
 
 
@@ -355,6 +380,84 @@ async def test_a_failed_compaction_does_not_fail_a_delivered_answer() -> None:
     await make_handler(answering(), store).handle(request('hello'), reply)
 
     assert reply.finished
+
+
+# NOTE: the live failure this guards against -- the budget expired mid-answer, the runner
+# raised, and the rollback took the round's prompts and answer out of the transcript with
+# it, so the next turn had no idea the conversation had happened
+async def test_an_expired_turn_still_records_what_it_managed_to_say() -> None:
+    store = FakeStore()
+    reply = RecordingReply()
+
+    await configured_handler(
+        StallingLLM('half an '),
+        store,
+        turn_timeout=0.05,
+    ).handle(request('hello'), reply)
+
+    assert store.transcript.recorded == [(('hello',), 'half an ')]
+    assert reply.finished
+    assert not reply.abandoned
+
+
+async def test_the_agents_iteration_cap_reaches_the_runner() -> None:
+    def calling() -> list[CompletionChunk]:
+        return [
+            ToolCallChunk(index=0, id='call_1', name='echo', arguments='{"text": "a"}'),
+            FinishChunk(reason='tool_calls'),
+        ]
+
+    llm = FakeLLM([calling(), calling()])
+
+    await configured_handler(
+        llm,
+        FakeStore(),
+        FakeSource('echo'),
+        max_iterations=1,
+    ).handle(request('hello'), RecordingReply())
+
+    assert len(llm.requests) == 1
+
+
+async def test_the_agents_tool_timeout_reaches_the_runner() -> None:
+    llm = FakeLLM(
+        [
+            [
+                ToolCallChunk(
+                    index=0,
+                    id='call_1',
+                    name='sleep',
+                    arguments='{"seconds": 5.0}',
+                ),
+                FinishChunk(reason='tool_calls'),
+            ],
+            [TextChunk(text='answer'), FinishChunk(reason='stop')],
+        ],
+    )
+    reply = RecordingReply()
+
+    await configured_handler(
+        llm,
+        FakeStore(),
+        FakeSource('sleep', tool=SleepTool()),
+        tool_timeout=0.05,
+    ).handle(request('hello'), reply)
+
+    assert reply.tools == [('sleep', 'started'), ('sleep', 'failed')]
+
+
+async def test_an_agent_that_configures_nothing_keeps_the_built_in_budget() -> None:
+    assert resolve_budget(agents()['scout']) == TurnBudget()
+
+
+async def test_an_agent_budget_overrides_only_what_it_sets() -> None:
+    agent = agents()['scout'].model_copy(update={'turn_timeout': 900.0})
+
+    budget = resolve_budget(agent)
+
+    assert budget.turn_timeout == 900.0
+    assert budget.max_iterations == TurnBudget().max_iterations
+    assert budget.tool_timeout == TurnBudget().tool_timeout
 
 
 async def test_a_model_without_a_provider_refuses_the_turn() -> None:
