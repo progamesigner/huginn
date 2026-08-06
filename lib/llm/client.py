@@ -1,9 +1,12 @@
+import logging
 from collections.abc import AsyncIterator
 from typing import Annotated, Literal, Protocol
 
 from pydantic import Field, SecretStr
 
-from .types import CompletionChunk, CompletionRequest, LLMValue
+from .types import CompletionChunk, CompletionRequest, LLMValue, ModelRef
+
+logger = logging.getLogger(__name__)
 
 type Adapter = Literal['openai', 'anthropic']
 
@@ -26,12 +29,44 @@ class LLMClient(Protocol):
 
 
 class ProviderRegistry:
-    models: dict[str, ProviderConfig]
+    providers: dict[str, ProviderConfig]
+    models: dict[str, tuple[ProviderConfig, ...]]
 
     def __init__(self, providers: tuple[ProviderConfig, ...]) -> None:
-        self.models = {
-            model: provider for provider in providers for model in provider.models
-        }
+        self.providers = {provider.name: provider for provider in providers}
+        self.models = _index_models(providers)
 
-    def resolve(self, model: str) -> ProviderConfig | None:
-        return self.models.get(model)
+    def resolve(self, ref: ModelRef) -> ProviderConfig | None:
+        if ref.provider is not None:
+            provider = self.providers.get(ref.provider)
+            if provider is None or ref.model not in provider.models:
+                return None
+
+            return provider
+
+        match self.models.get(ref.model):
+            case (provider,):
+                return provider
+            case _:
+                return None
+
+
+def _index_models(
+    providers: tuple[ProviderConfig, ...],
+) -> dict[str, tuple[ProviderConfig, ...]]:
+    claims = {
+        model: tuple(owner for owner in providers if model in owner.models)
+        for provider in providers
+        for model in provider.models
+    }
+
+    for model, owners in sorted(claims.items()):
+        if len(owners) > 1:
+            logger.warning(
+                'Model %r is claimed by several providers (%s); '
+                'it can only be reached by naming one of them',
+                model,
+                ', '.join(owner.name for owner in owners),
+            )
+
+    return claims

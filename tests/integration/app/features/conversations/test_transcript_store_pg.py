@@ -28,6 +28,7 @@ from lib.llm import (
     LLMClient,
     LLMContract,
     Message,
+    ModelRef,
     ProviderConfig,
     TextSegment,
 )
@@ -41,11 +42,11 @@ _VOICE = b'OggS not really an ogg'
 
 class NoModels(LLMContract):
     @override
-    def client_for(self, model: str) -> LLMClient | None:
+    def client_for(self, ref: ModelRef) -> LLMClient | None:
         return None
 
     @override
-    def provider_for(self, model: str) -> ProviderConfig | None:
+    def provider_for(self, ref: ModelRef) -> ProviderConfig | None:
         return None
 
 

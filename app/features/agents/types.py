@@ -8,7 +8,7 @@ from typing import override
 from pydantic import BaseModel, ConfigDict, JsonValue, ValidationError
 
 from app.contracts.channels import AttachmentKind, TurnEnding
-from lib.llm import Adapter, Message, ToolCallSegment, ToolResultSegment
+from lib.llm import Message, ToolCallSegment, ToolResultSegment
 
 from .config import AgentConfig
 from .exceptions import DuplicateToolNameError
@@ -28,7 +28,7 @@ type ToolOutput = str
 class SelectionPolicy:
     fallback: str
     model: str | None = None
-    kind: Adapter | None = None
+    provider: str | None = None
 
 
 @dataclass(frozen=True)

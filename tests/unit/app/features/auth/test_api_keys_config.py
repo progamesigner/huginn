@@ -3,6 +3,7 @@ import re
 import pytest
 from pydantic import SecretStr, ValidationError
 
+from app.core.config.llm import PROVIDERS, ProviderConfig, ProviderConfigList
 from app.core.config.registry import HuginnConfig
 from app.features.agents.config import (
     AGENTS,
@@ -13,7 +14,9 @@ from app.features.agents.config import (
 )
 from app.features.agents.exceptions import (
     MissingModelError,
+    ProviderModelMismatchError,
     UnknownAgentReferenceError,
+    UnknownProviderReferenceError,
 )
 from app.features.auth.config import (
     API_KEYS,
@@ -51,6 +54,7 @@ def make_config(
     *,
     agents: tuple[str, ...] = ('scout', 'concierge'),
     model: str | None = 'gpt-5-mini',
+    providers: dict[str, ProviderConfig] | None = None,
 ) -> HuginnConfig:
     return HuginnConfig(
         sections={
@@ -59,6 +63,7 @@ def make_config(
             ),
             API_KEYS.key: ApiKeyConfigList(keys),
             DEFAULTS.key: DefaultsConfig(model=model),
+            PROVIDERS.key: ProviderConfigList(providers or {}),
         },
     )
 
@@ -102,6 +107,67 @@ def test_a_key_carries_its_agents_and_optional_knobs() -> None:
         model='gpt-5-mini',
     )
     assert configured.tools == ApiKeyToolsConfig(deny=('dangerous-tool',))
+
+
+def test_a_router_may_pin_the_provider_that_answers() -> None:
+    configured = key(
+        router=ApiKeyRouterConfig(
+            fallback='concierge',
+            model='claude-sonnet-5',
+            provider='bifrost',
+        ),
+    )
+    config = make_config(
+        {'web-frontend': configured},
+        providers={
+            'bifrost': ProviderConfig(
+                adapter='openai',
+                api_key=SecretStr('key'),
+                models=('claude-sonnet-5',),
+            ),
+        },
+    )
+
+    validate(config)
+
+
+def test_a_router_rejects_an_unknown_provider() -> None:
+    configured = key(
+        router=ApiKeyRouterConfig(fallback='concierge', provider='ghost'),
+    )
+    config = make_config({'web-frontend': configured})
+
+    with pytest.raises(
+        UnknownProviderReferenceError,
+        match=r'api_keys\.web-frontend\.router\.provider',
+    ):
+        validate(config)
+
+
+def test_a_router_rejects_a_model_the_named_provider_does_not_offer() -> None:
+    configured = key(
+        router=ApiKeyRouterConfig(
+            fallback='concierge',
+            model='claude-sonnet-5',
+            provider='openai',
+        ),
+    )
+    config = make_config(
+        {'web-frontend': configured},
+        providers={
+            'openai': ProviderConfig(
+                adapter='openai',
+                api_key=SecretStr('key'),
+                models=('gpt-5-mini',),
+            ),
+        },
+    )
+
+    with pytest.raises(
+        ProviderModelMismatchError,
+        match=r'api_keys\.web-frontend\.router\.model',
+    ):
+        validate(config)
 
 
 def test_a_key_keeps_its_token_out_of_a_dump() -> None:

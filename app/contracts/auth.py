@@ -6,6 +6,7 @@ from dataclasses import dataclass, field
 class ApiRouting:
     fallback: str
     model: str | None = None
+    provider: str | None = None
 
 
 @dataclass(frozen=True)

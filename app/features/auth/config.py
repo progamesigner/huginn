@@ -5,7 +5,12 @@ from pydantic import BaseModel, Field, RootModel, SecretStr
 
 from app.core.config.registry import HuginnConfig, SectionSpec
 from app.core.config.schema import ConfigValue
-from app.features.agents.config import AGENTS, DEFAULTS, resolve_model
+from app.features.agents.config import (
+    AGENTS,
+    DEFAULTS,
+    resolve_selection,
+    validate_selection,
+)
 from app.features.agents.exceptions import (
     MissingModelError,
     UnknownAgentReferenceError,
@@ -21,6 +26,7 @@ from .exceptions import (
 class ApiKeyRouterConfig(ConfigValue):
     fallback: Annotated[str, Field()]
     model: Annotated[str | None, Field()] = None
+    provider: Annotated[str | None, Field()] = None
 
 
 class ApiKeyToolsConfig(ConfigValue):
@@ -80,10 +86,17 @@ def _validate_api_keys(config: HuginnConfig) -> None:
         _validate_allowed(key, base, 'agent', key.agent)
         if key.router is not None:
             _validate_allowed(key, base, 'router.fallback', key.router.fallback)
+            router = f'{base}.router'
             try:
-                resolve_model(key.router.model, config.section(DEFAULTS).model)
+                ref = resolve_selection(
+                    key.router.provider,
+                    key.router.model,
+                    config.section(DEFAULTS),
+                )
             except MissingModelError as error:
-                raise MissingModelError(f'{base}.router.model: {error}') from error
+                raise MissingModelError(f'{router}.model: {error}') from error
+
+            validate_selection(config, router, ref)
 
 
 def _validate_allowed(

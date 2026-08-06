@@ -5,7 +5,7 @@ import pytest
 from app.core.application import App
 from app.core.providers.config import ConfigProvider
 from app.core.providers.llm import LLMProvider
-from lib.llm import LLMContract, LLMManager
+from lib.llm import LLMContract, LLMManager, ModelRef
 
 _CONFIG = """
 providers:
@@ -36,9 +36,9 @@ def test_provider_builds_llm_manager_from_config(
     manager = container.resolve(LLMContract)
 
     assert isinstance(manager, LLMManager)
-    provider = manager.provider_for('gpt-5-mini')
+    provider = manager.provider_for(ModelRef(model='gpt-5-mini'))
     assert provider is not None
     assert provider.name == 'openai'
     assert provider.adapter == 'openai'
     assert provider.api_key.get_secret_value() == 'sk-test'
-    assert manager.provider_for('unknown-model') is None
+    assert manager.provider_for(ModelRef(model='unknown-model')) is None

@@ -11,6 +11,7 @@ from lib.llm import (
     LLMClient,
     LLMContract,
     Message,
+    ModelRef,
     OutputSchema,
     TextChunk,
     TextSegment,
@@ -168,7 +169,7 @@ class CompactionService:
     async def maybe_compact(
         self,
         conversation: Conversation,
-        model: str,
+        ref: ModelRef,
     ) -> CompactionResult:
         real_turns = await self.repository.load_turns_since_summary(conversation)
 
@@ -183,13 +184,13 @@ class CompactionService:
             conversation,
             await self._prior_summary(conversation),
             foldable,
-            model,
+            ref,
         )
 
     async def force(
         self,
         conversation: Conversation,
-        model: str,
+        ref: ModelRef,
     ) -> CompactionResult:
         foldable = await self.repository.load_turns_since_summary(conversation)
         if not foldable:
@@ -199,7 +200,7 @@ class CompactionService:
             conversation,
             await self._prior_summary(conversation),
             foldable,
-            model,
+            ref,
         )
 
     async def _prior_summary(
@@ -226,16 +227,16 @@ class CompactionService:
         conversation: Conversation,
         prior_summary: SummaryOutput | None,
         turns_to_fold: tuple[Turn, ...],
-        model: str,
+        ref: ModelRef,
     ) -> CompactionResult:
         if not turns_to_fold:
             raise NoTurnsToCompactError('compact requires at least one turn to fold')
 
-        client = self.llm.client_for(model)
+        client = self.llm.client_for(ref)
         if client is None:
             return CompactionResult(compacted=False, conversation=conversation)
 
-        output = await self._summarize(prior_summary, turns_to_fold, model, client)
+        output = await self._summarize(prior_summary, turns_to_fold, ref.model, client)
         if output is None:
             return CompactionResult(compacted=False, conversation=conversation)
 

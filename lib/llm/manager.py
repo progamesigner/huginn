@@ -4,6 +4,7 @@ from lib.http import HTTPClientContract
 
 from .client import LLMClient, ProviderConfig, ProviderRegistry
 from .contracts import LLMContract
+from .types import ModelRef
 
 
 def build_adapter(provider: ProviderConfig, http: HTTPClientContract) -> LLMClient:
@@ -40,8 +41,8 @@ class LLMManager(LLMContract):
         self.clients = {}
 
     @override
-    def client_for(self, model: str) -> LLMClient | None:
-        provider = self.provider_for(model)
+    def client_for(self, ref: ModelRef) -> LLMClient | None:
+        provider = self.provider_for(ref)
         if provider is None:
             return None
 
@@ -51,5 +52,5 @@ class LLMManager(LLMContract):
         return self.clients[provider.name]
 
     @override
-    def provider_for(self, model: str) -> ProviderConfig | None:
-        return self.registry.resolve(model)
+    def provider_for(self, ref: ModelRef) -> ProviderConfig | None:
+        return self.registry.resolve(ref)

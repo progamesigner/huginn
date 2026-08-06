@@ -10,13 +10,13 @@ from app.features.agents.config import (
     AGENTS,
     DEFAULTS,
     load_instructions,
-    resolve_model,
+    resolve_selection,
 )
 from app.features.agents.contracts import TranscriptStoreContract
 from app.features.agents.types import PromptAttachment, TurnPrompt
 from lib.database import DatabaseContract
 from lib.guid import GUIDContract
-from lib.llm import LLMContract, Message
+from lib.llm import LLMContract, Message, ModelRef
 from lib.temporal import ClockContract
 
 from .compaction import (
@@ -142,9 +142,10 @@ class ConversationControl(ConversationControlContract):
                     )
                     continue
 
-                model = resolve_model(
+                ref = resolve_selection(
+                    configured.provider,
                     configured.model,
-                    self.config.section(DEFAULTS).model,
+                    self.config.section(DEFAULTS),
                 )
                 service = CompactionService(
                     self.llm,
@@ -152,7 +153,7 @@ class ConversationControl(ConversationControlContract):
                     instructions=load_instructions(configured),
                     instruction=self.config.section(COMPACTION).summary_prompt,
                 )
-                result = await service.force(conversation, model)
+                result = await service.force(conversation, ref)
                 compacted += int(result.compacted)
 
         return compacted
@@ -221,7 +222,7 @@ class ConversationTranscriptStore(TranscriptStoreContract):
         channel: str,
         chat: str,
         agent: str,
-        model: str,
+        ref: ModelRef,
     ) -> None:
         async with self.database.session() as session, session.begin():
             repository = self._repository(session)
@@ -233,7 +234,7 @@ class ConversationTranscriptStore(TranscriptStoreContract):
                 instructions=load_instructions(configured),
                 instruction=self.config.section(COMPACTION).summary_prompt,
             )
-            result = await service.maybe_compact(conversation, model)
+            result = await service.maybe_compact(conversation, ref)
 
         if result.compacted:
             logger.info('Compacted conversation %s', conversation.id)

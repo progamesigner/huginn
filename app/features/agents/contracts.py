@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from typing import Protocol
 
 from app.contracts.channels import ChannelReplyContract, ToolPhase
-from lib.llm import Message
+from lib.llm import Message, ModelRef
 
 from .config import AgentConfig
 from .types import Tool, TurnPrompt, TurnRequest
@@ -57,7 +57,7 @@ class TranscriptStoreContract(ABC):
         channel: str,
         chat: str,
         agent: str,
-        model: str,
+        ref: ModelRef,
     ) -> None: ...
 
 

@@ -5,7 +5,7 @@ from typing import override
 
 import pytest
 
-from app.features.agents.config import AgentConfig
+from app.features.agents.config import AgentConfig, DefaultsConfig
 from app.features.agents.contracts import (
     NamedTool,
     ToolHarvest,
@@ -33,6 +33,7 @@ from lib.llm import (
     LLMClient,
     LLMContract,
     Message,
+    ModelRef,
     ProviderConfig,
     TextChunk,
     TextSegment,
@@ -44,19 +45,24 @@ from tests.helpers.replies import RecordingReply
 
 from .test_agent_runner import EchoTool, FakeLLM, SleepTool, StallingLLM
 
+DEFAULTS = DefaultsConfig(model='default-model')
+
 
 class FakeModels(LLMContract):
     client: LLMClient | None
+    refs: list[ModelRef]
 
     def __init__(self, client: LLMClient | None) -> None:
         self.client = client
+        self.refs = []
 
     @override
-    def client_for(self, model: str) -> LLMClient | None:
+    def client_for(self, ref: ModelRef) -> LLMClient | None:
+        self.refs.append(ref)
         return self.client
 
     @override
-    def provider_for(self, model: str) -> ProviderConfig | None:
+    def provider_for(self, ref: ModelRef) -> ProviderConfig | None:
         return None
 
 
@@ -71,7 +77,7 @@ class FakeTranscript:
 
 class FakeStore(TranscriptStoreContract):
     maintain_error: Exception | None
-    maintained: list[tuple[str, str, str, str]]
+    maintained: list[tuple[str, str, str, ModelRef]]
     opened: list[tuple[str, str, str]]
     record_error: Exception | None
     transcript: FakeTranscript
@@ -121,9 +127,9 @@ class FakeStore(TranscriptStoreContract):
         channel: str,
         chat: str,
         agent: str,
-        model: str,
+        ref: ModelRef,
     ) -> None:
-        self.maintained.append((channel, chat, agent, model))
+        self.maintained.append((channel, chat, agent, ref))
         if self.maintain_error is not None:
             raise self.maintain_error
 
@@ -182,7 +188,7 @@ def handler_with(llm: FakeLLM, source: ToolSource) -> TurnHandler:
 
     return TurnHandler(
         llm=FakeModels(llm),
-        router=Router(agents(), FakeModels(llm), 'default-model'),
+        router=Router(agents(), FakeModels(llm), DEFAULTS),
         sources=sources,
         store=FakeStore(),
         clock=ClockManager(),
@@ -198,7 +204,7 @@ def make_handler(
 ) -> TurnHandler:
     return TurnHandler(
         llm=FakeModels(llm),
-        router=Router(agents(), FakeModels(llm), 'default-model'),
+        router=Router(agents(), FakeModels(llm), DEFAULTS),
         sources=ToolSourceRegistry(),
         store=store,
         clock=clock or ClockManager(),
@@ -219,7 +225,7 @@ def configured_handler(
 
     return TurnHandler(
         llm=FakeModels(llm),
-        router=Router({'scout': agent}, FakeModels(llm), 'default-model'),
+        router=Router({'scout': agent}, FakeModels(llm), DEFAULTS),
         sources=sources,
         store=store,
         clock=ClockManager(),
@@ -251,7 +257,7 @@ async def test_request_token_limit_overrides_agent_and_default() -> None:
     configured = agents()['scout'].model_copy(update={'max_completion_tokens': 8192})
     handler = TurnHandler(
         llm=FakeModels(llm),
-        router=Router({'scout': configured}, FakeModels(llm), 'default-model'),
+        router=Router({'scout': configured}, FakeModels(llm), DEFAULTS),
         sources=ToolSourceRegistry(),
         store=FakeStore(),
         clock=ClockManager(),
@@ -271,7 +277,7 @@ async def test_agent_token_limit_overrides_default() -> None:
     configured = agents()['scout'].model_copy(update={'max_completion_tokens': 8192})
     handler = TurnHandler(
         llm=FakeModels(llm),
-        router=Router({'scout': configured}, FakeModels(llm), 'default-model'),
+        router=Router({'scout': configured}, FakeModels(llm), DEFAULTS),
         sources=ToolSourceRegistry(),
         store=FakeStore(),
         clock=ClockManager(),
@@ -430,7 +436,67 @@ async def test_compaction_runs_after_the_turn_committed() -> None:
 
     await make_handler(answering(), store).handle(request('hello'), RecordingReply())
 
-    assert store.maintained == [('support_bot', '4242', 'scout', 'scout-model')]
+    assert store.maintained == [
+        ('support_bot', '4242', 'scout', ModelRef(model='scout-model')),
+    ]
+
+
+async def test_a_turn_asks_the_provider_the_agent_pinned() -> None:
+    llm = answering()
+    models = FakeModels(llm)
+    pinned = agents()['scout'].model_copy(update={'provider': 'bifrost'})
+    handler = TurnHandler(
+        llm=models,
+        router=Router({'scout': pinned}, FakeModels(llm), DEFAULTS),
+        sources=ToolSourceRegistry(),
+        store=FakeStore(),
+        clock=ClockManager(),
+    )
+
+    await handler.handle(request('hello'), RecordingReply())
+
+    assert models.refs == [ModelRef(model='scout-model', provider='bifrost')]
+
+
+async def test_an_agent_without_a_model_inherits_the_default_provider() -> None:
+    # NOTE: the paired-inheritance rule -- defaults.provider rides along only when
+    # defaults.model is what got used
+    llm = answering()
+    models = FakeModels(llm)
+    bare = AgentConfig(description='scouts', instructions='be helpful')
+    defaults = DefaultsConfig(model='default-model', provider='openai')
+    handler = TurnHandler(
+        llm=models,
+        router=Router({'scout': bare}, FakeModels(llm), defaults),
+        sources=ToolSourceRegistry(),
+        store=FakeStore(),
+        clock=ClockManager(),
+        defaults=defaults,
+    )
+
+    await handler.handle(request('hello'), RecordingReply())
+
+    assert models.refs == [ModelRef(model='default-model', provider='openai')]
+
+
+async def test_an_agent_naming_only_a_model_does_not_inherit_the_default_provider() -> (
+    None
+):
+    llm = answering()
+    models = FakeModels(llm)
+    defaults = DefaultsConfig(model='default-model', provider='openai')
+    handler = TurnHandler(
+        llm=models,
+        router=Router(agents(), FakeModels(llm), defaults),
+        sources=ToolSourceRegistry(),
+        store=FakeStore(),
+        clock=ClockManager(),
+        defaults=defaults,
+    )
+
+    await handler.handle(request('hello'), RecordingReply())
+
+    assert models.refs == [ModelRef(model='scout-model')]
 
 
 # NOTE: the live failure -- tool assembly or the stream raised, nothing was recorded, and
@@ -479,7 +545,7 @@ async def test_a_turn_that_cannot_assemble_its_tools_still_records_the_prompt() 
     store = FakeStore()
     handler = TurnHandler(
         llm=FakeModels(answering()),
-        router=Router(agents(), FakeModels(answering()), 'default-model'),
+        router=Router(agents(), FakeModels(answering()), DEFAULTS),
         sources=_registry(BrokenSource()),
         store=store,
         clock=ClockManager(),

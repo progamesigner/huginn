@@ -5,14 +5,24 @@ from typing import Annotated
 
 from pydantic import BaseModel, Field, JsonValue, RootModel
 
+from app.core.config.llm import PROVIDERS
 from app.core.config.registry import HuginnConfig, SectionSpec
 from app.core.config.schema import ConfigValue
+from lib.llm import ModelRef
 
-from .exceptions import AgentError, AmbiguousInstructionsError, MissingModelError
+from .exceptions import (
+    AgentError,
+    AmbiguousInstructionsError,
+    AmbiguousModelError,
+    MissingModelError,
+    ProviderModelMismatchError,
+    UnknownProviderReferenceError,
+)
 
 
 class DefaultsConfig(ConfigValue):
     model: Annotated[str | None, Field()] = None
+    provider: Annotated[str | None, Field()] = None
     router_prompt: Annotated[str | None, Field()] = None
     max_completion_tokens: Annotated[int | None, Field(gt=0)] = None
 
@@ -37,6 +47,7 @@ class SkillsConfig(ConfigValue):
 class AgentConfig(ConfigValue):
     description: Annotated[str, Field()]
     model: Annotated[str | None, Field()] = None
+    provider: Annotated[str | None, Field()] = None
     max_completion_tokens: Annotated[int | None, Field(gt=0)] = None
     max_iterations: Annotated[int | None, Field(gt=0)] = None
     turn_timeout: Annotated[float | None, Field(gt=0)] = None
@@ -54,9 +65,10 @@ class AgentConfigList(RootModel[dict[str, AgentConfig]]):
 
 def _describe_agent(name: str, agent: AgentConfig) -> str:
     model = agent.model or 'default'
+    provider = agent.provider or 'any'
     tools = ', '.join(tool.name for tool in agent.tools) or 'none'
     servers = ', '.join(ref.server for ref in agent.mcp) or 'none'
-    return f'  {name}: model={model} tools={tools} mcp={servers}'
+    return f'  {name}: provider={provider} model={model} tools={tools} mcp={servers}'
 
 
 def _describe_agents(config: HuginnConfig) -> list[str]:
@@ -68,7 +80,7 @@ def _describe_agents(config: HuginnConfig) -> list[str]:
 
 
 def _validate_agents(config: HuginnConfig) -> None:
-    default_model = config.section(DEFAULTS).model
+    defaults = config.section(DEFAULTS)
 
     for agent_name, agent in config.section(AGENTS).root.items():
         base = f'agents.{agent_name}'
@@ -79,9 +91,11 @@ def _validate_agents(config: HuginnConfig) -> None:
             )
 
         try:
-            resolve_model(agent.model, default_model)
+            ref = resolve_selection(agent.provider, agent.model, defaults)
         except MissingModelError as error:
             raise MissingModelError(f'{base}.model: {error}') from error
+
+        validate_selection(config, base, ref)
 
 
 def build_sections() -> Iterator[SectionSpec[BaseModel]]:
@@ -89,11 +103,41 @@ def build_sections() -> Iterator[SectionSpec[BaseModel]]:
     yield DEFAULTS
 
 
-def resolve_model(explicit: str | None, default: str | None) -> str:
-    if (model := explicit or default) is not None:
-        return model
+def resolve_selection(
+    provider: str | None,
+    model: str | None,
+    defaults: DefaultsConfig,
+) -> ModelRef:
+    if (resolved := model or defaults.model) is None:
+        raise MissingModelError('no model configured; set the model or defaults.model')
 
-    raise MissingModelError('no model configured; set the model or defaults.model')
+    inherited = None if model is not None else defaults.provider
+    return ModelRef(model=resolved, provider=provider or inherited)
+
+
+def validate_selection(config: HuginnConfig, base: str, ref: ModelRef) -> None:
+    providers = config.section(PROVIDERS).root
+    if ref.provider is not None:
+        if (provider := providers.get(ref.provider)) is None:
+            raise UnknownProviderReferenceError(
+                f'{base}.provider: unknown provider {ref.provider!r}',
+            )
+
+        if ref.model not in provider.models:
+            raise ProviderModelMismatchError(
+                f'{base}.model: provider {ref.provider!r} does not list {ref.model!r}',
+            )
+
+        return
+
+    owners = sorted(
+        name for name, provider in providers.items() if ref.model in provider.models
+    )
+    if len(owners) > 1:
+        raise AmbiguousModelError(
+            f'{base}.model: {ref.model!r} is offered by {", ".join(owners)};'
+            f' name one in {base}.provider',
+        )
 
 
 def load_instructions(agent: AgentConfig) -> str:

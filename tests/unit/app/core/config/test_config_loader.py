@@ -29,13 +29,16 @@ from app.features.agents.config import (
     MCPRef,
     ToolRef,
     _validate_agents,
-    resolve_model,
+    resolve_selection,
 )
 from app.features.agents.config import build_sections as build_agent_sections
 from app.features.agents.exceptions import (
     AmbiguousInstructionsError,
+    AmbiguousModelError,
     MissingModelError,
+    ProviderModelMismatchError,
     UnknownAgentReferenceError,
+    UnknownProviderReferenceError,
 )
 from app.features.agents.types import ToolOutput, ToolParams, TypedTool
 from app.features.channels.config import (
@@ -45,10 +48,7 @@ from app.features.channels.config import (
     _validate_channels,
 )
 from app.features.channels.config import build_sections as build_channel_sections
-from app.features.channels.exceptions import (
-    DuplicateChannelSecretError,
-    RouterKindMismatchError,
-)
+from app.features.channels.exceptions import DuplicateChannelSecretError
 from app.features.channels.registry import ChannelRegistry
 from app.features.channels.telegram.config import TelegramChannelConfig
 from app.features.mcp.config import (
@@ -72,6 +72,7 @@ from app.features.tools.exceptions import (
 )
 from app.features.tools.registry import ToolRegistry
 from app.features.tools.websearch.config import WebSearchToolConfig
+from lib.llm import ModelRef
 
 
 class SearchParams(ToolParams):
@@ -581,17 +582,119 @@ def test_validate_agents_requires_exactly_one_instruction_source() -> None:
         _validate_agents(build_app_config(agents={'scout': neither}))
 
 
-def test_resolve_model_prefers_explicit_over_default() -> None:
-    assert resolve_model('claude-sonnet-5', 'gpt-5-mini') == 'claude-sonnet-5'
+def test_resolve_selection_prefers_explicit_over_default() -> None:
+    defaults = DefaultsConfig(model='gpt-5-mini')
+
+    assert resolve_selection(None, 'claude-sonnet-5', defaults) == ModelRef(
+        model='claude-sonnet-5',
+    )
 
 
-def test_resolve_model_falls_back_to_default() -> None:
-    assert resolve_model(None, 'gpt-5-mini') == 'gpt-5-mini'
+def test_resolve_selection_falls_back_to_default() -> None:
+    defaults = DefaultsConfig(model='gpt-5-mini')
+
+    assert resolve_selection(None, None, defaults) == ModelRef(model='gpt-5-mini')
 
 
-def test_resolve_model_raises_when_neither_is_set() -> None:
+def test_resolve_selection_raises_when_neither_model_is_set() -> None:
     with pytest.raises(MissingModelError):
-        resolve_model(None, None)
+        resolve_selection(None, None, DefaultsConfig())
+
+
+def test_resolve_selection_keeps_an_explicit_provider() -> None:
+    defaults = DefaultsConfig(model='gpt-5-mini', provider='openai')
+
+    assert resolve_selection('bifrost', 'claude-sonnet-5', defaults) == ModelRef(
+        model='claude-sonnet-5',
+        provider='bifrost',
+    )
+
+
+def test_resolve_selection_inherits_the_default_provider_with_the_default_model() -> (
+    None
+):
+    defaults = DefaultsConfig(model='gpt-5-mini', provider='openai')
+
+    assert resolve_selection(None, None, defaults) == ModelRef(
+        model='gpt-5-mini',
+        provider='openai',
+    )
+
+
+def test_resolve_selection_drops_the_default_provider_when_a_model_is_named() -> None:
+    # NOTE: defaults.provider backs the model it was written next to, nothing else --
+    # naming a model alone means "whichever provider offers it"
+    defaults = DefaultsConfig(model='gpt-5-mini', provider='openai')
+
+    assert resolve_selection(None, 'claude-sonnet-5', defaults) == ModelRef(
+        model='claude-sonnet-5',
+    )
+
+
+def test_validate_agents_rejects_an_unknown_provider() -> None:
+    config = build_app_config(
+        agents={'scout': build_agent(model='gpt-5-mini', provider='ghost')},
+    )
+
+    with pytest.raises(UnknownProviderReferenceError, match=r'agents\.scout\.provider'):
+        _validate_agents(config)
+
+
+def test_validate_agents_rejects_a_model_the_named_provider_does_not_offer() -> None:
+    config = build_app_config(
+        agents={'scout': build_agent(model='claude-sonnet-5', provider='openai')},
+        providers={
+            'openai': ProviderConfig(
+                adapter='openai',
+                api_key=SecretStr('key'),
+                models=('gpt-5-mini',),
+            ),
+        },
+    )
+
+    with pytest.raises(ProviderModelMismatchError, match=r'agents\.scout\.model'):
+        _validate_agents(config)
+
+
+def test_validate_agents_accepts_a_model_the_named_provider_offers() -> None:
+    config = build_app_config(
+        agents={'scout': build_agent(model='claude-sonnet-5', provider='bifrost')},
+        providers={
+            'anthropic': ProviderConfig(
+                adapter='anthropic',
+                api_key=SecretStr('key'),
+                models=('claude-sonnet-5',),
+            ),
+            'bifrost': ProviderConfig(
+                adapter='openai',
+                api_key=SecretStr('key'),
+                models=('claude-sonnet-5',),
+            ),
+        },
+    )
+
+    _validate_agents(config)
+
+
+def test_validate_agents_rejects_a_bare_model_several_providers_offer() -> None:
+    config = build_app_config(
+        agents={'scout': build_agent(model='claude-sonnet-5')},
+        providers={
+            'anthropic': ProviderConfig(
+                adapter='anthropic',
+                api_key=SecretStr('key'),
+                models=('claude-sonnet-5',),
+            ),
+            'bifrost': ProviderConfig(
+                adapter='openai',
+                api_key=SecretStr('key'),
+                models=('claude-sonnet-5',),
+            ),
+        },
+    )
+
+    with pytest.raises(AmbiguousModelError, match='anthropic, bifrost'):
+        _validate_agents(config)
 
 
 def test_validate_agents_requires_an_effective_model() -> None:
@@ -676,88 +779,8 @@ def test_validate_channels_rejects_duplicate_secret_token() -> None:
         _validate_channels(config, build_channel_registry())
 
 
-def test_validate_channels_rejects_a_router_kind_that_does_not_match_the_model() -> (
-    None
-):
-    config = build_app_config(
-        agents={'scout': build_agent()},
-        channels=ChannelConfigList(
-            {
-                'support_bot': telegram_channel(
-                    router=ChannelRouterConfig(
-                        fallback='scout',
-                        model='claude-sonnet-5',
-                        kind='openai',
-                    ),
-                ),
-            },
-        ),
-        providers={
-            'anthropic': ProviderConfig(
-                adapter='anthropic',
-                api_key=SecretStr('key'),
-                models=('claude-sonnet-5',),
-            ),
-        },
-    )
-
-    with pytest.raises(
-        RouterKindMismatchError,
-        match=r'channels\.support_bot\.router\.kind',
-    ):
-        _validate_channels(config, build_channel_registry())
-
-
-def test_validate_channels_rejects_a_router_kind_for_an_unregistered_model() -> None:
-    config = build_app_config(
-        agents={'scout': build_agent()},
-        channels=ChannelConfigList(
-            {
-                'support_bot': telegram_channel(
-                    router=ChannelRouterConfig(
-                        fallback='scout',
-                        model='ghost-model',
-                        kind='openai',
-                    ),
-                ),
-            },
-        ),
-    )
-
-    with pytest.raises(RouterKindMismatchError, match='ghost-model'):
-        _validate_channels(config, build_channel_registry())
-
-
-def test_validate_channels_accepts_a_router_kind_that_matches_the_model() -> None:
-    config = build_app_config(
-        agents={'scout': build_agent()},
-        channels=ChannelConfigList(
-            {
-                'support_bot': telegram_channel(
-                    router=ChannelRouterConfig(
-                        fallback='scout',
-                        model='gpt-5-mini',
-                        kind='openai',
-                    ),
-                ),
-            },
-        ),
-        providers={
-            'openai': ProviderConfig(
-                adapter='openai',
-                api_key=SecretStr('key'),
-                models=('gpt-5-mini',),
-            ),
-        },
-    )
-
-    _validate_channels(config, build_channel_registry())
-
-
-def test_validate_channels_leaves_the_router_unchecked_without_a_configured_kind() -> (
-    None
-):
-    # NOTE: no providers registered at all -- must not be consulted when kind is unset
+def test_validate_channels_accepts_a_router_without_any_provider_configured() -> None:
+    # NOTE: no providers registered at all -- a bare router model must not consult them
     config = build_app_config(
         agents={'scout': build_agent()},
         channels=ChannelConfigList(

@@ -15,21 +15,23 @@ from pydantic import (
     create_model,
 )
 
-from app.core.config.llm import PROVIDERS
 from app.core.config.registry import HuginnConfig, SectionSpec
 from app.core.config.schema import ConfigValue
-from app.features.agents.config import AGENTS, DEFAULTS, resolve_model
+from app.features.agents.config import (
+    AGENTS,
+    DEFAULTS,
+    resolve_selection,
+    validate_selection,
+)
 from app.features.agents.exceptions import (
     MissingModelError,
     UnknownAgentReferenceError,
 )
 from app.features.agents.types import RoutingPolicy, SelectionPolicy
-from lib.llm import Adapter
 
 from .exceptions import (
     DuplicateChannelSecretError,
     IncompleteTranscriptionError,
-    RouterKindMismatchError,
     UnknownChannelKindError,
 )
 from .registry import ChannelRegistry
@@ -40,7 +42,7 @@ type TranscriptionKind = Literal['openai']
 class ChannelRouterConfig(ConfigValue):
     fallback: Annotated[str, Field()]
     model: Annotated[str | None, Field()] = None
-    kind: Annotated[Adapter | None, Field()] = None
+    provider: Annotated[str | None, Field()] = None
 
 
 class TranscriptionConfig(ConfigValue):
@@ -129,7 +131,7 @@ def routing_policy(channel: ChannelConfig) -> RoutingPolicy:
             else SelectionPolicy(
                 fallback=channel.router.fallback,
                 model=channel.router.model,
-                kind=channel.router.kind,
+                provider=channel.router.provider,
             )
         ),
     )
@@ -146,23 +148,6 @@ def _validate_agent_reference(
 ) -> None:
     if agent_name not in agents:
         raise UnknownAgentReferenceError(f'{path}: unknown agent {agent_name!r}')
-
-
-def _validate_router_kind(
-    config: HuginnConfig,
-    path: str,
-    model: str,
-    kind: Adapter,
-) -> None:
-    providers = config.section(PROVIDERS).root.values()
-    provider = next(
-        (provider for provider in providers if model in provider.models),
-        None,
-    )
-    if provider is None or provider.adapter != kind:
-        raise RouterKindMismatchError(
-            f'{path}: model {model!r} does not resolve to a {kind!r} provider',
-        )
 
 
 def _validate_channels(config: HuginnConfig, registry: ChannelRegistry) -> None:
@@ -201,21 +186,17 @@ def _validate_channels(config: HuginnConfig, registry: ChannelRegistry) -> None:
                 f'{base}.router.fallback',
                 channel.router.fallback,
             )
+            router = f'{base}.router'
             try:
-                model = resolve_model(
+                ref = resolve_selection(
+                    channel.router.provider,
                     channel.router.model,
-                    config.section(DEFAULTS).model,
+                    config.section(DEFAULTS),
                 )
             except MissingModelError as error:
-                raise MissingModelError(f'{base}.router.model: {error}') from error
+                raise MissingModelError(f'{router}.model: {error}') from error
 
-            if channel.router.kind is not None:
-                _validate_router_kind(
-                    config,
-                    f'{base}.router.kind',
-                    model,
-                    channel.router.kind,
-                )
+            validate_selection(config, router, ref)
 
 
 def build_sections(registry: ChannelRegistry) -> Iterator[SectionSpec[BaseModel]]:

@@ -8,7 +8,7 @@ from lib.container import ContainerContract, ProviderContract
 from lib.llm import LLMContract
 from lib.temporal import ClockContract
 
-from .config import AGENTS, DEFAULTS, build_sections
+from .config import AGENTS, DEFAULTS, DefaultsConfig, build_sections
 from .contracts import (
     ToolSourceRegistry,
     TranscriptStoreContract,
@@ -18,33 +18,31 @@ from .router import Router
 from .services import TurnHandler
 
 
-def _default_model(container: ContainerContract) -> str | None:
-    return container.resolve(HuginnConfig).section(DEFAULTS).model
-
-
-def _default_max_completion_tokens(container: ContainerContract) -> int | None:
-    return container.resolve(HuginnConfig).section(DEFAULTS).max_completion_tokens
+def _defaults(container: ContainerContract) -> DefaultsConfig:
+    return container.resolve(HuginnConfig).section(DEFAULTS)
 
 
 def _router(container: ContainerContract) -> Router:
     config = container.resolve(HuginnConfig)
+    defaults = _defaults(container)
     return Router(
         config.section(AGENTS).root,
         container.resolve(LLMContract),
-        _default_model(container),
-        config.section(DEFAULTS).router_prompt,
+        defaults,
+        defaults.router_prompt,
     )
 
 
 def _turns(container: ContainerContract) -> TurnHandler:
+    defaults = _defaults(container)
     return TurnHandler(
         llm=container.resolve(LLMContract),
         router=container.resolve(Router),
         sources=container.resolve(ToolSourceRegistry),
         store=container.resolve(TranscriptStoreContract),
         clock=container.resolve(ClockContract),
-        default_model=_default_model(container),
-        default_max_completion_tokens=_default_max_completion_tokens(container),
+        defaults=defaults,
+        default_max_completion_tokens=defaults.max_completion_tokens,
     )
 
 

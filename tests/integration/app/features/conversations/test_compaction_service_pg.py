@@ -16,6 +16,7 @@ from lib.llm import (
     FinishChunk,
     LLMClient,
     LLMContract,
+    ModelRef,
     ProviderConfig,
     TextChunk,
     TextSegment,
@@ -33,11 +34,11 @@ class FakeLLMContract(LLMContract):
         self.client = client
 
     @override
-    def client_for(self, model: str) -> LLMClient | None:
+    def client_for(self, ref: ModelRef) -> LLMClient | None:
         return self.client
 
     @override
-    def provider_for(self, model: str) -> ProviderConfig | None:
+    def provider_for(self, ref: ModelRef) -> ProviderConfig | None:
         return None
 
 
@@ -84,7 +85,7 @@ async def test_compact_end_to_end_against_real_postgres(session: AsyncSession) -
         keep_turns=keep_turns,
     )
 
-    result = await service.maybe_compact(conversation, 'test-model')
+    result = await service.maybe_compact(conversation, ModelRef(model='test-model'))
 
     assert result.compacted is True
     assert result.conversation.compact_version == 1
@@ -128,7 +129,7 @@ async def test_compact_leaves_database_untouched_when_llm_output_is_not_json(
         max_retries=1,
     )
 
-    result = await service.maybe_compact(conversation, 'test-model')
+    result = await service.maybe_compact(conversation, ModelRef(model='test-model'))
 
     assert result.compacted is False
     assert result.conversation.compact_version == 0
@@ -165,7 +166,10 @@ async def test_second_compaction_folds_prior_summary_turn(
         repository,
         keep_turns=1,
     )
-    first_result = await first_service.maybe_compact(conversation, 'test-model')
+    first_result = await first_service.maybe_compact(
+        conversation,
+        ModelRef(model='test-model'),
+    )
     assert first_result.compacted is True
     conversation = first_result.conversation
     first_summary_id = await _summary_turn_id(repository, conversation)
@@ -190,7 +194,10 @@ async def test_second_compaction_folds_prior_summary_turn(
         keep_turns=1,
     )
 
-    second_result = await second_service.maybe_compact(conversation, 'test-model')
+    second_result = await second_service.maybe_compact(
+        conversation,
+        ModelRef(model='test-model'),
+    )
 
     assert second_result.compacted is True
     assert len(second_llm.requests) == 1
@@ -275,7 +282,7 @@ async def test_concurrent_compact_yields_exactly_one_winner(database_url: str) -
                 conversation,
                 None,
                 turns_to_fold,
-                'test-model',
+                ModelRef(model='test-model'),
             )
             # NOTE: commit inside the racing coroutine itself, not after gather() —
             # the loser's UPDATE blocks on the winner's row lock at the database

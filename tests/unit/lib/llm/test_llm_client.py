@@ -1,7 +1,7 @@
 import pytest
 from pydantic import SecretStr, ValidationError
 
-from lib.llm import ProviderConfig, ProviderRegistry
+from lib.llm import ModelRef, ProviderConfig, ProviderRegistry
 
 
 def test_provider_config_defaults_to_direct_connection() -> None:
@@ -65,14 +65,14 @@ def test_registry_routes_model_to_its_provider_adapter() -> None:
     )
     registry = ProviderRegistry((anthropic, openai))
 
-    resolved = registry.resolve('claude-opus-4-8')
+    resolved = registry.resolve(ModelRef(model='claude-opus-4-8'))
 
     assert resolved is not None
     assert resolved.adapter == 'anthropic'
-    assert registry.resolve('gpt-5') is openai
+    assert registry.resolve(ModelRef(model='gpt-5')) is openai
 
 
 def test_registry_returns_none_for_unknown_model() -> None:
     registry = ProviderRegistry(())
 
-    assert registry.resolve('unknown-model') is None
+    assert registry.resolve(ModelRef(model='unknown-model')) is None

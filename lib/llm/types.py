@@ -12,6 +12,11 @@ class LLMValue(BaseModel):
     model_config = ConfigDict(strict=True, frozen=True)
 
 
+class ModelRef(LLMValue):
+    model: Annotated[str, Field()]
+    provider: Annotated[str | None, Field()] = None
+
+
 class TextSegment(LLMValue):
     text: Annotated[str, Field()]
 

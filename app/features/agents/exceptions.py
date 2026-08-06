@@ -31,3 +31,15 @@ class UnknownAgentReferenceError(ConfigError):
 
 class MissingModelError(ConfigError):
     pass
+
+
+class UnknownProviderReferenceError(ConfigError):
+    pass
+
+
+class ProviderModelMismatchError(ConfigError):
+    pass
+
+
+class AmbiguousModelError(ConfigError):
+    pass

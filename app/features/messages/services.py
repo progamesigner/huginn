@@ -48,6 +48,7 @@ def _policy(agent: str | None, client: ApiClient) -> RoutingPolicy:
             else SelectionPolicy(
                 fallback=client.routing.fallback,
                 model=client.routing.model,
+                provider=client.routing.provider,
             )
         ),
         allowed=client.agents,

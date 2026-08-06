@@ -12,6 +12,7 @@ from lib.llm import (
     LLMClient,
     LLMContract,
     Message,
+    ModelRef,
     ProviderConfig,
     TextChunk,
     TextSegment,
@@ -31,12 +32,12 @@ class FakeLLMContract(LLMContract):
         self.calls = 0
 
     @override
-    def client_for(self, model: str) -> LLMClient | None:
+    def client_for(self, ref: ModelRef) -> LLMClient | None:
         self.calls += 1
         return self.client
 
     @override
-    def provider_for(self, model: str) -> ProviderConfig | None:
+    def provider_for(self, ref: ModelRef) -> ProviderConfig | None:
         return None
 
 
@@ -92,7 +93,12 @@ async def test_compact_persists_summary_turn_and_advances_boundary() -> None:
     )
     service = build_service(FakeLLMContract(llm_client), repository)
 
-    result = await service.compact(conversation, None, tuple(turns), 'test-model')
+    result = await service.compact(
+        conversation,
+        None,
+        tuple(turns),
+        ModelRef(model='test-model'),
+    )
 
     assert result.compacted is True
     assert result.conversation.compact_version == 1
@@ -124,7 +130,12 @@ async def test_compact_abandons_on_malformed_llm_output() -> None:
     llm_client = FakeLLM([non_json, non_json])
     service = build_service(FakeLLMContract(llm_client), repository, max_retries=1)
 
-    result = await service.compact(conversation, None, (turn,), 'test-model')
+    result = await service.compact(
+        conversation,
+        None,
+        (turn,),
+        ModelRef(model='test-model'),
+    )
 
     assert result.compacted is False
     assert result.conversation == conversation
@@ -153,7 +164,12 @@ async def test_compact_abandons_on_well_formed_json_with_invalid_shape(
     llm_client = FakeLLM([chunks, chunks])
     service = build_service(FakeLLMContract(llm_client), repository, max_retries=1)
 
-    result = await service.compact(conversation, None, (turn,), 'test-model')
+    result = await service.compact(
+        conversation,
+        None,
+        (turn,),
+        ModelRef(model='test-model'),
+    )
 
     assert result.compacted is False
     assert result.conversation == conversation
@@ -178,7 +194,12 @@ async def test_compact_abandons_on_cas_conflict_without_retrying_the_llm() -> No
     )
     service = build_service(FakeLLMContract(llm_client), repository)
 
-    result = await service.compact(conversation, None, (turn,), 'test-model')
+    result = await service.compact(
+        conversation,
+        None,
+        (turn,),
+        ModelRef(model='test-model'),
+    )
 
     assert result.compacted is False
     assert result.conversation == conversation
@@ -248,7 +269,7 @@ async def test_maybe_compact_never_calls_the_llm_while_within_keep_turns() -> No
         token_threshold=100,
     )
 
-    result = await service.maybe_compact(conversation, 'test-model')
+    result = await service.maybe_compact(conversation, ModelRef(model='test-model'))
 
     assert result.compacted is False
     assert llm_contract.calls == 0
@@ -282,7 +303,10 @@ async def test_maybe_compact_folds_prior_summary_and_accumulates_context() -> No
         keep_turns=1,
         token_threshold=50_000,
     )
-    first_result = await first_service.maybe_compact(conversation, 'test-model')
+    first_result = await first_service.maybe_compact(
+        conversation,
+        ModelRef(model='test-model'),
+    )
     assert first_result.compacted is True
     conversation = first_result.conversation
 
@@ -311,7 +335,10 @@ async def test_maybe_compact_folds_prior_summary_and_accumulates_context() -> No
         token_threshold=50_000,
     )
 
-    second_result = await second_service.maybe_compact(conversation, 'test-model')
+    second_result = await second_service.maybe_compact(
+        conversation,
+        ModelRef(model='test-model'),
+    )
 
     assert second_result.compacted is True
     assert len(second_llm.requests) == 1
@@ -351,7 +378,7 @@ async def test_summary_request_leads_with_cacheable_transcript_then_instruction(
     )
     service = build_service(FakeLLMContract(llm_client), repository)
 
-    await service.compact(conversation, None, (turn,), 'test-model')
+    await service.compact(conversation, None, (turn,), ModelRef(model='test-model'))
 
     messages = llm_client.requests[0].messages
     # NOTE: system + replayed history lead as a cacheable prefix (matching the shape a
@@ -388,7 +415,7 @@ async def test_a_configured_summary_prompt_replaces_the_default_instruction() ->
         instruction='Summarize in exactly one sentence.',
     )
 
-    await service.compact(conversation, None, (turn,), 'test-model')
+    await service.compact(conversation, None, (turn,), ModelRef(model='test-model'))
 
     messages = llm_client.requests[0].messages
     assert prompt_text(messages[-1]) == 'Summarize in exactly one sentence.'
@@ -403,7 +430,12 @@ async def test_compact_returns_uncompacted_when_no_client_for_model() -> None:
     )
     service = build_service(FakeLLMContract(None), repository)
 
-    result = await service.compact(conversation, None, (turn,), 'unknown-model')
+    result = await service.compact(
+        conversation,
+        None,
+        (turn,),
+        ModelRef(model='unknown-model'),
+    )
 
     assert result.compacted is False
     assert result.conversation == conversation
@@ -415,7 +447,7 @@ async def test_compact_with_no_turns_to_fold_raises() -> None:
     service = build_service(FakeLLMContract(None), repository)
 
     with pytest.raises(NoTurnsToCompactError):
-        await service.compact(conversation, None, (), 'test-model')
+        await service.compact(conversation, None, (), ModelRef(model='test-model'))
 
 
 async def test_force_folds_everything_the_threshold_would_have_kept() -> None:
@@ -441,7 +473,7 @@ async def test_force_folds_everything_the_threshold_would_have_kept() -> None:
         token_threshold=1_000_000,
     )
 
-    result = await service.force(conversation, 'test-model')
+    result = await service.force(conversation, ModelRef(model='test-model'))
 
     # NOTE: /compact is the user asking now, so neither the keep window nor the token
     # threshold applies -- everything since the boundary folds
@@ -455,7 +487,7 @@ async def test_force_leaves_a_conversation_with_nothing_to_fold_alone() -> None:
     llm_contract = FakeLLMContract(None)
     service = build_service(llm_contract, repository)
 
-    result = await service.force(conversation, 'test-model')
+    result = await service.force(conversation, ModelRef(model='test-model'))
 
     assert result.compacted is False
     assert llm_contract.calls == 0

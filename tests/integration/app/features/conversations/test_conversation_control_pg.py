@@ -23,6 +23,7 @@ from lib.llm import (
     FinishChunk,
     LLMClient,
     LLMContract,
+    ModelRef,
     ProviderConfig,
     TextChunk,
     TextSegment,
@@ -58,11 +59,11 @@ class Models(LLMContract):
         self.client = client
 
     @override
-    def client_for(self, model: str) -> LLMClient | None:
+    def client_for(self, ref: ModelRef) -> LLMClient | None:
         return self.client
 
     @override
-    def provider_for(self, model: str) -> ProviderConfig | None:
+    def provider_for(self, ref: ModelRef) -> ProviderConfig | None:
         return None
 
 

@@ -11,7 +11,7 @@ from lib.llm import (
     TextSegment,
 )
 
-from .config import AgentConfig, resolve_model
+from .config import AgentConfig, DefaultsConfig, resolve_selection
 from .exceptions import UnroutableError
 from .types import RoutedAgent, RoutingPolicy, SelectionPolicy
 
@@ -53,19 +53,19 @@ def _parse_choice(reply: str, agents: Mapping[str, AgentConfig]) -> str | None:
 class Router:
     agents: Mapping[str, AgentConfig]
     llm: LLMContract
-    default_model: str | None
+    defaults: DefaultsConfig
     prompt: str | None
 
     def __init__(
         self,
         agents: Mapping[str, AgentConfig],
         llm: LLMContract,
-        default_model: str | None = None,
+        defaults: DefaultsConfig | None = None,
         prompt: str | None = None,
     ) -> None:
         self.agents = agents
         self.llm = llm
-        self.default_model = default_model
+        self.defaults = defaults or DefaultsConfig()
         self.prompt = prompt
 
     async def resolve(
@@ -136,24 +136,14 @@ class Router:
         message: str,
         routable: Mapping[str, AgentConfig],
     ) -> str | None:
-        model = resolve_model(selection.model, self.default_model)
-        if selection.kind is not None:
-            provider = self.llm.provider_for(model)
-            if provider is None or provider.adapter != selection.kind:
-                logger.warning(
-                    'Router model %r does not resolve to a %r provider; using fallback',
-                    model,
-                    selection.kind,
-                )
-                return None
-
-        client = self.llm.client_for(model)
+        ref = resolve_selection(selection.provider, selection.model, self.defaults)
+        client = self.llm.client_for(ref)
         if client is None:
-            logger.warning('Router model %r has no provider; using fallback', model)
+            logger.warning('Router model %r has no provider; using fallback', ref.model)
             return None
 
         request = CompletionRequest(
-            model=model,
+            model=ref.model,
             messages=(
                 Message(
                     role='system',

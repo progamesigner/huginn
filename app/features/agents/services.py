@@ -16,6 +16,7 @@ from lib.llm import (
     LLMClient,
     LLMContract,
     Message,
+    ModelRef,
     Segment,
     TextChunk,
     TextSegment,
@@ -26,7 +27,12 @@ from lib.llm import (
 )
 from lib.temporal import ClockContract, isoformat
 
-from .config import AgentConfig, load_instructions, resolve_model
+from .config import (
+    AgentConfig,
+    DefaultsConfig,
+    load_instructions,
+    resolve_selection,
+)
 from .contracts import (
     ToolSource,
     ToolSourceRegistry,
@@ -362,7 +368,7 @@ class TurnHandler(TurnHandlerContract):
     router: Router
     sources: ToolSourceRegistry
     store: TranscriptStoreContract
-    default_model: str | None
+    defaults: DefaultsConfig
     default_max_completion_tokens: int | None
 
     def __init__(
@@ -372,11 +378,11 @@ class TurnHandler(TurnHandlerContract):
         sources: ToolSourceRegistry,
         store: TranscriptStoreContract,
         clock: ClockContract,
-        default_model: str | None = None,
+        defaults: DefaultsConfig | None = None,
         default_max_completion_tokens: int | None = None,
     ) -> None:
         self.clock = clock
-        self.default_model = default_model
+        self.defaults = defaults or DefaultsConfig()
         self.default_max_completion_tokens = default_max_completion_tokens
         self.llm = llm
         self.router = router
@@ -395,16 +401,22 @@ class TurnHandler(TurnHandlerContract):
             request.prompts[-1].text,
         )
         await reply.on_routed(agent.name)
-        model = resolve_model(agent.config.model, self.default_model)
-        client = self.llm.client_for(model)
+        ref = resolve_selection(
+            agent.config.provider,
+            agent.config.model,
+            self.defaults,
+        )
+        client = self.llm.client_for(ref)
         if client is None:
-            raise UnservableModelError(f'model {model!r} has no configured provider')
+            raise UnservableModelError(
+                f'model {ref.model!r} has no configured provider',
+            )
 
-        await self._run(request, reply, agent, model, client)
+        await self._run(request, reply, agent, ref, client)
         # NOTE: after the turn's transaction, and never a reason to fail a delivered
         # answer -- compaction is housekeeping the next turn benefits from
         try:
-            await self.store.maintain(request.channel, request.chat, agent.name, model)
+            await self.store.maintain(request.channel, request.chat, agent.name, ref)
         except Exception:
             logger.exception('Could not compact the conversation for %s', request.chat)
 
@@ -413,7 +425,7 @@ class TurnHandler(TurnHandlerContract):
         request: TurnRequest,
         reply: ChannelReplyContract,
         agent: RoutedAgent,
-        model: str,
+        ref: ModelRef,
         client: LLMClient,
     ) -> None:
         history = await self.store.history(request.channel, request.chat, agent.name)
@@ -429,7 +441,7 @@ class TurnHandler(TurnHandlerContract):
                 TurnInput(
                     instructions=_instructions(agent.config, unreachable),
                     prompts=request.prompts,
-                    model=model,
+                    model=ref.model,
                     now=self.clock.now(),
                     channel=request.channel,
                     prior_turns=history,

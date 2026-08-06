@@ -20,7 +20,11 @@ def _client(name: str, key: ApiKeyConfig) -> ApiClient:
         routing=(
             None
             if key.router is None
-            else ApiRouting(fallback=key.router.fallback, model=key.router.model)
+            else ApiRouting(
+                fallback=key.router.fallback,
+                model=key.router.model,
+                provider=key.router.provider,
+            )
         ),
         denied_tools=frozenset(() if key.tools is None else key.tools.deny),
     )
