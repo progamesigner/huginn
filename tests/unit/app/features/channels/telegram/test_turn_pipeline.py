@@ -232,9 +232,11 @@ async def test_a_webhook_message_reaches_the_agent_turn_and_answers_in_chat() ->
         async with asyncio.timeout(1):
             await turns.done.wait()
 
+    # NOTE: the model streamed 'the ' -- the draft loses the trailing space because the
+    # buffer is now read as markdown, and a line's trailing whitespace is not content
     assert json.loads(send.calls.last.request.content) == {
         'chat_id': str(_CHAT_ID),
-        'text': 'the ',
+        'text': 'the',
     }
     assert json.loads(edit.calls.last.request.content)['text'] == 'the answer'
     assert json.loads(action.calls.last.request.content) == {

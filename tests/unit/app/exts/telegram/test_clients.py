@@ -7,6 +7,7 @@ from pydantic import SecretStr
 
 from app.exts.telegram.clients import TelegramClient, webhook_url
 from app.exts.telegram.exceptions import MediaTooLargeError, MediaUnavailableError
+from app.exts.telegram.types import MessageEntity
 from lib.http import HTTPClientManager
 
 _BASE_URL = 'https://api.telegram.org/bottelegram-token'
@@ -55,6 +56,49 @@ async def test_edit_message_text() -> None:
         'text': 'updated',
     }
     assert message.message_id == 7
+
+
+@respx.mock
+async def test_send_message_carries_the_entities_it_was_given() -> None:
+    route = respx.post(f'{_BASE_URL}/sendMessage').mock(
+        return_value=httpx.Response(200, json={'ok': True, 'result': _MESSAGE}),
+    )
+    entities = (
+        MessageEntity(type='bold', offset=0, length=5),
+        MessageEntity(type='text_link', offset=6, length=5, url='https://a'),
+    )
+
+    await make_client().send_message(123, 'hello there', entities)
+
+    assert json.loads(route.calls.last.request.content) == {
+        'chat_id': 123,
+        'text': 'hello there',
+        # NOTE: telegram rejects an entity carrying a field its type does not use, so the
+        # optional ones only appear where they were set
+        'entities': [
+            {'type': 'bold', 'offset': 0, 'length': 5},
+            {'type': 'text_link', 'offset': 6, 'length': 5, 'url': 'https://a'},
+        ],
+    }
+
+
+@respx.mock
+async def test_edit_message_text_carries_the_entities_it_was_given() -> None:
+    route = respx.post(f'{_BASE_URL}/editMessageText').mock(
+        return_value=httpx.Response(200, json={'ok': True, 'result': _MESSAGE}),
+    )
+    entities = (MessageEntity(type='pre', offset=0, length=7, language='python'),)
+
+    await make_client().edit_message_text(123, 7, 'x = 1\ny', entities)
+
+    assert json.loads(route.calls.last.request.content) == {
+        'chat_id': 123,
+        'message_id': 7,
+        'text': 'x = 1\ny',
+        'entities': [
+            {'type': 'pre', 'offset': 0, 'length': 7, 'language': 'python'},
+        ],
+    }
 
 
 @respx.mock

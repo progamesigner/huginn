@@ -12,6 +12,7 @@ from .types import (
     BotCommand,
     File,
     Message,
+    MessageEntity,
     ReactionTypeEmoji,
     TelegramResponse,
     WebhookInfo,
@@ -22,6 +23,13 @@ _MAX_ATTEMPTS = 3
 
 def webhook_url(base_url: str) -> str:
     return f'{base_url.rstrip("/")}{WEBHOOK.path}'
+
+
+def _formatting(entities: Sequence[MessageEntity]) -> dict[str, JsonValue]:
+    if not entities:
+        return {}
+
+    return {'entities': [entity.model_dump(exclude_none=True) for entity in entities]}
 
 
 class TelegramClient:
@@ -50,10 +58,16 @@ class TelegramClient:
         chat_id: int | str,
         message_id: int,
         text: str,
+        entities: Sequence[MessageEntity] = (),
     ) -> Message:
         return await self._post(
             'editMessageText',
-            {'chat_id': chat_id, 'message_id': message_id, 'text': text},
+            {
+                'chat_id': chat_id,
+                'message_id': message_id,
+                'text': text,
+                **_formatting(entities),
+            },
             Message,
         )
 
@@ -89,10 +103,15 @@ class TelegramClient:
             bool,
         )
 
-    async def send_message(self, chat_id: int | str, text: str) -> Message:
+    async def send_message(
+        self,
+        chat_id: int | str,
+        text: str,
+        entities: Sequence[MessageEntity] = (),
+    ) -> Message:
         return await self._post(
             'sendMessage',
-            {'chat_id': chat_id, 'text': text},
+            {'chat_id': chat_id, 'text': text, **_formatting(entities)},
             Message,
         )
 

@@ -16,6 +16,7 @@ dependencies = [
     "redis==7.1.0",
     "sqlalchemy[asyncio]==2.0.51",
     "structlog==26.1.0",
+    "telegramify-markdown==1.2.0",
     "typer==0.27.0",
     "uvicorn==0.51.0",
     "uvloop==0.22.1",

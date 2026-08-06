@@ -1,8 +1,11 @@
 import asyncio
 import logging
+from bisect import bisect_right
+from collections.abc import Sequence
 from datetime import timedelta
 from typing import override
 
+import httpx
 from pydantic import SecretStr
 
 from app.contracts.channels import (
@@ -17,7 +20,7 @@ from lib.http import HTTPClientContract
 from lib.temporal import ClockContract, Timer
 
 from .clients import TelegramClient
-from .types import MESSAGE, TYPING
+from .types import MESSAGE, TYPING, MessageEntity, clip_entities, render, utf16_offsets
 
 logger = logging.getLogger(__name__)
 
@@ -34,15 +37,33 @@ _ENDING_NOTES: dict[TurnEnding, str] = {
 }
 
 
-def _split(text: str, limit: int) -> tuple[str, str]:
-    window = text[:limit]
-    cut = window.rfind('\n')
-    if cut <= 0:
-        cut = window.rfind(' ')
-    if cut <= 0:
-        return window, text[limit:]
+def _split(
+    text: str,
+    entities: Sequence[MessageEntity],
+    limit: int,
+) -> list[tuple[str, tuple[MessageEntity, ...]]]:
+    offsets = utf16_offsets(text)
+    chunks = []
+    start = 0
+    while offsets[-1] - offsets[start] > limit:
+        # NOTE: the floor only matters when one character is wider than the whole budget,
+        # which cannot happen at the vendor's limit but would otherwise spin forever
+        edge = max(bisect_right(offsets, offsets[start] + limit) - 1, start + 1)
+        window = text[start:edge]
+        cut = window.rfind('\n')
+        if cut <= 0:
+            cut = window.rfind(' ')
 
-    return text[:cut], text[cut:].lstrip()
+        head = start + cut if cut > 0 else edge
+        chunks.append(
+            (text[start:head], clip_entities(entities, offsets[start], offsets[head])),
+        )
+        # NOTE: the whitespace a soft cut lands on belongs to neither message; a hard cut
+        # has none to drop, so it carries every character over
+        start = len(text) - len(text[head:].lstrip()) if cut > 0 else edge
+
+    chunks.append((text[start:], clip_entities(entities, offsets[start], offsets[-1])))
+    return chunks
 
 
 class TelegramReply(ChannelReplyContract):
@@ -53,8 +74,9 @@ class TelegramReply(ChannelReplyContract):
     typing_interval: timedelta
     limit: int
     draft: int | None
-    sent: str
+    sent: tuple[str, tuple[MessageEntity, ...]]
     pending: str
+    sealed: int
     started: bool
     opened: Timer
     timer: Timer
@@ -77,8 +99,9 @@ class TelegramReply(ChannelReplyContract):
         self.typing_interval = typing_interval
         self.limit = limit
         self.draft = None
-        self.sent = ''
+        self.sent = ('', ())
         self.pending = ''
+        self.sealed = 0
         self.started = False
         # NOTE: `timer` is reset on every write to throttle edits; `opened` never is, so
         # the two reply milestones stay measured from the moment the round opened
@@ -128,18 +151,21 @@ class TelegramReply(ChannelReplyContract):
             self.pending += note
 
     async def _flush(self) -> None:
-        while len(self.pending) > self.limit:
-            head, tail = _split(self.pending, self.limit)
+        chunks = _split(*render(self.pending), self.limit)
+        for index, chunk in enumerate(chunks[:-1]):
+            if index < self.sealed:
+                continue
+
             logger.info(
                 'Draft reached the %d character limit; continuing in a new message',
                 self.limit,
             )
-            await self._write(head)
+            await self._write(*chunk)
             self.draft = None
-            self.sent = ''
-            self.pending = tail
+            self.sent = ('', ())
+            self.sealed += 1
 
-        await self._write(self.pending)
+        await self._write(*chunks[-1])
 
     async def _keep_typing(self) -> None:
         while True:
@@ -151,21 +177,10 @@ class TelegramReply(ChannelReplyContract):
 
             await asyncio.sleep(self.typing_interval.total_seconds())
 
-    async def _stop_typing(self) -> None:
-        if self.typing is None:
-            return
-
-        self.typing.cancel()
-        await asyncio.gather(self.typing, return_exceptions=True)
-        self.typing = None
-
-    async def _write(self, text: str) -> None:
-        # NOTE: telegram answers an unchanged edit with 400 message is not modified
-        if not text or text == self.sent:
-            return
-
+    async def _push(self, text: str, entities: Sequence[MessageEntity]) -> None:
         if self.draft is None:
-            self.draft = (await self.client.send_message(self.chat_id, text)).message_id
+            drafted = await self.client.send_message(self.chat_id, text, entities)
+            self.draft = drafted.message_id
             # NOTE: a rollover clears `draft` too, so without this the continuation
             # message would report itself as the first one
             if not self.started:
@@ -175,9 +190,36 @@ class TelegramReply(ChannelReplyContract):
                     self.opened.elapsed().total_seconds(),
                 )
         else:
-            await self.client.edit_message_text(self.chat_id, self.draft, text)
+            await self.client.edit_message_text(
+                self.chat_id,
+                self.draft,
+                text,
+                entities,
+            )
 
-        self.sent = text
+    async def _stop_typing(self) -> None:
+        if self.typing is None:
+            return
+
+        self.typing.cancel()
+        await asyncio.gather(self.typing, return_exceptions=True)
+        self.typing = None
+
+    async def _write(self, text: str, entities: tuple[MessageEntity, ...] = ()) -> None:
+        if not text or (text, entities) == self.sent:
+            return
+
+        try:
+            await self._push(text, entities)
+        except httpx.HTTPStatusError as error:
+            # NOTE: telegram validates entities itself
+            if not entities or error.response.status_code != 400:
+                raise
+
+            logger.warning('Telegram rejected the formatting; sending it as plain text')
+            await self._push(text, ())
+
+        self.sent = (text, entities)
         self.timer = self.clock.timer()
 
 

@@ -1,9 +1,11 @@
 from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import timedelta
+from itertools import accumulate
 from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, JsonValue
+from telegramify_markdown import convert, utf16_len
 
 
 class TelegramValue(BaseModel):
@@ -92,6 +94,9 @@ class MessageEntity(TelegramValue):
     type: Annotated[str, Field()]
     offset: Annotated[int, Field()]
     length: Annotated[int, Field()]
+    url: Annotated[str | None, Field()] = None
+    language: Annotated[str | None, Field()] = None
+    custom_emoji_id: Annotated[str | None, Field()] = None
 
 
 class Message(TelegramValue):
@@ -145,6 +150,39 @@ class TelegramResponse(TelegramValue):
     result: Annotated[JsonValue, Field()]
 
 
+def clip_entities(
+    entities: Sequence[MessageEntity],
+    start: int,
+    end: int,
+) -> tuple[MessageEntity, ...]:
+    bounded = [
+        (entity, max(entity.offset, start), min(entity.offset + entity.length, end))
+        for entity in entities
+    ]
+    return tuple(
+        entity.model_copy(
+            update={'offset': begin - start, 'length': finish - begin},
+        )
+        for entity, begin, finish in bounded
+        if finish > begin
+    )
+
+
+def render(markdown: str) -> tuple[str, tuple[MessageEntity, ...]]:
+    text, entities = convert(markdown, latex_escape=True)
+    return text, tuple(
+        MessageEntity(
+            type=entity.type,
+            offset=entity.offset,
+            length=entity.length,
+            url=entity.url,
+            language=entity.language,
+            custom_emoji_id=entity.custom_emoji_id,
+        )
+        for entity in entities
+    )
+
+
 def select_photo(
     photos: Sequence[PhotoSize],
     limit: int = MEDIA.size_limit,
@@ -153,3 +191,7 @@ def select_photo(
         photo for photo in photos if photo.file_size is None or photo.file_size <= limit
     ]
     return max(fitting, key=lambda photo: photo.width * photo.height, default=None)
+
+
+def utf16_offsets(text: str) -> tuple[int, ...]:
+    return tuple(accumulate((utf16_len(character) for character in text), initial=0))

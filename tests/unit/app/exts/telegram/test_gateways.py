@@ -95,6 +95,12 @@ def texts(route: respx.Route) -> list[str]:
     return [json.loads(call.request.content)['text'] for call in route.calls]
 
 
+def marks(route: respx.Route) -> list[list[dict[str, object]]]:
+    return [
+        json.loads(call.request.content).get('entities', []) for call in route.calls
+    ]
+
+
 # NOTE: typing the parameter proves the reply contract satisfies the agent loop's sink
 # NOTE: typing the parameter is the assertion -- it makes ty prove a vendor reply is
 # usable as the agent loop's stream without either side importing the other
@@ -230,6 +236,104 @@ async def test_no_message_exceeds_the_telegram_length_limit() -> None:
     assert all(len(text) <= _LIMIT for text in written)
     # NOTE: only the whitespace at the cut is lost, never a character of the reply
     assert ''.join(written).replace(' ', '') == 'word' * 1200
+
+
+@respx.mock
+async def test_streams_formatted_text_instead_of_raw_markdown() -> None:
+    send = respx.post(f'{_BASE_URL}/sendMessage').mock(return_value=message(7))
+    streamer = make_reply(FakeClock())
+
+    await drive(streamer, '**Hello**')
+    await streamer.finish()
+
+    assert json.loads(send.calls.last.request.content) == {
+        'chat_id': _CHAT_ID,
+        'text': 'Hello',
+        'entities': [{'type': 'bold', 'offset': 0, 'length': 5}],
+    }
+
+
+@respx.mock
+async def test_the_length_limit_is_measured_on_the_rendered_text() -> None:
+    send = respx.post(f'{_BASE_URL}/sendMessage').mock(
+        side_effect=[message(7), message(8)],
+    )
+    # NOTE: the heading drops '# ' and gains '📌 ', and the emoji is two utf-16 code units,
+    # so a round that fits the budget as markdown does not fit it as what the reader sees
+    markdown = '# Heading\n\nbody'
+    streamer = TelegramReply(make_client(), _CHAT_ID, FakeClock(), limit=len(markdown))
+
+    await drive(streamer, markdown)
+    await streamer.finish()
+
+    assert texts(send) == ['\N{PUSHPIN} Heading\n', 'body']
+
+
+@respx.mock
+async def test_a_sealed_message_is_never_rewritten_when_more_text_arrives() -> None:
+    respx.post(f'{_BASE_URL}/sendMessage').mock(side_effect=[message(7), message(8)])
+    edit = respx.post(f'{_BASE_URL}/editMessageText').mock(return_value=message(8))
+    clock = FakeClock()
+    streamer = TelegramReply(make_client(), _CHAT_ID, clock, limit=12)
+
+    # NOTE: every flush re-renders the whole round, so this is what pins the claim that a
+    # re-render cannot move a boundary the reader has already been shown
+    await drive(streamer, 'first line\nsecond')
+    clock.advance(timedelta(seconds=1.2))
+    await drive(streamer, ' line')
+    await streamer.finish()
+
+    # NOTE: the equality rather than a `not in` -- an empty list would pass that vacuously
+    edited = [json.loads(call.request.content)['message_id'] for call in edit.calls]
+    assert edited == [8]
+
+
+@respx.mock
+async def test_an_entity_spanning_a_rollover_is_clipped_into_both_messages() -> None:
+    send = respx.post(f'{_BASE_URL}/sendMessage').mock(
+        side_effect=[message(7), message(8)],
+    )
+    streamer = TelegramReply(make_client(), _CHAT_ID, FakeClock(), limit=5)
+
+    await drive(streamer, '**aaa bbb**')
+    await streamer.finish()
+
+    assert texts(send) == ['aaa', 'bbb']
+    assert marks(send) == [
+        [{'type': 'bold', 'offset': 0, 'length': 3}],
+        [{'type': 'bold', 'offset': 0, 'length': 3}],
+    ]
+
+
+@respx.mock
+async def test_falls_back_to_plain_text_when_telegram_rejects_the_entities(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    send = respx.post(f'{_BASE_URL}/sendMessage').mock(
+        side_effect=[httpx.Response(400, json={'ok': False}), message(7)],
+    )
+    streamer = make_reply(FakeClock())
+
+    with caplog.at_level('WARNING'):
+        await drive(streamer, '**Hello**')
+        await streamer.finish()
+
+    assert texts(send) == ['Hello', 'Hello']
+    assert marks(send) == [[{'type': 'bold', 'offset': 0, 'length': 5}], []]
+    assert 'Telegram rejected the formatting' in caplog.text
+
+
+@respx.mock
+async def test_a_rejection_that_is_not_about_the_formatting_still_fails_the_round() -> (
+    None
+):
+    respx.post(f'{_BASE_URL}/sendMessage').mock(
+        return_value=httpx.Response(403, json={'ok': False}),
+    )
+    streamer = make_reply(FakeClock())
+
+    with pytest.raises(httpx.HTTPStatusError):
+        await drive(streamer, '**Hello**')
 
 
 @respx.mock
