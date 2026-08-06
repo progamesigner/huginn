@@ -29,6 +29,7 @@ jobs:
     - run: uv run huginn config validate huginn.example.yaml
       env:
         ANTHROPIC_API_KEY: dummy-anthropic-token
+        BIFROST_API_KEY: dummy-bifrost-token
         FELO_API_KEY: dummy-felo-token
         HUGINN_KEY_WEB: dummy-web-frontend-key
         MEMORY_MCP_TOKEN: dummy-memory-token
