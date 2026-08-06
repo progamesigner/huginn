@@ -58,6 +58,21 @@ async def test_edit_message_text() -> None:
 
 
 @respx.mock
+async def test_send_chat_action() -> None:
+    route = respx.post(f'{_BASE_URL}/sendChatAction').mock(
+        return_value=httpx.Response(200, json={'ok': True, 'result': True}),
+    )
+
+    result = await make_client().send_chat_action(123, 'typing')
+
+    assert json.loads(route.calls.last.request.content) == {
+        'chat_id': 123,
+        'action': 'typing',
+    }
+    assert result is True
+
+
+@respx.mock
 async def test_set_message_reaction() -> None:
     route = respx.post(f'{_BASE_URL}/setMessageReaction').mock(
         return_value=httpx.Response(200, json={'ok': True, 'result': True}),

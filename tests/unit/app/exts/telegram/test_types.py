@@ -6,6 +6,7 @@ from pydantic import ValidationError
 from app.exts.telegram.types import (
     MEDIA,
     MESSAGE,
+    TYPING,
     WEBHOOK,
     PhotoSize,
     Update,
@@ -68,6 +69,14 @@ def test_message_spec_pins_the_vendor_limits() -> None:
 
 def test_media_spec_pins_the_vendor_limits() -> None:
     assert MEDIA.size_limit == 5 * 1024 * 1024
+
+
+def test_typing_spec_pins_the_vendor_limits() -> None:
+    assert TYPING.action == 'typing'
+    # NOTE: telegram expires the status after about five seconds, so a refresh at or
+    # over that would leave the chat blinking between typing and idle
+    assert TYPING.refresh_interval == timedelta(seconds=4)
+    assert TYPING.refresh_interval < timedelta(seconds=5)
 
 
 def photo(width: int, height: int, file_size: int | None) -> PhotoSize:

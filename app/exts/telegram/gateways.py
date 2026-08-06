@@ -1,3 +1,4 @@
+import asyncio
 import logging
 from datetime import timedelta
 from typing import override
@@ -15,7 +16,7 @@ from lib.http import HTTPClientContract
 from lib.temporal import ClockContract, Timer
 
 from .clients import TelegramClient
-from .types import MESSAGE
+from .types import MESSAGE, TYPING
 
 logger = logging.getLogger(__name__)
 
@@ -44,6 +45,7 @@ class TelegramReply(ChannelReplyContract):
     chat_id: int | str
     clock: ClockContract
     interval: timedelta
+    typing_interval: timedelta
     limit: int
     draft: int | None
     sent: str
@@ -51,6 +53,7 @@ class TelegramReply(ChannelReplyContract):
     started: bool
     opened: Timer
     timer: Timer
+    typing: asyncio.Task[None] | None
 
     def __init__(
         self,
@@ -60,11 +63,13 @@ class TelegramReply(ChannelReplyContract):
         *,
         interval: timedelta = MESSAGE.edit_interval,
         limit: int = MESSAGE.length_limit,
+        typing_interval: timedelta = TYPING.refresh_interval,
     ) -> None:
         self.client = client
         self.chat_id = chat_id
         self.clock = clock
         self.interval = interval
+        self.typing_interval = typing_interval
         self.limit = limit
         self.draft = None
         self.sent = ''
@@ -74,9 +79,11 @@ class TelegramReply(ChannelReplyContract):
         # the two reply milestones stay measured from the moment the round opened
         self.opened = clock.timer()
         self.timer = clock.timer()
+        self.typing = None
 
     @override
     async def abandon(self) -> None:
+        await self._stop_typing()
         # NOTE: with no draft out there is nothing to annotate, and the reaction on the
         # incoming message already carries the whole signal
         if self.draft is None:
@@ -87,6 +94,8 @@ class TelegramReply(ChannelReplyContract):
 
     @override
     async def finish(self) -> None:
+        # NOTE: stopping before the last write
+        await self._stop_typing()
         await self._flush()
         logger.info(
             'Finished the reply after %.3fs',
@@ -96,6 +105,7 @@ class TelegramReply(ChannelReplyContract):
     @override
     async def on_routed(self, agent: str) -> None:
         logger.debug('Routed the turn to agent %s', agent)
+        self.typing = asyncio.create_task(self._keep_typing())
 
     @override
     async def on_text(self, fragment: str) -> None:
@@ -120,6 +130,24 @@ class TelegramReply(ChannelReplyContract):
             self.pending = tail
 
         await self._write(self.pending)
+
+    async def _keep_typing(self) -> None:
+        while True:
+            try:
+                await self.client.send_chat_action(self.chat_id, TYPING.action)
+            except Exception as error:
+                logger.debug('Stopped showing the typing status: %s', error)
+                return
+
+            await asyncio.sleep(self.typing_interval.total_seconds())
+
+    async def _stop_typing(self) -> None:
+        if self.typing is None:
+            return
+
+        self.typing.cancel()
+        await asyncio.gather(self.typing, return_exceptions=True)
+        self.typing = None
 
     async def _write(self, text: str) -> None:
         # NOTE: telegram answers an unchanged edit with 400 message is not modified

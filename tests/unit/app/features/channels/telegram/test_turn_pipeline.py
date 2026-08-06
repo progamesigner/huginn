@@ -58,6 +58,12 @@ class StreamingTurns(TurnHandlerContract):
     ) -> None:
         self.requests.append(request)
         try:
+            # NOTE: the real handler reports the routed agent before it calls the model,
+            # and the reply hangs its typing status off that
+            await reply.on_routed('scout')
+            # NOTE: a real model call waits on the network, which is what lets the typing
+            # task have its turn; this fake answers from memory, so it yields once by hand
+            await asyncio.sleep(0)
             await reply.on_text('the ')
             await reply.on_text('answer')
             await reply.finish()
@@ -211,6 +217,9 @@ async def test_a_webhook_message_reaches_the_agent_turn_and_answers_in_chat() ->
     )
     send = respx.post(f'{_BASE_URL}/sendMessage').mock(return_value=message(7))
     edit = respx.post(f'{_BASE_URL}/editMessageText').mock(return_value=message(7))
+    action = respx.post(f'{_BASE_URL}/sendChatAction').mock(
+        return_value=httpx.Response(200, json={'ok': True, 'result': True}),
+    )
     turns = StreamingTurns()
 
     async with pipeline(turns) as client:
@@ -228,6 +237,10 @@ async def test_a_webhook_message_reaches_the_agent_turn_and_answers_in_chat() ->
         'text': 'the ',
     }
     assert json.loads(edit.calls.last.request.content)['text'] == 'the answer'
+    assert json.loads(action.calls.last.request.content) == {
+        'chat_id': str(_CHAT_ID),
+        'action': 'typing',
+    }
 
     request = turns.requests[0]
     assert [prompt.text for prompt in request.prompts] == ['hello']
@@ -242,6 +255,9 @@ async def test_a_photo_with_no_caption_reaches_the_turn_with_its_bytes() -> None
     )
     respx.post(f'{_BASE_URL}/sendMessage').mock(return_value=message(7))
     respx.post(f'{_BASE_URL}/editMessageText').mock(return_value=message(7))
+    respx.post(f'{_BASE_URL}/sendChatAction').mock(
+        return_value=httpx.Response(200, json={'ok': True, 'result': True}),
+    )
     file = respx.post(f'{_BASE_URL}/getFile').mock(
         return_value=httpx.Response(
             200,
@@ -345,6 +361,9 @@ async def test_one_round_logs_the_four_milestones_in_order(
     )
     respx.post(f'{_BASE_URL}/sendMessage').mock(return_value=message(7))
     respx.post(f'{_BASE_URL}/editMessageText').mock(return_value=message(7))
+    respx.post(f'{_BASE_URL}/sendChatAction').mock(
+        return_value=httpx.Response(200, json={'ok': True, 'result': True}),
+    )
     turns = StreamingTurns()
 
     with caplog.at_level('INFO'):

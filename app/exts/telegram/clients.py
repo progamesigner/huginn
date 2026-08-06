@@ -82,6 +82,13 @@ class TelegramClient:
     async def get_webhook_info(self) -> WebhookInfo:
         return await self._post('getWebhookInfo', {}, WebhookInfo)
 
+    async def send_chat_action(self, chat_id: int | str, action: str) -> bool:
+        return await self._post(
+            'sendChatAction',
+            {'chat_id': chat_id, 'action': action},
+            bool,
+        )
+
     async def send_message(self, chat_id: int | str, text: str) -> Message:
         return await self._post(
             'sendMessage',

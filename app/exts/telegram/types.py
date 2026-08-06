@@ -31,6 +31,12 @@ class MediaSpec:
     audio_mime: str
 
 
+@dataclass(frozen=True)
+class TypingSpec:
+    action: str
+    refresh_interval: timedelta
+
+
 WEBHOOK = WebhookSpec(
     ack_status=200,
     path='/webhooks/telegram',
@@ -43,6 +49,7 @@ MEDIA = MediaSpec(
     photo_mime='image/jpeg',
     audio_mime='audio/ogg',
 )
+TYPING = TypingSpec(action='typing', refresh_interval=timedelta(seconds=4))
 
 
 class User(TelegramValue):

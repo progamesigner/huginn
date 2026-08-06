@@ -1,3 +1,4 @@
+import asyncio
 import json
 from datetime import timedelta
 
@@ -17,6 +18,9 @@ _BASE_URL = 'https://api.telegram.org/bottelegram-token'
 _FILE_URL = 'https://api.telegram.org/file/bottelegram-token'
 _CHAT_ID = 123
 _LIMIT = 4096
+# NOTE: the refresh runs on wall-clock time inside a background task, so these tests turn
+# it down instead of waiting out the vendor's interval
+_TYPING_INTERVAL = timedelta(seconds=0.01)
 
 
 def make_client() -> TelegramClient:
@@ -28,6 +32,49 @@ def make_client() -> TelegramClient:
 
 def make_reply(clock: FakeClock) -> TelegramReply:
     return TelegramReply(make_client(), _CHAT_ID, clock)
+
+
+def make_typing_reply(clock: FakeClock) -> TelegramReply:
+    return TelegramReply(
+        make_client(),
+        _CHAT_ID,
+        clock,
+        typing_interval=_TYPING_INTERVAL,
+    )
+
+
+def typing_route(
+    calls: int = 1,
+    status: int = 200,
+) -> tuple[respx.Route, asyncio.Event]:
+    reached = asyncio.Event()
+    seen = 0
+
+    def answer(request: httpx.Request) -> httpx.Response:
+        nonlocal seen
+        seen += 1
+        if seen >= calls:
+            reached.set()
+
+        ok = status == 200
+        return httpx.Response(status, json={'ok': ok, 'result': ok})
+
+    route = respx.post(f'{_BASE_URL}/sendChatAction').mock(side_effect=answer)
+    return route, reached
+
+
+async def observed(reached: asyncio.Event) -> None:
+    # NOTE: the refresh is a real-time wait in a background task, so the bound is what
+    # keeps a broken loop a failure instead of a hung suite
+    async with asyncio.timeout(1):
+        await reached.wait()
+
+
+async def settled(route: respx.Route) -> int:
+    # NOTE: long enough for several refreshes, so a loop nobody stopped would show up as a
+    # higher count rather than as a passing test
+    await asyncio.sleep(_TYPING_INTERVAL.total_seconds() * 5)
+    return route.call_count
 
 
 def message(message_id: int) -> httpx.Response:
@@ -268,6 +315,78 @@ async def test_abandon_writes_nothing_when_no_draft_went_out() -> None:
 
     assert not send.called
     assert not edit.called
+
+
+@respx.mock
+async def test_routing_the_turn_keeps_the_typing_status_up() -> None:
+    # NOTE: waiting for a second call is the assertion -- telegram expires the status
+    # after a few seconds, so one call at the top of a slow turn leaves the chat idle
+    action, refreshed = typing_route(calls=2)
+    streamer = make_typing_reply(FakeClock())
+
+    await streamer.on_routed('scout')
+    await observed(refreshed)
+    await streamer.finish()
+
+    assert json.loads(action.calls.last.request.content) == {
+        'chat_id': _CHAT_ID,
+        'action': 'typing',
+    }
+
+
+@respx.mock
+async def test_finish_stops_the_typing_status() -> None:
+    action, shown = typing_route()
+    respx.post(f'{_BASE_URL}/sendMessage').mock(return_value=message(7))
+    streamer = make_typing_reply(FakeClock())
+
+    await streamer.on_routed('scout')
+    await observed(shown)
+    await drive(streamer, 'the answer')
+    await streamer.finish()
+    stopped = action.call_count
+
+    assert await settled(action) == stopped
+
+
+@respx.mock
+async def test_abandon_stops_the_typing_status_with_no_draft_out() -> None:
+    action, shown = typing_route()
+    streamer = make_typing_reply(FakeClock())
+
+    await streamer.on_routed('scout')
+    await observed(shown)
+    await streamer.abandon()
+    stopped = action.call_count
+
+    assert await settled(action) == stopped
+
+
+@respx.mock
+async def test_a_reply_that_never_routed_shows_no_typing_status() -> None:
+    action, _ = typing_route()
+    respx.post(f'{_BASE_URL}/sendMessage').mock(return_value=message(7))
+    streamer = make_typing_reply(FakeClock())
+
+    # NOTE: the shape of a slash command answer and of the unreadable-round decline --
+    # neither reaches the model, so neither has a wait worth announcing
+    await drive(streamer, 'here you go')
+    await streamer.finish()
+
+    assert await settled(action) == 0
+
+
+@respx.mock
+async def test_a_failed_typing_call_ends_the_status_for_the_round() -> None:
+    action, tried = typing_route(status=400)
+    streamer = make_typing_reply(FakeClock())
+
+    await streamer.on_routed('scout')
+    await observed(tried)
+    count = await settled(action)
+    await streamer.finish()
+
+    assert count == 1
 
 
 def make_message(message_id: int = 31) -> InboundMessage:
