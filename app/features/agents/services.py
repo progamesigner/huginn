@@ -76,7 +76,11 @@ def _prompt_segments(prompt: TurnPrompt) -> Iterator[Segment]:
 
 
 def _build_messages(turn: TurnInput) -> Iterator[Message]:
-    yield Message(role='system', segments=(TextSegment(text=turn.instructions),))
+    yield Message(
+        role='system',
+        segments=(TextSegment(text=turn.instructions),),
+        cacheable=True,
+    )
     yield from turn.prior_turns
     dt = isoformat(turn.now)
     for prompt in turn.prompts:
@@ -92,6 +96,13 @@ def _assistant_message(text: str, tool_calls: tuple[ToolCallSegment, ...]) -> Me
 
 def _tool_result_messages(results: tuple[ToolResultSegment, ...]) -> Iterator[Message]:
     return (Message(role='tool', segments=(result,)) for result in results)
+
+
+def _rolling_breakpoint(history: Sequence[Message]) -> tuple[Message, ...]:
+    if not history:
+        return ()
+
+    return (*history[:-1], history[-1].model_copy(update={'cacheable': True}))
 
 
 def _turn_id() -> str:
@@ -206,7 +217,7 @@ class AgentRunner:
                 for iteration in range(turn.max_iterations):
                     request = CompletionRequest(
                         model=turn.model,
-                        messages=tuple(history),
+                        messages=_rolling_breakpoint(history),
                         tools=self.tools.schemas(),
                         max_completion_tokens=turn.max_completion_tokens,
                     )

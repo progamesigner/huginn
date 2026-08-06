@@ -26,5 +26,9 @@ class MissingSectionError(ConfigError):
     pass
 
 
+class UnknownCacheControlModelError(ConfigError):
+    pass
+
+
 class UnknownSectionError(ConfigError):
     pass

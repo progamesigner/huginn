@@ -14,6 +14,11 @@ class ProviderConfig(LLMValue):
     api_key: Annotated[SecretStr, Field()]
     models: Annotated[tuple[str, ...], Field()]
     base_url: Annotated[str | None, Field()] = None
+    # NOTE: opt-in per model, not per provider
+    cache_control: Annotated[tuple[str, ...], Field()] = ()
+
+    def caches(self, model: str) -> bool:
+        return model in self.cache_control
 
 
 class LLMClient(Protocol):

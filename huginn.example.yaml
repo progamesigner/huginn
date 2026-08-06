@@ -17,6 +17,17 @@ providers:
         env: ANTHROPIC_API_KEY
     models:
     - claude-sonnet-5
+  bifrost:
+    adapter: openai
+    base_url: http://bifrost:8080/v1
+    api_key:
+      value_from:
+        env: BIFROST_API_KEY
+    models:
+    - anthropic/claude-sonnet-5
+    - openai/gpt-5.6-sol
+    cache_control:
+    - anthropic/claude-sonnet-5
 
 tools:
   websearch:

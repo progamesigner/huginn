@@ -1,7 +1,9 @@
 import pytest
 from pydantic import SecretStr, ValidationError
 
-from app.core.config.llm import ProviderConfig, ProviderConfigList
+from app.core.config.exceptions import UnknownCacheControlModelError
+from app.core.config.llm import PROVIDERS, ProviderConfig, ProviderConfigList
+from app.core.config.registry import HuginnConfig
 
 
 def test_provider_config_holds_named_declarations() -> None:
@@ -35,6 +37,46 @@ def test_provider_config_rejects_unknown_adapter() -> None:
         ProviderConfig.model_validate(
             {'adapter': 'mystery', 'api_key': 'sk-test', 'models': ['gpt-5-mini']},
         )
+
+
+def test_provider_config_defaults_cache_control_to_no_models() -> None:
+    provider = ProviderConfig(
+        adapter='openai',
+        api_key=SecretStr('sk-test'),
+        models=('gpt-5-mini',),
+    )
+
+    assert provider.cache_control == ()
+
+
+def _config(cache_control: tuple[str, ...]) -> HuginnConfig:
+    return HuginnConfig(
+        sections={
+            PROVIDERS.key: ProviderConfigList(
+                {
+                    'bifrost': ProviderConfig(
+                        adapter='openai',
+                        api_key=SecretStr('sk-test'),
+                        models=('anthropic/claude-sonnet-5', 'openai/gpt-5.6-sol'),
+                        cache_control=cache_control,
+                    ),
+                },
+            ),
+        },
+    )
+
+
+def test_validate_providers_accepts_cache_control_drawn_from_models() -> None:
+    assert PROVIDERS.validate is not None
+
+    PROVIDERS.validate(_config(('anthropic/claude-sonnet-5',)))
+
+
+def test_validate_providers_rejects_a_cache_control_model_it_does_not_serve() -> None:
+    assert PROVIDERS.validate is not None
+
+    with pytest.raises(UnknownCacheControlModelError, match='anthropic/claude-opus-5'):
+        PROVIDERS.validate(_config(('anthropic/claude-opus-5',)))
 
 
 def test_provider_config_rejects_name_field() -> None:

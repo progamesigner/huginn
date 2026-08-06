@@ -230,6 +230,138 @@ def test_build_messages_preserves_order_across_messages() -> None:
     ]
 
 
+def test_build_messages_ignores_cacheable_without_the_provider_opt_in() -> None:
+    messages = (
+        Message(
+            role='system',
+            segments=(TextSegment(text='be brief'),),
+            cacheable=True,
+        ),
+    )
+
+    assert list(build_messages(messages)) == [
+        {'role': 'system', 'content': 'be brief'},
+    ]
+
+
+# NOTE: a plain-string content cannot carry cache_control, so a marked text turn
+# has to widen into blocks or the gateway silently drops the breakpoint
+def test_build_messages_widens_a_marked_text_turn_into_blocks() -> None:
+    messages = (
+        Message(
+            role='system',
+            segments=(TextSegment(text='be brief'),),
+            cacheable=True,
+        ),
+    )
+
+    assert list(build_messages(messages, cache_control=True)) == [
+        {
+            'role': 'system',
+            'content': [
+                {
+                    'type': 'input_text',
+                    'text': 'be brief',
+                    'cache_control': {'type': 'ephemeral'},
+                },
+            ],
+        },
+    ]
+
+
+def test_build_messages_marks_only_the_last_block_of_a_turn() -> None:
+    messages = (
+        Message(
+            role='user',
+            segments=(
+                TextSegment(text='what is this'),
+                ImageSegment(media_type='image/jpeg', data='YQ=='),
+            ),
+            cacheable=True,
+        ),
+    )
+
+    assert list(build_messages(messages, cache_control=True)) == [
+        {
+            'role': 'user',
+            'content': [
+                {'type': 'input_text', 'text': 'what is this'},
+                {
+                    'type': 'input_image',
+                    'detail': 'auto',
+                    'image_url': 'data:image/jpeg;base64,YQ==',
+                    'cache_control': {'type': 'ephemeral'},
+                },
+            ],
+        },
+    ]
+
+
+# NOTE: tool traffic carries cache_control on the item, not on a content block
+def test_build_messages_marks_a_tool_result_on_the_item() -> None:
+    messages = (
+        Message(
+            role='tool',
+            segments=(ToolResultSegment(tool_call_id='call_1', content='42'),),
+            cacheable=True,
+        ),
+    )
+
+    assert list(build_messages(messages, cache_control=True)) == [
+        {
+            'type': 'function_call_output',
+            'call_id': 'call_1',
+            'output': '42',
+            'cache_control': {'type': 'ephemeral'},
+        },
+    ]
+
+
+def test_build_messages_marks_the_tool_call_that_closes_an_assistant_turn() -> None:
+    messages = (
+        Message(
+            role='assistant',
+            segments=(
+                TextSegment(text='I will search.'),
+                ToolCallSegment(id='call_1', name='search', arguments='{}'),
+            ),
+            cacheable=True,
+        ),
+    )
+
+    assert list(build_messages(messages, cache_control=True)) == [
+        {'role': 'assistant', 'content': 'I will search.'},
+        {
+            'type': 'function_call',
+            'call_id': 'call_1',
+            'name': 'search',
+            'arguments': '{}',
+            'cache_control': {'type': 'ephemeral'},
+        },
+    ]
+
+
+def test_build_messages_leaves_unmarked_turns_alone_under_the_opt_in() -> None:
+    messages = (
+        Message(role='user', segments=(TextSegment(text='hi'),)),
+        Message(role='user', segments=(TextSegment(text='bye'),), cacheable=True),
+    )
+
+    assert list(build_messages(messages, cache_control=True)) == [
+        {'role': 'user', 'content': 'hi'},
+        {
+            'role': 'user',
+            'content': [
+                {
+                    'type': 'input_text',
+                    'text': 'bye',
+                    'cache_control': {'type': 'ephemeral'},
+                },
+            ],
+        },
+    ]
+
+
 def test_decode_chunk_yields_text_delta() -> None:
     event = ResponseTextDeltaEvent.model_construct(
         type='response.output_text.delta',
@@ -359,13 +491,14 @@ def test_build_tools_flattens_chat_completion_function_tools() -> None:
     ]
 
 
-def _provider() -> ProviderConfig:
+def _provider(cache_control: tuple[str, ...] = ()) -> ProviderConfig:
     return ProviderConfig(
         name='openai',
         adapter='openai',
         api_key=SecretStr('secret'),
-        models=('gpt-5',),
+        models=('gpt-5', 'claude-sonnet-5'),
         base_url='https://api.example',
+        cache_control=cache_control,
     )
 
 
@@ -572,6 +705,77 @@ async def test_stream_forwards_reasoning_effort_with_tools() -> None:
 
     assert recorded['reasoning'] == {'effort': 'high'}
     assert recorded['tools'] == list(build_tools((_TOOL,)))
+
+
+def _cacheable_request(model: str) -> CompletionRequest:
+    return CompletionRequest(
+        model=model,
+        messages=(
+            Message(
+                role='system',
+                segments=(TextSegment(text='be brief'),),
+                cacheable=True,
+            ),
+        ),
+    )
+
+
+async def test_stream_sends_cache_control_for_a_model_that_opted_in() -> None:
+    recorded = {}
+
+    await _drain(
+        OpenAIAdapter(
+            _provider(cache_control=('claude-sonnet-5',)),
+            HTTPClientManager(),
+            client_factory=_fake_client(recorded),
+        ),
+        _cacheable_request('claude-sonnet-5'),
+    )
+
+    assert recorded['input'] == [
+        {
+            'role': 'system',
+            'content': [
+                {
+                    'type': 'input_text',
+                    'text': 'be brief',
+                    'cache_control': {'type': 'ephemeral'},
+                },
+            ],
+        },
+    ]
+
+
+# NOTE: one gateway fronts several model families; a family that cannot read
+# cache_control rejects the unknown field outright, so the opt-in is per model
+async def test_stream_omits_cache_control_for_a_sibling_model_on_the_provider() -> None:
+    recorded = {}
+
+    await _drain(
+        OpenAIAdapter(
+            _provider(cache_control=('claude-sonnet-5',)),
+            HTTPClientManager(),
+            client_factory=_fake_client(recorded),
+        ),
+        _cacheable_request('gpt-5'),
+    )
+
+    assert recorded['input'] == [{'role': 'system', 'content': 'be brief'}]
+
+
+async def test_stream_omits_cache_control_when_the_provider_lists_no_models() -> None:
+    recorded = {}
+
+    await _drain(
+        OpenAIAdapter(
+            _provider(),
+            HTTPClientManager(),
+            client_factory=_fake_client(recorded),
+        ),
+        _cacheable_request('claude-sonnet-5'),
+    )
+
+    assert recorded['input'] == [{'role': 'system', 'content': 'be brief'}]
 
 
 async def test_stream_omits_text_format_when_no_schema() -> None:

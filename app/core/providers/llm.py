@@ -20,6 +20,7 @@ def _build_providers(providers: ProviderConfigList) -> tuple[LLMProviderConfig, 
             api_key=provider.api_key,
             models=provider.models,
             base_url=provider.base_url,
+            cache_control=provider.cache_control,
         )
         for name, provider in providers.root.items()
     )

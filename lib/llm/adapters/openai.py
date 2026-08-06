@@ -41,9 +41,40 @@ from lib.llm.types import (
     ToolResultSegment,
 )
 
+_TOOL_ITEMS = ('function_call', 'function_call_output')
 
-def build_messages(messages: tuple[Message, ...]) -> Iterator[ResponseInputItemParam]:
-    for message in messages:
+
+def _ephemeral() -> dict[str, str]:
+    return {'type': 'ephemeral'}
+
+
+def _mark(entry: ResponseInputItemParam) -> ResponseInputItemParam:
+    item = dict(cast(dict[str, object], entry))
+
+    if item.get('type') in _TOOL_ITEMS:
+        item['cache_control'] = _ephemeral()
+        return cast(ResponseInputItemParam, item)
+
+    content = item.get('content')
+    blocks = (
+        [cast(object, ResponseInputTextParam(type='input_text', text=content))]
+        if isinstance(content, str)
+        else list(cast(list[object], content or []))
+    )
+    if blocks:
+        last = dict(cast(dict[str, object], blocks[-1]))
+        last['cache_control'] = _ephemeral()
+        blocks[-1] = last
+        item['content'] = blocks
+
+    return cast(ResponseInputItemParam, item)
+
+
+def build_messages(
+    messages: tuple[Message, ...],
+    cache_control: bool = False,
+) -> Iterator[ResponseInputItemParam]:
+    def build_entries(message: Message) -> Iterator[ResponseInputItemParam]:
         if message.role == 'tool':
             for segment in message.segments:
                 match segment:
@@ -59,7 +90,7 @@ def build_messages(messages: tuple[Message, ...]) -> Iterator[ResponseInputItemP
                                 'output': content,
                             },
                         )
-            continue
+            return
 
         texts = [
             segment.text
@@ -111,6 +142,12 @@ def build_messages(messages: tuple[Message, ...]) -> Iterator[ResponseInputItemP
                             name=name,
                             arguments=arguments,
                         )
+
+    for message in messages:
+        entries = list(build_entries(message))
+        if cache_control and message.cacheable and entries:
+            entries[-1] = _mark(entries[-1])
+        yield from entries
 
 
 def build_tools(tools: tuple[JsonValue, ...]) -> Iterator[FunctionToolParam]:
@@ -215,7 +252,12 @@ class OpenAIAdapter:
             )
             response = await client.responses.create(
                 model=request.model,
-                input=list(build_messages(request.messages)),
+                input=list(
+                    build_messages(
+                        request.messages,
+                        self.provider.caches(request.model),
+                    ),
+                ),
                 tools=list(build_tools(request.tools)) if request.tools else omit,
                 reasoning=(
                     {'effort': request.effort} if request.effort != 'none' else omit

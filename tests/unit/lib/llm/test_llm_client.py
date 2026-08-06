@@ -15,6 +15,30 @@ def test_provider_config_defaults_to_direct_connection() -> None:
     assert provider.base_url is None
 
 
+def test_provider_config_caches_only_the_models_that_opted_in() -> None:
+    provider = ProviderConfig(
+        name='bifrost',
+        adapter='openai',
+        api_key=SecretStr('secret'),
+        models=('anthropic/claude-opus-5', 'openai/gpt-5.6-sol'),
+        cache_control=('anthropic/claude-opus-5',),
+    )
+
+    assert provider.caches('anthropic/claude-opus-5')
+    assert not provider.caches('openai/gpt-5.6-sol')
+
+
+def test_provider_config_caches_nothing_by_default() -> None:
+    provider = ProviderConfig(
+        name='anthropic',
+        adapter='anthropic',
+        api_key=SecretStr('secret'),
+        models=('claude-opus-4-8',),
+    )
+
+    assert not provider.caches('claude-opus-4-8')
+
+
 def test_provider_config_requires_api_key() -> None:
     with pytest.raises(ValidationError):
         ProviderConfig.model_validate(

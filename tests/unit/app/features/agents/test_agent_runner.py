@@ -234,6 +234,99 @@ async def test_run_sends_the_token_limit_on_every_tool_loop_iteration() -> None:
     assert [request.max_completion_tokens for request in llm.requests] == [4096, 4096]
 
 
+def breakpoints(request: CompletionRequest) -> list[int]:
+    return [
+        index for index, message in enumerate(request.messages) if message.cacheable
+    ]
+
+
+async def test_run_marks_the_instructions_as_the_static_breakpoint() -> None:
+    llm = answering()
+
+    await AgentRunner(llm, make_toolset(), ClockManager()).run(make_turn(), discard())
+
+    system = llm.requests[0].messages[0]
+    assert system.role == 'system'
+    assert system.cacheable is True
+
+
+async def test_run_rolls_the_second_breakpoint_onto_the_newest_message() -> None:
+    llm = FakeLLM(
+        [
+            [
+                ToolCallChunk(
+                    index=0,
+                    id='call_1',
+                    name='echo',
+                    arguments='{"text": "hi"}',
+                ),
+                FinishChunk(reason='tool_calls'),
+            ],
+            [TextChunk(text='done'), FinishChunk(reason='stop')],
+        ],
+    )
+
+    await AgentRunner(llm, make_toolset(), ClockManager()).run(make_turn(), discard())
+
+    first, second = llm.requests
+    # NOTE: two breakpoints per request, never more -- Anthropic allows four and
+    # a tool loop would blow past that if each iteration left one behind
+    assert breakpoints(first) == [0, len(first.messages) - 1]
+    assert breakpoints(second) == [0, len(second.messages) - 1]
+    assert len(second.messages) > len(first.messages)
+    assert second.messages[-1].role == 'tool'
+
+
+async def test_run_does_not_leave_a_breakpoint_on_a_replayed_prior_turn() -> None:
+    prior = (
+        Message(role='user', segments=(TextSegment(text='earlier'),)),
+        Message(role='assistant', segments=(TextSegment(text='sure'),)),
+    )
+    llm = answering()
+
+    await AgentRunner(llm, make_toolset(), ClockManager()).run(
+        make_turn(prior_turns=prior),
+        discard(),
+    )
+
+    assert [message.cacheable for message in prior] == [False, False]
+    assert breakpoints(llm.requests[0]) == [0, 3]
+
+
+# NOTE: a compacted conversation replays its summary already marked, so the
+# static and rolling breakpoints land on top of it -- Anthropic allows four
+async def test_run_stays_within_the_breakpoint_budget_with_a_replayed_summary() -> None:
+    prior = (
+        Message(
+            role='user',
+            segments=(TextSegment(text='summary so far'),),
+            cacheable=True,
+        ),
+        Message(role='assistant', segments=(TextSegment(text='sure'),)),
+    )
+    llm = FakeLLM(
+        [
+            [
+                ToolCallChunk(
+                    index=0,
+                    id='call_1',
+                    name='echo',
+                    arguments='{"text": "hi"}',
+                ),
+                FinishChunk(reason='tool_calls'),
+            ],
+            [TextChunk(text='done'), FinishChunk(reason='stop')],
+        ],
+    )
+
+    await AgentRunner(llm, make_toolset(), ClockManager()).run(
+        make_turn(prior_turns=prior),
+        discard(),
+    )
+
+    assert [len(breakpoints(request)) for request in llm.requests] == [3, 3]
+
+
 async def test_run_executes_single_tool_call_then_finishes() -> None:
     llm = FakeLLM(
         [
