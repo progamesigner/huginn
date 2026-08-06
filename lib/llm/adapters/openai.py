@@ -126,7 +126,10 @@ def build_tools(tools: tuple[JsonValue, ...]) -> Iterator[FunctionToolParam]:
         )
 
 
-def decode_chunk(event: ResponseStreamEvent) -> Iterator[CompletionChunk]:
+def decode_chunk(
+    event: ResponseStreamEvent,
+    tool_called: bool = False,
+) -> Iterator[CompletionChunk]:
     match event:
         case ResponseTextDeltaEvent(delta=delta):
             yield TextChunk(text=delta)
@@ -143,12 +146,14 @@ def decode_chunk(event: ResponseStreamEvent) -> Iterator[CompletionChunk]:
         ):
             yield ToolCallChunk(index=index, arguments=delta)
         case ResponseCompletedEvent(response=response):
+            # NOTE: a gateway may complete without an output list
             yield FinishChunk(
                 reason=(
                     'tool_calls'
-                    if any(
+                    if tool_called
+                    or any(
                         isinstance(item, ResponseFunctionToolCall)
-                        for item in response.output
+                        for item in response.output or ()
                     )
                     else 'stop'
                 ),
@@ -220,6 +225,9 @@ class OpenAIAdapter:
                 stream=True,
             )
 
+            tool_called = False
             async for event in response:
-                for piece in decode_chunk(event):
+                for piece in decode_chunk(event, tool_called):
+                    if isinstance(piece, ToolCallChunk):
+                        tool_called = True
                     yield piece

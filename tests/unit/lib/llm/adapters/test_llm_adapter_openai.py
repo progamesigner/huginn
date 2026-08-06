@@ -22,6 +22,7 @@ from pydantic import JsonValue, SecretStr
 
 from lib.http import HTTPClientManager
 from lib.llm import (
+    CompletionChunk,
     CompletionRequest,
     Effort,
     FinishChunk,
@@ -297,6 +298,23 @@ def test_decode_chunk_maps_completed_function_call_to_tool_calls() -> None:
     assert list(decode_chunk(event)) == [FinishChunk(reason='tool_calls')]
 
 
+# NOTE: an OpenAI-compatible gateway may complete without an output list
+def test_decode_chunk_maps_completed_without_output_to_stop() -> None:
+    response = Response.model_construct(output=None)
+    event = ResponseCompletedEvent.model_construct(response=response)
+
+    assert list(decode_chunk(event)) == [FinishChunk(reason='stop')]
+
+
+def test_decode_chunk_maps_completed_without_output_to_tool_calls_once_called() -> None:
+    response = Response.model_construct(output=None)
+    event = ResponseCompletedEvent.model_construct(response=response)
+
+    assert list(decode_chunk(event, tool_called=True)) == [
+        FinishChunk(reason='tool_calls'),
+    ]
+
+
 def test_decode_chunk_maps_max_output_tokens_to_length() -> None:
     response = Response.model_construct(
         output=[],
@@ -397,9 +415,32 @@ def _recording_client(
     return cast(Callable[..., AsyncOpenAI], factory)
 
 
+def _replaying_client(
+    events: tuple[ResponseStreamEvent, ...],
+) -> Callable[..., AsyncOpenAI]:
+    async def create(**_: object) -> AsyncIterator[ResponseStreamEvent]:
+        async def stream() -> AsyncIterator[ResponseStreamEvent]:
+            for event in events:
+                yield event
+
+        return stream()
+
+    def factory(**_: object) -> SimpleNamespace:
+        return SimpleNamespace(responses=SimpleNamespace(create=create))
+
+    return cast(Callable[..., AsyncOpenAI], factory)
+
+
 async def _drain(adapter: OpenAIAdapter, request: CompletionRequest) -> None:
     async for _ in adapter.stream(request):
         pass
+
+
+async def _collect(
+    adapter: OpenAIAdapter,
+    request: CompletionRequest,
+) -> list[CompletionChunk]:
+    return [chunk async for chunk in adapter.stream(request)]
 
 
 async def test_stream_disables_only_the_ai_client_read_timeout() -> None:
@@ -423,6 +464,68 @@ async def test_stream_disables_only_the_ai_client_read_timeout() -> None:
     assert timeout.write == http.timeout.write
     assert timeout.pool == http.timeout.pool
     assert http.timeout.read == 30.0
+
+
+async def test_stream_finishes_with_tool_calls_when_the_gateway_omits_output() -> None:
+    item = ResponseFunctionToolCall.model_construct(
+        type='function_call',
+        call_id='call_1',
+        name='search',
+        arguments='',
+    )
+    events = (
+        ResponseOutputItemAddedEvent.model_construct(
+            type='response.output_item.added',
+            output_index=0,
+            item=item,
+        ),
+        ResponseFunctionCallArgumentsDeltaEvent.model_construct(
+            type='response.function_call_arguments.delta',
+            output_index=0,
+            delta='{}',
+        ),
+        ResponseCompletedEvent.model_construct(
+            response=Response.model_construct(output=None),
+        ),
+    )
+
+    chunks = await _collect(
+        OpenAIAdapter(
+            _provider(),
+            HTTPClientManager(),
+            client_factory=_replaying_client(events),
+        ),
+        _request(tools=(_TOOL,)),
+    )
+
+    assert chunks == [
+        ToolCallChunk(index=0, id='call_1', name='search'),
+        ToolCallChunk(index=0, arguments='{}'),
+        FinishChunk(reason='tool_calls'),
+    ]
+
+
+async def test_stream_finishes_with_stop_when_no_tool_call_was_streamed() -> None:
+    events = (
+        ResponseTextDeltaEvent.model_construct(
+            type='response.output_text.delta',
+            delta='hi',
+        ),
+        ResponseCompletedEvent.model_construct(
+            response=Response.model_construct(output=None),
+        ),
+    )
+
+    chunks = await _collect(
+        OpenAIAdapter(
+            _provider(),
+            HTTPClientManager(),
+            client_factory=_replaying_client(events),
+        ),
+        _request(),
+    )
+
+    assert chunks == [TextChunk(text='hi'), FinishChunk(reason='stop')]
 
 
 async def test_stream_forwards_max_completion_tokens() -> None:
