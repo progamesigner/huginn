@@ -9,6 +9,10 @@ class DuplicateToolNameError(AgentError):
     pass
 
 
+class MalformedToolCallError(AgentError):
+    pass
+
+
 class TurnTimeoutError(AgentError):
     pass
 

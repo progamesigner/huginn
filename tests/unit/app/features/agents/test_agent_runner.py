@@ -11,7 +11,7 @@ from pydantic import Field, JsonValue
 from structlog.contextvars import bound_contextvars, get_contextvars
 
 from app.contracts.channels import AttachmentKind
-from app.features.agents.exceptions import TurnTimeoutError
+from app.features.agents.exceptions import MalformedToolCallError, TurnTimeoutError
 from app.features.agents.services import AgentRunner
 from app.features.agents.types import (
     PromptAttachment,
@@ -393,6 +393,46 @@ async def test_run_reports_a_tool_that_answered_with_an_error_as_failed() -> Non
     await runner.run(make_turn(), sink)
 
     assert sink.tools == [('ghost', 'started'), ('ghost', 'failed')]
+
+
+# NOTE: the same class of gateway defect that omits the completed output list also skips
+# the item event, and an empty call id sent back correlates to nothing upstream
+async def test_run_rejects_a_tool_call_that_arrived_without_a_call_id() -> None:
+    llm = FakeLLM(
+        [
+            [
+                ToolCallChunk(index=0, arguments='{"text": "hi"}'),
+                FinishChunk(reason='tool_calls'),
+            ],
+        ],
+    )
+    runner = AgentRunner(llm, make_toolset(), ClockManager())
+    sink = RecordingReply()
+
+    with pytest.raises(MalformedToolCallError):
+        await runner.run(make_turn(), sink)
+
+    assert sink.tools == []
+    assert len(llm.requests) == 1
+
+
+async def test_run_rejects_only_the_call_id_and_not_an_unnamed_tool() -> None:
+    llm = FakeLLM(
+        [
+            [
+                ToolCallChunk(index=0, id='call_1', arguments='{}'),
+                FinishChunk(reason='tool_calls'),
+            ],
+            [TextChunk(text='done'), FinishChunk(reason='stop')],
+        ],
+    )
+    runner = AgentRunner(llm, make_toolset(), ClockManager())
+    sink = RecordingReply()
+
+    output = await runner.run(make_turn(), sink)
+
+    assert output.text == 'done'
+    assert sink.tools == [('', 'started'), ('', 'failed')]
 
 
 async def test_run_executes_multiple_tool_calls_in_one_turn() -> None:

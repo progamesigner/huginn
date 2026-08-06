@@ -55,6 +55,9 @@ class TurnRecord(AppRecord):
 
 
 _ROLES = ('assistant', 'system', 'tool', 'user')
+# NOTE: no writer produces tool_call/tool_result yet. A call id can carry
+# provider state (a Gemini thought signature, packed in by the gateway), so
+# persisting one and replaying it into a later turn sends an expired handle upstream
 _KINDS = ('audio', 'image', 'summary', 'text', 'tool_call', 'tool_result')
 
 

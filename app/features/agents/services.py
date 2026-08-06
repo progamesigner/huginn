@@ -34,7 +34,11 @@ from .contracts import (
     TurnHandlerContract,
     TurnStream,
 )
-from .exceptions import TurnTimeoutError, UnservableModelError
+from .exceptions import (
+    MalformedToolCallError,
+    TurnTimeoutError,
+    UnservableModelError,
+)
 from .router import Router
 from .types import (
     RoutedAgent,
@@ -186,11 +190,23 @@ async def _consume(
             case FinishChunk():
                 pass
 
-    tool_calls = tuple(
-        ToolCallSegment(id=builder.id, name=builder.name, arguments=builder.arguments)
-        for _, builder in sorted(calls.items())
-    )
-    return ''.join(fragments), tool_calls
+    tool_calls = []
+    for index, builder in sorted(calls.items()):
+        if not builder.id:
+            raise MalformedToolCallError(
+                f'tool call {builder.name or "<unnamed>"!r} at index {index} '
+                'arrived without a call id',
+            )
+
+        tool_calls.append(
+            ToolCallSegment(
+                id=builder.id,
+                name=builder.name,
+                arguments=builder.arguments,
+            ),
+        )
+
+    return ''.join(fragments), tuple(tool_calls)
 
 
 class AgentRunner:
