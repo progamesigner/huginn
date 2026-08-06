@@ -307,6 +307,46 @@ async def test_abandon_annotates_the_draft_it_already_sent() -> None:
 
 
 @respx.mock
+async def test_an_unfinished_turn_is_annotated_with_why_it_stopped() -> None:
+    respx.post(f'{_BASE_URL}/sendMessage').mock(return_value=message(7))
+    edit = respx.post(f'{_BASE_URL}/editMessageText').mock(return_value=message(7))
+    streamer = make_reply(FakeClock())
+
+    await drive(streamer, 'Half an ans')
+    await streamer.unfinished('timeout')
+    await streamer.finish()
+
+    written = texts(edit)
+    assert written[-1].startswith('Half an ans')
+    assert 'ran out of time' in written[-1]
+
+
+@respx.mock
+async def test_an_ending_with_nothing_said_yet_is_still_worth_a_message() -> None:
+    send = respx.post(f'{_BASE_URL}/sendMessage').mock(return_value=message(7))
+    streamer = make_reply(FakeClock())
+
+    await streamer.unfinished('exhausted')
+    await streamer.finish()
+
+    # NOTE: silence would leave the reader with an acknowledgement and no answer at all
+    assert 'used up every step' in texts(send)[0]
+
+
+@respx.mock
+async def test_a_completed_turn_is_never_annotated() -> None:
+    respx.post(f'{_BASE_URL}/sendMessage').mock(return_value=message(7))
+    edit = respx.post(f'{_BASE_URL}/editMessageText').mock(return_value=message(7))
+    streamer = make_reply(FakeClock())
+
+    await drive(streamer, 'A whole answer')
+    await streamer.unfinished('complete')
+    await streamer.finish()
+
+    assert not edit.called
+
+
+@respx.mock
 async def test_abandon_writes_nothing_when_no_draft_went_out() -> None:
     send = respx.post(f'{_BASE_URL}/sendMessage').mock(return_value=message(7))
     edit = respx.post(f'{_BASE_URL}/editMessageText').mock(return_value=message(7))

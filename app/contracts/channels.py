@@ -5,6 +5,7 @@ from pydantic import BaseModel, ConfigDict
 
 type AttachmentKind = Literal['audio', 'image']
 type ToolPhase = Literal['started', 'finished', 'failed']
+type TurnEnding = Literal['complete', 'timeout', 'exhausted']
 
 
 class InboundAttachment(BaseModel):
@@ -61,6 +62,9 @@ class ChannelReplyContract(ABC):
 
     @abstractmethod
     async def on_tool(self, name: str, phase: ToolPhase) -> None: ...
+
+    @abstractmethod
+    async def unfinished(self, ending: TurnEnding) -> None: ...
 
 
 class ChannelResolverContract(ABC):

@@ -8,6 +8,7 @@ from app.features.messages.types import (
     TextEvent,
     ToolEvent,
     TurnEvent,
+    UnfinishedEvent,
 )
 
 
@@ -41,6 +42,14 @@ def test_a_tool_step_carries_its_name_and_phase() -> None:
 
 def test_the_done_event_closes_the_turn() -> None:
     assert framed(DoneEvent()) == 'event: done\ndata: {}\n\n'
+
+
+def test_an_unfinished_event_names_why_the_answer_stops_short() -> None:
+    # NOTE: distinct from `error` on purpose -- the answer is real and worth showing, it
+    # just stops earlier than the reader expects
+    assert framed(UnfinishedEvent(ending='timeout')) == (
+        'event: unfinished\ndata: {"ending": "timeout"}\n\n'
+    )
 
 
 def test_an_error_event_carries_its_message() -> None:

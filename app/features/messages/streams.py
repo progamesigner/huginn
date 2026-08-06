@@ -3,7 +3,7 @@ import logging
 from collections.abc import AsyncGenerator, Coroutine
 from typing import override
 
-from app.contracts.channels import ChannelReplyContract, ToolPhase
+from app.contracts.channels import ChannelReplyContract, ToolPhase, TurnEnding
 
 from .types import (
     DoneEvent,
@@ -13,6 +13,7 @@ from .types import (
     TextEvent,
     ToolEvent,
     TurnEvent,
+    UnfinishedEvent,
 )
 
 logger = logging.getLogger(__name__)
@@ -47,6 +48,10 @@ class QueuedReply(ChannelReplyContract):
     @override
     async def on_tool(self, name: str, phase: ToolPhase) -> None:
         await self.events.put(ToolEvent(name=name, phase=phase))
+
+    @override
+    async def unfinished(self, ending: TurnEnding) -> None:
+        await self.events.put(UnfinishedEvent(ending=ending))
 
     async def close(self) -> None:
         await self.events.put(None)

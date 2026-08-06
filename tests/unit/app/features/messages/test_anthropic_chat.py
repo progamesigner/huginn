@@ -64,6 +64,20 @@ async def test_an_anthropic_delta_carries_the_text_the_sdk_reads() -> None:
     assert json.loads(framed['message_delta'])['delta']['stop_reason'] == 'end_turn'
 
 
+async def test_an_anthropic_stream_that_stopped_short_stops_on_max_tokens() -> None:
+    turns = StreamingTurns('He', ending='timeout')
+
+    async with chat_client(make_config(api_key(agent='scout')), turns) as client:
+        response = await client.post(
+            _PATH,
+            headers=_AUTH,
+            json={'model': 'scout', 'stream': True, 'messages': []},
+        )
+
+    framed = dict(events(response.text))
+    assert json.loads(framed['message_delta'])['delta']['stop_reason'] == 'max_tokens'
+
+
 async def test_an_anthropic_request_without_streaming_answers_in_one_body() -> None:
     turns = StreamingTurns('the ', 'answer')
 

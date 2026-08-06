@@ -1,10 +1,11 @@
 from typing import override
 
-from app.contracts.channels import ChannelReplyContract, ToolPhase
+from app.contracts.channels import ChannelReplyContract, ToolPhase, TurnEnding
 
 
 class RecordingReply(ChannelReplyContract):
     abandoned: bool
+    endings: list[TurnEnding]
     finished: bool
     fragments: list[str]
     routed: list[str]
@@ -12,6 +13,7 @@ class RecordingReply(ChannelReplyContract):
 
     def __init__(self) -> None:
         self.abandoned = False
+        self.endings = []
         self.finished = False
         self.fragments = []
         self.routed = []
@@ -36,3 +38,7 @@ class RecordingReply(ChannelReplyContract):
     @override
     async def on_tool(self, name: str, phase: ToolPhase) -> None:
         self.tools.append((name, phase))
+
+    @override
+    async def unfinished(self, ending: TurnEnding) -> None:
+        self.endings.append(ending)

@@ -7,7 +7,7 @@ from uuid import uuid4
 
 from structlog.contextvars import bound_contextvars, get_contextvars
 
-from app.contracts.channels import ChannelReplyContract
+from app.contracts.channels import ChannelReplyContract, ToolPhase
 from lib.llm import (
     CompletionChunk,
     CompletionRequest,
@@ -49,6 +49,32 @@ from .types import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+class AnswerRecorder(TurnStream):
+    stream: TurnStream
+    fragments: list[str]
+
+    def __init__(self, stream: TurnStream) -> None:
+        self.stream = stream
+        self.fragments = []
+
+    @property
+    def answer(self) -> str:
+        return ''.join(self.fragments)
+
+    @override
+    async def on_routed(self, agent: str) -> None:
+        await self.stream.on_routed(agent)
+
+    @override
+    async def on_text(self, fragment: str) -> None:
+        self.fragments.append(fragment)
+        await self.stream.on_text(fragment)
+
+    @override
+    async def on_tool(self, name: str, phase: ToolPhase) -> None:
+        await self.stream.on_tool(name, phase)
 
 
 class ToolCallBuilder:
@@ -254,7 +280,11 @@ class AgentRunner:
                     budget.min_iteration_budget,
                     budget.turn_timeout,
                 )
-                return TurnOutput(text=text, completed=False, steps=tuple(steps))
+                return TurnOutput(
+                    text=text,
+                    ending='timeout',
+                    steps=tuple(steps),
+                )
 
             draft = TurnDraft()
             try:
@@ -294,7 +324,7 @@ class AgentRunner:
                 )
                 return TurnOutput(
                     text=draft.text or text,
-                    completed=False,
+                    ending='timeout',
                     steps=tuple(steps),
                 )
 
@@ -307,7 +337,7 @@ class AgentRunner:
             'Turn hit max_iterations=%d without finishing',
             budget.max_iterations,
         )
-        return TurnOutput(text=text, completed=False, steps=tuple(steps))
+        return TurnOutput(text=text, ending='exhausted', steps=tuple(steps))
 
 
 class TurnHandler(TurnHandlerContract):
@@ -370,8 +400,9 @@ class TurnHandler(TurnHandlerContract):
         model: str,
         client: LLMClient,
     ) -> None:
-        async with self.store.open(request.channel, request.chat, agent.name) as store:
-            history = await store.history()
+        history = await self.store.history(request.channel, request.chat, agent.name)
+        witness = AnswerRecorder(reply)
+        try:
             runner = AgentRunner(
                 client,
                 await build_tool_set(
@@ -396,10 +427,36 @@ class TurnHandler(TurnHandlerContract):
                     ),
                     budget=resolve_budget(agent.config),
                 ),
-                reply,
+                witness,
             )
-            await reply.finish()
-            await store.record(request.prompts, output.text)
+        except Exception:
+            await self._salvage(request, agent.name, witness.answer)
+            raise
+
+        if not output.completed:
+            logger.info('Turn ended %s for chat %s', output.ending, request.chat)
+            await reply.unfinished(output.ending)
+
+        await reply.finish()
+        await self.store.record(
+            request.channel,
+            request.chat,
+            agent.name,
+            request.prompts,
+            output.text,
+        )
+
+    async def _salvage(self, request: TurnRequest, agent: str, answer: str) -> None:
+        try:
+            await self.store.record(
+                request.channel,
+                request.chat,
+                agent,
+                request.prompts,
+                answer,
+            )
+        except Exception:
+            logger.exception('Could not record the failed turn for %s', request.chat)
 
 
 async def build_tool_set(

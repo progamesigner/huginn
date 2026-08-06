@@ -1,5 +1,4 @@
-from collections.abc import AsyncIterator, Sequence
-from contextlib import AbstractAsyncContextManager, asynccontextmanager
+from collections.abc import Sequence
 from dataclasses import replace
 from datetime import UTC, datetime
 from typing import override
@@ -11,10 +10,12 @@ from app.features.agents.contracts import (
     NamedTool,
     ToolSource,
     ToolSourceRegistry,
-    TranscriptContract,
     TranscriptStoreContract,
 )
-from app.features.agents.exceptions import UnservableModelError
+from app.features.agents.exceptions import (
+    MalformedToolCallError,
+    UnservableModelError,
+)
 from app.features.agents.router import Router
 from app.features.agents.services import TurnHandler
 from app.features.agents.types import (
@@ -58,7 +59,7 @@ class FakeModels(LLMContract):
         return None
 
 
-class FakeTranscript(TranscriptContract):
+class FakeTranscript:
     prior: tuple[Message, ...]
     recorded: list[tuple[tuple[str, ...], str]]
 
@@ -66,18 +67,12 @@ class FakeTranscript(TranscriptContract):
         self.prior = prior
         self.recorded = []
 
-    @override
-    async def history(self) -> tuple[Message, ...]:
-        return self.prior
-
-    @override
-    async def record(self, prompts: Sequence[TurnPrompt], answer: str) -> None:
-        self.recorded.append((tuple(prompt.text for prompt in prompts), answer))
-
 
 class FakeStore(TranscriptStoreContract):
+    maintain_error: Exception | None
     maintained: list[tuple[str, str, str, str]]
     opened: list[tuple[str, str, str]]
+    record_error: Exception | None
     transcript: FakeTranscript
 
     def __init__(
@@ -85,21 +80,39 @@ class FakeStore(TranscriptStoreContract):
         transcript: FakeTranscript | None = None,
         *,
         maintain_error: Exception | None = None,
+        record_error: Exception | None = None,
     ) -> None:
-        self.maintained = []
         self.maintain_error = maintain_error
+        self.maintained = []
         self.opened = []
+        self.record_error = record_error
         self.transcript = transcript or FakeTranscript()
 
     @override
-    def open(
+    async def history(
         self,
         channel: str,
         chat: str,
         agent: str,
-    ) -> AbstractAsyncContextManager[TranscriptContract]:
+    ) -> tuple[Message, ...]:
         self.opened.append((channel, chat, agent))
-        return self._open()
+        return self.transcript.prior
+
+    @override
+    async def record(
+        self,
+        channel: str,
+        chat: str,
+        agent: str,
+        prompts: Sequence[TurnPrompt],
+        answer: str,
+    ) -> None:
+        if self.record_error is not None:
+            raise self.record_error
+
+        self.transcript.recorded.append(
+            (tuple(prompt.text for prompt in prompts), answer),
+        )
 
     @override
     async def maintain(
@@ -112,10 +125,6 @@ class FakeStore(TranscriptStoreContract):
         self.maintained.append((channel, chat, agent, model))
         if self.maintain_error is not None:
             raise self.maintain_error
-
-    @asynccontextmanager
-    async def _open(self) -> AsyncIterator[TranscriptContract]:
-        yield self.transcript
 
 
 def agents() -> dict[str, AgentConfig]:
@@ -153,9 +162,15 @@ def offered(llm: FakeLLM) -> list[str]:
     ]
 
 
-def handler_with(llm: FakeLLM, source: ToolSource) -> TurnHandler:
+def _registry(source: ToolSource) -> ToolSourceRegistry:
     sources = ToolSourceRegistry()
     sources.register(lambda: source)
+
+    return sources
+
+
+def handler_with(llm: FakeLLM, source: ToolSource) -> TurnHandler:
+    sources = _registry(source)
 
     return TurnHandler(
         llm=FakeModels(llm),
@@ -371,6 +386,121 @@ async def test_compaction_runs_after_the_turn_committed() -> None:
     await make_handler(answering(), store).handle(request('hello'), RecordingReply())
 
     assert store.maintained == [('support_bot', '4242', 'scout', 'scout-model')]
+
+
+# NOTE: the live failure -- tool assembly or the stream raised, nothing was recorded, and
+# the next turn could not tell the round had ever happened
+async def test_a_turn_that_raises_still_records_what_it_had_said() -> None:
+    store = FakeStore()
+    reply = RecordingReply()
+    llm = FakeLLM(
+        [
+            [
+                TextChunk(text='let me look'),
+                ToolCallChunk(index=0, arguments='{}'),
+                FinishChunk(reason='tool_calls'),
+            ],
+        ],
+    )
+
+    with pytest.raises(MalformedToolCallError):
+        await make_handler(llm, store).handle(request('hello'), reply)
+
+    assert store.transcript.recorded == [(('hello',), 'let me look')]
+    assert not reply.finished
+
+
+async def test_a_turn_that_raises_before_answering_records_the_prompt_alone() -> None:
+    store = FakeStore()
+
+    with pytest.raises(MalformedToolCallError):
+        await make_handler(
+            FakeLLM([[ToolCallChunk(index=0, arguments='{}')]]),
+            store,
+        ).handle(request('hello'), RecordingReply())
+
+    assert store.transcript.recorded == [(('hello',), '')]
+
+
+class BrokenSource(ToolSource):
+    @override
+    async def collect(self, agent: AgentConfig) -> Sequence[NamedTool]:
+        raise RuntimeError('the tool server is unreachable')
+
+
+# NOTE: this is where the live MCP failure landed -- assembling the tool set threw before
+# the model was ever asked, and the round left no trace at all
+async def test_a_turn_that_cannot_assemble_its_tools_still_records_the_prompt() -> None:
+    store = FakeStore()
+    handler = TurnHandler(
+        llm=FakeModels(answering()),
+        router=Router(agents(), FakeModels(answering()), 'default-model'),
+        sources=_registry(BrokenSource()),
+        store=store,
+        clock=ClockManager(),
+    )
+
+    with pytest.raises(RuntimeError, match='unreachable'):
+        await handler.handle(request('hello'), RecordingReply())
+
+    assert store.transcript.recorded == [(('hello',), '')]
+
+
+async def test_a_failing_salvage_does_not_replace_the_turns_own_failure() -> None:
+    store = FakeStore(record_error=RuntimeError('the database is down'))
+
+    with pytest.raises(MalformedToolCallError):
+        await make_handler(
+            FakeLLM([[ToolCallChunk(index=0, arguments='{}')]]),
+            store,
+        ).handle(request('hello'), RecordingReply())
+
+
+# NOTE: the handler names the ending and the channel words it -- so what is asserted here
+# is the signal, and how it reads is TelegramReply's business
+async def test_a_timed_out_turn_tells_the_reply_it_ran_out_of_time() -> None:
+    reply = RecordingReply()
+    store = FakeStore()
+
+    await configured_handler(
+        StallingLLM('half an '),
+        store,
+        turn_timeout=0.05,
+    ).handle(request('hello'), reply)
+
+    assert reply.endings == ['timeout']
+    assert reply.finished
+    # NOTE: the ending is for the reader, never folded into the model's own words
+    assert store.transcript.recorded == [(('hello',), 'half an ')]
+
+
+async def test_a_turn_out_of_iterations_tells_the_reply_it_ran_out_of_steps() -> None:
+    def calling() -> list[CompletionChunk]:
+        return [
+            ToolCallChunk(index=0, id='call_1', name='echo', arguments='{"text": "a"}'),
+            FinishChunk(reason='tool_calls'),
+        ]
+
+    reply = RecordingReply()
+
+    await configured_handler(
+        FakeLLM([calling()]),
+        FakeStore(),
+        FakeSource('echo'),
+        max_iterations=1,
+    ).handle(request('hello'), reply)
+
+    assert reply.endings == ['exhausted']
+    assert reply.finished
+
+
+async def test_a_completed_turn_names_no_ending_at_all() -> None:
+    reply = RecordingReply()
+
+    await make_handler(answering(), FakeStore()).handle(request('hello'), reply)
+
+    assert reply.endings == []
+    assert reply.fragments == ['answer']
 
 
 async def test_a_failed_compaction_does_not_fail_a_delivered_answer() -> None:

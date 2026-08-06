@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config.registry import HuginnConfig
 from app.features.agents.types import PromptAttachment, TurnPrompt
 from app.features.conversations.config import CompactionConfig
+from app.features.conversations.contracts import BlobStoreContract
 from app.features.conversations.repositories import (
     BlobRepository,
     ConversationRepository,
@@ -19,7 +20,7 @@ from app.features.conversations.services import (
     ConversationTranscript,
     ConversationTranscriptStore,
 )
-from app.features.conversations.types import Conversation, Part
+from app.features.conversations.types import Blob, Conversation, Part
 from lib.database import DatabaseContract, DatabaseManager
 from lib.guid import GUIDManager
 from lib.llm import (
@@ -46,6 +47,23 @@ class NoModels(LLMContract):
     @override
     def provider_for(self, model: str) -> ProviderConfig | None:
         return None
+
+
+class FlakyBlobs(BlobStoreContract):
+    blobs: BlobRepository
+    stored: int
+
+    def __init__(self, session: AsyncSession) -> None:
+        self.blobs = BlobRepository(session, GUIDManager())
+        self.stored = 0
+
+    @override
+    async def store(self, mime: str, data: bytes) -> Blob:
+        self.stored += 1
+        if self.stored > 1:
+            raise RuntimeError('blob store is down')
+
+        return await self.blobs.store(mime, data)
 
 
 async def _blob(session: AsyncSession, id_: str) -> bytes:
@@ -84,13 +102,16 @@ def _prompt(text: str) -> TurnPrompt:
     return TurnPrompt(text=text, actor='user:1')
 
 
-def _photo(hint: str = '[image: image/jpeg 8x8]') -> PromptAttachment:
+def _photo(
+    hint: str = '[image: image/jpeg 8x8]',
+    data: bytes = _PHOTO,
+) -> PromptAttachment:
     return PromptAttachment(
         kind='image',
         mime='image/jpeg',
         reference='file-1',
         unique='unique-1',
-        data=_PHOTO,
+        data=data,
         hint=hint,
     )
 
@@ -270,41 +291,73 @@ async def test_a_transcribed_voice_note_is_stored_as_what_it_said(
 
 
 @pytest.mark.usefixtures('_migrated')
-async def test_the_store_opens_a_transcript_per_round_and_commits_it(
-    database_url: str,
-) -> None:
+async def test_recording_a_round_commits_it_on_its_own(database_url: str) -> None:
     database = DatabaseManager({None: database_url})
     store = _store(database)
     try:
-        async with store.open('support_bot', '7777', 'scout') as transcript:
-            await transcript.record([_prompt('hello')], 'answer')
+        await store.record('support_bot', '7777', 'scout', [_prompt('hello')], 'answer')
 
-        # NOTE: a second round is a second session, so seeing the first round's turn
-        # proves the round committed rather than merely flushed
-        async with store.open('support_bot', '7777', 'scout') as transcript:
-            assert _texts(await transcript.history()) == [
-                ('user', 'hello'),
-                ('assistant', 'answer'),
-            ]
+        # NOTE: a separate call is a separate session, so seeing the turn back proves the
+        # record committed rather than merely flushed
+        assert _texts(await store.history('support_bot', '7777', 'scout')) == [
+            ('user', 'hello'),
+            ('assistant', 'answer'),
+        ]
     finally:
         await database.dispose()
 
 
-async def _failing_round(store: ConversationTranscriptStore) -> None:
-    async with store.open('support_bot', '8888', 'scout') as transcript:
-        await transcript.record([_prompt('hello')], 'answer')
-        raise RuntimeError('llm stream died')
-
-
+# NOTE: the store used to hold one transaction across the whole turn, so a turn that
+# failed after answering rolled its own round away and the next turn had no memory of it
 @pytest.mark.usefixtures('_migrated')
-async def test_a_round_that_raises_commits_nothing(database_url: str) -> None:
+async def test_a_recorded_round_survives_a_later_failure(database_url: str) -> None:
     database = DatabaseManager({None: database_url})
     store = _store(database)
     try:
-        with pytest.raises(RuntimeError):
-            await _failing_round(store)
+        await store.record(
+            'support_bot',
+            '8888',
+            'scout',
+            [_prompt('hello')],
+            'partial',
+        )
 
-        async with store.open('support_bot', '8888', 'scout') as transcript:
-            assert await transcript.history() == ()
+        with pytest.raises(RuntimeError):
+            raise RuntimeError('the turn died after answering')
+
+        assert _texts(await store.history('support_bot', '8888', 'scout')) == [
+            ('user', 'hello'),
+            ('assistant', 'partial'),
+        ]
+    finally:
+        await database.dispose()
+
+
+# NOTE: splitting the round's transaction in two must not make either half leaky -- the
+# first photo is stored before the second one fails, and has to disappear with it
+@pytest.mark.usefixtures('_migrated')
+async def test_a_record_that_raises_partway_commits_nothing(database_url: str) -> None:
+    database = DatabaseManager({None: database_url})
+    store = ConversationTranscriptStore(
+        database,
+        GUIDManager(),
+        ClockManager(),
+        NoModels(),
+        HuginnConfig(sections={'compaction': CompactionConfig()}),
+        FlakyBlobs,
+    )
+    prompt = TurnPrompt(
+        text='look',
+        actor='user:1',
+        attachments=(_photo(), _photo(data=b'\xff\xd8\xff\xe0 another jpeg')),
+    )
+    try:
+        with pytest.raises(RuntimeError, match='blob store'):
+            await store.record('support_bot', '9999', 'scout', [prompt], 'answer')
+
+        async with database.session() as session:
+            assert (await session.execute(select(BlobRecord))).scalars().all() == []
+
+        assert await store.history('support_bot', '9999', 'scout') == ()
     finally:
         await database.dispose()

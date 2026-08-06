@@ -9,7 +9,7 @@ import httpx
 from fastapi import FastAPI
 from pydantic import SecretStr
 
-from app.contracts.channels import ChannelReplyContract
+from app.contracts.channels import ChannelReplyContract, TurnEnding
 from app.core.config.registry import HuginnConfig
 from app.features.agents.config import (
     AGENTS,
@@ -41,10 +41,17 @@ class StreamingTurns(TurnHandlerContract):
     requests: list[TurnRequest]
     answer: tuple[str, ...]
     fail: bool
+    ending: TurnEnding
 
-    def __init__(self, *answer: str, fail: bool = False) -> None:
+    def __init__(
+        self,
+        *answer: str,
+        fail: bool = False,
+        ending: TurnEnding = 'complete',
+    ) -> None:
         self.requests = []
         self.answer = answer or ('the ', 'answer')
+        self.ending = ending
         self.fail = fail
 
     @override
@@ -60,6 +67,9 @@ class StreamingTurns(TurnHandlerContract):
 
         if self.fail:
             raise RuntimeError('the model gave up')
+
+        if self.ending != 'complete':
+            await reply.unfinished(self.ending)
 
         await reply.finish()
 
@@ -216,6 +226,28 @@ async def test_a_turn_streams_its_whole_life_as_events() -> None:
         'delta',
         'done',
     ]
+
+
+async def test_a_turn_that_stopped_short_says_so_before_it_is_done() -> None:
+    turns = StreamingTurns(ending='timeout')
+
+    async with chat_client(make_config(api_key(agent='scout')), turns) as client:
+        response = await client.post(
+            _PATH,
+            headers={'Authorization': f'Bearer {_CREDENTIAL}'},
+            json={'message': 'hello'},
+        )
+
+    named = events(response.text)
+    assert [name for name, _ in named] == [
+        'opened',
+        'routed',
+        'delta',
+        'delta',
+        'unfinished',
+        'done',
+    ]
+    assert json.loads(dict(named)['unfinished']) == {'ending': 'timeout'}
 
 
 async def test_native_request_forwards_max_completion_tokens() -> None:

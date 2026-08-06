@@ -45,6 +45,23 @@ async def test_an_openai_stream_carries_chunks_and_a_done_sentinel() -> None:
     }
 
 
+# NOTE: this dialect has no way to say 'ran out of time', and 'length' is the nearest
+# true thing -- the answer really did stop before the model was finished
+async def test_an_openai_stream_that_stopped_short_finishes_on_length() -> None:
+    turns = StreamingTurns('He', ending='exhausted')
+
+    async with chat_client(make_config(api_key(agent='scout')), turns) as client:
+        response = await client.post(
+            _PATH,
+            headers=_AUTH,
+            json={'model': 'scout', 'messages': [], 'stream': True},
+        )
+
+    sent = payloads(response.text)
+    assert sent[-1] == '[DONE]'
+    assert json.loads(sent[-2])['choices'][0]['finish_reason'] == 'length'
+
+
 async def test_every_openai_chunk_shares_one_completion_id() -> None:
     turns = StreamingTurns('He', 'llo')
 

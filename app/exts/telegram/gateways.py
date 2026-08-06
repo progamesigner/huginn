@@ -11,6 +11,7 @@ from app.contracts.channels import (
     InboundAttachment,
     InboundMessage,
     ToolPhase,
+    TurnEnding,
 )
 from lib.http import HTTPClientContract
 from lib.temporal import ClockContract, Timer
@@ -27,6 +28,10 @@ _FAIL_EMOJI = '🤯'
 _FAIL_NOTE = (
     '\n\nSomething went wrong before I could finish this reply. Please ask again.'
 )
+_ENDING_NOTES: dict[TurnEnding, str] = {
+    'timeout': '\n\nI ran out of time before finishing this. Ask me to continue.',
+    'exhausted': '\n\nI used up every step I get for one reply. Ask me to continue.',
+}
 
 
 def _split(text: str, limit: int) -> tuple[str, str]:
@@ -116,6 +121,11 @@ class TelegramReply(ChannelReplyContract):
     @override
     async def on_tool(self, name: str, phase: ToolPhase) -> None:
         logger.debug('Tool %s %s', name, phase)
+
+    @override
+    async def unfinished(self, ending: TurnEnding) -> None:
+        if (note := _ENDING_NOTES.get(ending)) is not None:
+            self.pending += note
 
     async def _flush(self) -> None:
         while len(self.pending) > self.limit:

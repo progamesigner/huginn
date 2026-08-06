@@ -1,6 +1,5 @@
 from abc import ABC, abstractmethod
 from collections.abc import Callable, Sequence
-from contextlib import AbstractAsyncContextManager
 from typing import Protocol
 
 from app.contracts.channels import ChannelReplyContract, ToolPhase
@@ -26,22 +25,24 @@ class ToolSource(ABC):
     async def collect(self, agent: AgentConfig) -> Sequence[NamedTool]: ...
 
 
-class TranscriptContract(ABC):
-    @abstractmethod
-    async def history(self) -> tuple[Message, ...]: ...
-
-    @abstractmethod
-    async def record(self, prompts: Sequence[TurnPrompt], answer: str) -> None: ...
-
-
 class TranscriptStoreContract(ABC):
     @abstractmethod
-    def open(
+    async def history(
         self,
         channel: str,
         chat: str,
         agent: str,
-    ) -> AbstractAsyncContextManager[TranscriptContract]: ...
+    ) -> tuple[Message, ...]: ...
+
+    @abstractmethod
+    async def record(
+        self,
+        channel: str,
+        chat: str,
+        agent: str,
+        prompts: Sequence[TurnPrompt],
+        answer: str,
+    ) -> None: ...
 
     @abstractmethod
     async def maintain(

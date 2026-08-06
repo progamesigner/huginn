@@ -16,11 +16,14 @@ from .types import (
     TextEvent,
     ToolEvent,
     TurnEvent,
+    UnfinishedEvent,
 )
 
 _DONE = '[DONE]'
 _KEEPALIVE = 'ping'
 _TURN_FAILED = 'turn_failed'
+_OPENAI_UNFINISHED = 'length'
+_ANTHROPIC_UNFINISHED = 'max_tokens'
 
 
 def _payload(event: ServerSentEvent) -> str | None:
@@ -61,6 +64,8 @@ class NativePresenter(Presenter):
                     event='tool',
                     data={'name': name, 'phase': phase},
                 )
+            case UnfinishedEvent(ending=ending):
+                yield ServerSentEvent(event='unfinished', data={'ending': ending})
             case DoneEvent():
                 yield ServerSentEvent(event='done', data={})
             case ErrorEvent(message=message):
@@ -74,20 +79,24 @@ class OpenAIPresenter(Presenter):
     created: int
     model: str
     opened: bool
+    finish: str
 
     def __init__(self, id_: str, created: int, model: str) -> None:
         self.id = id_
         self.created = created
         self.model = model
         self.opened = False
+        self.finish = 'stop'
 
     @override
     def present(self, event: TurnEvent) -> Iterator[ServerSentEvent]:
         match event:
             case TextEvent(text=text):
                 yield self._chunk(self._delta(text))
+            case UnfinishedEvent():
+                self.finish = _OPENAI_UNFINISHED
             case DoneEvent():
-                yield self._chunk({}, finish='stop')
+                yield self._chunk({}, finish=self.finish)
                 yield ServerSentEvent(raw_data=_DONE)
             case ErrorEvent(message=message):
                 yield ServerSentEvent(
@@ -128,11 +137,13 @@ class AnthropicPresenter(Presenter):
     id: str
     model: str
     opened: bool
+    stop: str
 
     def __init__(self, id_: str, model: str) -> None:
         self.id = id_
         self.model = model
         self.opened = False
+        self.stop = 'end_turn'
 
     @override
     def present(self, event: TurnEvent) -> Iterator[ServerSentEvent]:
@@ -147,6 +158,8 @@ class AnthropicPresenter(Presenter):
                         'delta': {'type': 'text_delta', 'text': text},
                     },
                 )
+            case UnfinishedEvent():
+                self.stop = _ANTHROPIC_UNFINISHED
             case DoneEvent():
                 yield from self._open()
                 yield ServerSentEvent(
@@ -157,7 +170,7 @@ class AnthropicPresenter(Presenter):
                     event='message_delta',
                     data={
                         'type': 'message_delta',
-                        'delta': {'stop_reason': 'end_turn', 'stop_sequence': None},
+                        'delta': {'stop_reason': self.stop, 'stop_sequence': None},
                     },
                 )
                 yield ServerSentEvent(

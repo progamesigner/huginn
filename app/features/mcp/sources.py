@@ -4,7 +4,7 @@ from typing import override
 
 from app.features.agents.config import AgentConfig
 from app.features.agents.contracts import NamedTool, ToolSource
-from lib.mcp import MCPClientContract, UnknownMCPServerError
+from lib.mcp import MCPClientContract, MCPError
 
 from .bridge import build_mcp_tools
 
@@ -23,10 +23,12 @@ class MCPToolSource(ToolSource):
         for ref in agent.mcp:
             try:
                 infos = await self.client.list_tools(ref.server)
-            except UnknownMCPServerError:
+            except MCPError as error:
                 logger.warning(
-                    'agent references mcp server %r which is unavailable; skipping',
+                    'agent references mcp server %r which is unavailable;'
+                    ' skipping (%s)',
                     ref.server,
+                    error,
                 )
                 continue
 

@@ -19,6 +19,8 @@ logger = logging.getLogger(__name__)
 
 type Connector = Callable[[MCPServer], AbstractAsyncContextManager[ClientSession]]
 
+_RECONNECT_COOLDOWN = 30.0
+
 
 def streamable_http_connector(http: HTTPClientContract) -> Connector:
     @asynccontextmanager
@@ -54,34 +56,61 @@ def _render(result: CallToolResult) -> str:
 class _Connection:
     server: MCPServer
     connector: Connector
+    cooldown: float
     session: ClientSession | None
     task: asyncio.Task[None] | None
     ready: asyncio.Event
     stop: asyncio.Event
     error: BaseException | None
+    lock: asyncio.Lock
+    retry_at: float
 
-    def __init__(self, server: MCPServer, connector: Connector) -> None:
+    def __init__(
+        self,
+        server: MCPServer,
+        connector: Connector,
+        cooldown: float = _RECONNECT_COOLDOWN,
+    ) -> None:
         self.server = server
         self.connector = connector
+        self.cooldown = cooldown
         self.session = None
         self.task = None
         self.ready = asyncio.Event()
         self.stop = asyncio.Event()
         self.error = None
+        self.lock = asyncio.Lock()
+        self.retry_at = 0.0
 
-    async def start(self) -> None:
-        # NOTE: the session context must open and close in the same task
-        self.task = asyncio.create_task(self._serve())
-        await self.ready.wait()
-        if self.session is None:
-            raise MCPConnectionError(
-                f'{self.server.name}: {_describe(self.error)}',
-            ) from self.error
+    @property
+    def connected(self) -> bool:
+        return self.session is not None
 
     async def aclose(self) -> None:
         self.stop.set()
         if self.task is not None:
             await self.task
+            self.task = None
+
+    async def ensure(self) -> None:
+        if self.connected:
+            return
+
+        async with self.lock:
+            if self.connected:
+                return
+
+            loop = asyncio.get_running_loop()
+            if loop.time() < self.retry_at:
+                raise MCPConnectionError(f'{self.server.name}: not connected')
+
+            await self.aclose()
+            logger.info('Opening a session to MCP server %s', self.server.name)
+            try:
+                await self._launch()
+            except MCPConnectionError:
+                self.retry_at = loop.time() + self.cooldown
+                raise
 
     async def call_tool(self, tool: str, arguments: Mapping[str, JsonValue]) -> str:
         result = await self._require().call_tool(tool, dict(arguments))
@@ -97,6 +126,17 @@ class _Connection:
             )
             for tool in result.tools
         )
+
+    async def _launch(self) -> None:
+        self.error = None
+        self.ready = asyncio.Event()
+        self.stop = asyncio.Event()
+        self.task = asyncio.create_task(self._serve())
+        await self.ready.wait()
+        if self.session is None:
+            raise MCPConnectionError(
+                f'{self.server.name}: {_describe(self.error)}',
+            ) from self.error
 
     def _require(self) -> ClientSession:
         if self.session is None:
@@ -119,18 +159,20 @@ class _Connection:
 class MCPManager(MCPClientContract):
     connections: dict[str, _Connection]
     connector: Connector
-    degraded: list[str]
     servers: tuple[MCPServer, ...]
 
     def __init__(
         self,
         servers: Sequence[MCPServer],
         connector: Connector,
+        cooldown: float = _RECONNECT_COOLDOWN,
     ) -> None:
-        self.connections = {}
         self.connector = connector
-        self.degraded = []
         self.servers = tuple(servers)
+        self.connections = {
+            server.name: _Connection(server, connector, cooldown)
+            for server in self.servers
+        }
 
     async def dispose(self) -> None:
         await asyncio.gather(
@@ -139,7 +181,9 @@ class MCPManager(MCPClientContract):
         self.connections.clear()
 
     async def start(self) -> None:
-        await asyncio.gather(*(self._connect(server) for server in self.servers))
+        await asyncio.gather(
+            *(self._connect(connection) for connection in self.connections.values()),
+        )
 
     @override
     async def call_tool(
@@ -148,33 +192,36 @@ class MCPManager(MCPClientContract):
         tool: str,
         arguments: Mapping[str, JsonValue],
     ) -> str:
-        return await self._connection(server).call_tool(tool, arguments)
+        connection = self._connection(server)
+        await connection.ensure()
+        return await connection.call_tool(tool, arguments)
 
     @override
     async def list_tools(self, server: str) -> tuple[MCPToolInfo, ...]:
-        return await self._connection(server).list_tools()
+        connection = self._connection(server)
+        await connection.ensure()
+        return await connection.list_tools()
 
     @override
     def unavailable(self) -> tuple[str, ...]:
-        return tuple(self.degraded)
+        return tuple(
+            name
+            for name, connection in self.connections.items()
+            if not connection.connected
+        )
 
-    async def _connect(self, server: MCPServer) -> None:
-        connection = _Connection(server, self.connector)
+    async def _connect(self, connection: _Connection) -> None:
         try:
-            await connection.start()
+            await connection.ensure()
         except MCPConnectionError as error:
             # NOTE: not fail to boot because a tool server is briefly unreachable
             logger.warning(
                 'MCP server %s is unavailable; its tools will be absent (%s)',
-                server.name,
+                connection.server.name,
                 error,
             )
-            self.degraded.append(server.name)
-            return
-
-        self.connections[server.name] = connection
 
     def _connection(self, server: str) -> _Connection:
         if server not in self.connections:
-            raise UnknownMCPServerError(f'mcp server {server!r} is not connected')
+            raise UnknownMCPServerError(f'mcp server {server!r} is not configured')
         return self.connections[server]

@@ -7,7 +7,7 @@ from typing import override
 
 from pydantic import BaseModel, ConfigDict, JsonValue, ValidationError
 
-from app.contracts.channels import AttachmentKind
+from app.contracts.channels import AttachmentKind, TurnEnding
 from lib.llm import Adapter, Message, ToolCallSegment, ToolResultSegment
 
 from .config import AgentConfig
@@ -117,8 +117,12 @@ class TurnInput:
 @dataclass(frozen=True)
 class TurnOutput:
     text: str
-    completed: bool = True
+    ending: TurnEnding = 'complete'
     steps: tuple[Step, ...] = ()
+
+    @property
+    def completed(self) -> bool:
+        return self.ending == 'complete'
 
 
 class ToolParams(BaseModel):

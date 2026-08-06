@@ -3,7 +3,7 @@ from typing import Annotated, Literal
 
 from pydantic import AliasChoices, Field
 
-from app.contracts.channels import ToolPhase
+from app.contracts.channels import ToolPhase, TurnEnding
 from app.core.schema import AppRequest, AppResponse
 
 
@@ -113,6 +113,11 @@ class ToolEvent:
 
 
 @dataclass(frozen=True)
+class UnfinishedEvent:
+    ending: TurnEnding
+
+
+@dataclass(frozen=True)
 class DoneEvent:
     pass
 
@@ -132,6 +137,7 @@ type TurnEvent = (
     | RoutedEvent
     | TextEvent
     | ToolEvent
+    | UnfinishedEvent
     | DoneEvent
     | ErrorEvent
     | PingEvent

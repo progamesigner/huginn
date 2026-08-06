@@ -1,6 +1,6 @@
 import logging
 from collections.abc import AsyncIterator, Sequence
-from contextlib import AbstractAsyncContextManager, asynccontextmanager
+from contextlib import asynccontextmanager
 from typing import override
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -12,10 +12,7 @@ from app.features.agents.config import (
     load_instructions,
     resolve_model,
 )
-from app.features.agents.contracts import (
-    TranscriptContract,
-    TranscriptStoreContract,
-)
+from app.features.agents.contracts import TranscriptStoreContract
 from app.features.agents.types import PromptAttachment, TurnPrompt
 from lib.database import DatabaseContract
 from lib.guid import GUIDContract
@@ -42,7 +39,7 @@ _TEXT = 'text'
 logger = logging.getLogger(__name__)
 
 
-class ConversationTranscript(TranscriptContract):
+class ConversationTranscript:
     blobs: BlobStoreContract
     conversation: Conversation
     repository: ConversationRepository
@@ -57,7 +54,6 @@ class ConversationTranscript(TranscriptContract):
         self.conversation = conversation
         self.repository = repository
 
-    @override
     async def history(self) -> tuple[Message, ...]:
         payload = await self.repository.load_current_summary(self.conversation)
         turns = await self.repository.load_turns_since_summary(self.conversation)
@@ -72,7 +68,6 @@ class ConversationTranscript(TranscriptContract):
             *replay_messages(turns),
         )
 
-    @override
     async def record(self, prompts: Sequence[TurnPrompt], answer: str) -> None:
         parts = []
         for prompt in prompts:
@@ -199,13 +194,26 @@ class ConversationTranscriptStore(TranscriptStoreContract):
         self.llm = llm
 
     @override
-    def open(
+    async def history(
         self,
         channel: str,
         chat: str,
         agent: str,
-    ) -> AbstractAsyncContextManager[TranscriptContract]:
-        return self._open(channel, chat, agent)
+    ) -> tuple[Message, ...]:
+        async with self._open(channel, chat, agent) as transcript:
+            return await transcript.history()
+
+    @override
+    async def record(
+        self,
+        channel: str,
+        chat: str,
+        agent: str,
+        prompts: Sequence[TurnPrompt],
+        answer: str,
+    ) -> None:
+        async with self._open(channel, chat, agent) as transcript:
+            await transcript.record(prompts, answer)
 
     @override
     async def maintain(
@@ -236,7 +244,7 @@ class ConversationTranscriptStore(TranscriptStoreContract):
         channel: str,
         chat: str,
         agent: str,
-    ) -> AsyncIterator[TranscriptContract]:
+    ) -> AsyncIterator[ConversationTranscript]:
         async with self.database.session() as session, session.begin():
             repository = self._repository(session)
             conversation = await repository.get_or_create(channel, chat, agent)
