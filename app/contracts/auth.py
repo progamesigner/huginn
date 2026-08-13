@@ -7,6 +7,7 @@ class ApiRouting:
     fallback: str
     model: str | None = None
     provider: str | None = None
+    allowed: frozenset[str] = field(default_factory=frozenset)
 
 
 @dataclass(frozen=True)

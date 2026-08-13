@@ -372,7 +372,12 @@ async def test_a_key_that_pins_no_agent_and_cannot_route_is_a_bad_request() -> N
 
 async def test_a_key_with_a_router_leaves_the_agent_to_the_router() -> None:
     turns = StreamingTurns()
-    key = api_key(router=ApiKeyRouterConfig(fallback='concierge'))
+    key = api_key(
+        router=ApiKeyRouterConfig(
+            fallback='concierge',
+            allowed=('scout', 'concierge'),
+        ),
+    )
 
     async with chat_client(make_config(key), turns) as client:
         response = await client.post(

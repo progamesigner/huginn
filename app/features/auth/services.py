@@ -24,6 +24,7 @@ def _client(name: str, key: ApiKeyConfig) -> ApiClient:
                 fallback=key.router.fallback,
                 model=key.router.model,
                 provider=key.router.provider,
+                allowed=frozenset(key.router.allowed),
             )
         ),
         denied_tools=frozenset(() if key.tools is None else key.tools.deny),

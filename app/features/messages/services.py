@@ -49,6 +49,7 @@ def _policy(agent: str | None, client: ApiClient) -> RoutingPolicy:
                 fallback=client.routing.fallback,
                 model=client.routing.model,
                 provider=client.routing.provider,
+                allowed=client.routing.allowed,
             )
         ),
         allowed=client.agents,

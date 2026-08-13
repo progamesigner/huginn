@@ -24,7 +24,11 @@ def test_a_known_token_resolves_to_the_client_that_carries_it() -> None:
             token=SecretStr('web-token'),
             agents=('scout', 'concierge'),
             agent='scout',
-            router=ApiKeyRouterConfig(fallback='concierge', model='gpt-5-mini'),
+            router=ApiKeyRouterConfig(
+                fallback='concierge',
+                allowed=('scout', 'concierge'),
+                model='gpt-5-mini',
+            ),
             tools=ApiKeyToolsConfig(deny=('dangerous-tool',)),
         ),
     ).authenticate('web-token')
@@ -33,7 +37,11 @@ def test_a_known_token_resolves_to_the_client_that_carries_it() -> None:
     assert resolved.key == 'web'
     assert resolved.agents == frozenset({'scout', 'concierge'})
     assert resolved.agent == 'scout'
-    assert resolved.routing == ApiRouting(fallback='concierge', model='gpt-5-mini')
+    assert resolved.routing == ApiRouting(
+        fallback='concierge',
+        model='gpt-5-mini',
+        allowed=frozenset({'scout', 'concierge'}),
+    )
     assert resolved.denied_tools == frozenset({'dangerous-tool'})
 
 

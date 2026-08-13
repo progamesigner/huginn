@@ -17,14 +17,18 @@ from app.features.agents.exceptions import (
 )
 
 from .exceptions import (
+    ConflictingApiKeyAgentError,
+    DuplicateApiKeyAgentError,
     DuplicateApiKeyTokenError,
     EmptyApiKeyTokenError,
+    IncompleteApiKeyRoutingError,
     MissingApiKeyAgentsError,
 )
 
 
 class ApiKeyRouterConfig(ConfigValue):
     fallback: Annotated[str, Field()]
+    allowed: Annotated[tuple[str, ...], Field()] = ()
     model: Annotated[str | None, Field()] = None
     provider: Annotated[str | None, Field()] = None
 
@@ -61,6 +65,26 @@ def _validate_agent_reference(config: HuginnConfig, path: str, agent: str) -> No
         raise UnknownAgentReferenceError(f'{path}: unknown agent {agent!r}')
 
 
+def _duplicate_name(values: tuple[str, ...]) -> str | None:
+    seen = set()
+    for value in values:
+        if value in seen:
+            return value
+        seen.add(value)
+    return None
+
+
+def _validate_agent_names(
+    config: HuginnConfig,
+    values: tuple[str, ...],
+    path: str,
+) -> None:
+    if (duplicate := _duplicate_name(values)) is not None:
+        raise DuplicateApiKeyAgentError(f'{path}: duplicate agent {duplicate!r}')
+    for index, agent_name in enumerate(values):
+        _validate_agent_reference(config, f'{path}[{index}]', agent_name)
+
+
 def _validate_api_keys(config: HuginnConfig) -> None:
     tokens = {}
 
@@ -79,14 +103,30 @@ def _validate_api_keys(config: HuginnConfig) -> None:
             raise MissingApiKeyAgentsError(
                 f'{base}.agents: at least one agent is required',
             )
+        _validate_agent_names(config, key.agents, f'{base}.agents')
 
-        for index, agent in enumerate(key.agents):
-            _validate_agent_reference(config, f'{base}.agents[{index}]', agent)
-
-        _validate_allowed(key, base, 'agent', key.agent)
+        if key.agent is not None and key.router is not None:
+            raise ConflictingApiKeyAgentError(
+                f'{base}: agent and router cannot both be configured',
+            )
+        if key.agent is not None:
+            _validate_allowed(key, base, 'agent', key.agent)
         if key.router is not None:
-            _validate_allowed(key, base, 'router.fallback', key.router.fallback)
             router = f'{base}.router'
+            if not key.router.allowed:
+                raise IncompleteApiKeyRoutingError(
+                    f'{router}.allowed: at least one candidate is required',
+                )
+            _validate_agent_names(config, key.router.allowed, f'{router}.allowed')
+            if not set(key.router.allowed).issubset(key.agents):
+                raise UnknownAgentReferenceError(
+                    f'{router}.allowed: candidates must be in {base}.agents',
+                )
+            _validate_allowed(key, base, 'router.fallback', key.router.fallback)
+            if key.router.fallback not in key.router.allowed:
+                raise UnknownAgentReferenceError(
+                    f'{router}.fallback: {key.router.fallback!r} is not in {router}.allowed',
+                )
             try:
                 ref = resolve_selection(
                     key.router.provider,

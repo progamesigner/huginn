@@ -26,8 +26,11 @@ from app.features.auth.config import (
     ApiKeyToolsConfig,
 )
 from app.features.auth.exceptions import (
+    ConflictingApiKeyAgentError,
+    DuplicateApiKeyAgentError,
     DuplicateApiKeyTokenError,
     EmptyApiKeyTokenError,
+    IncompleteApiKeyRoutingError,
     MissingApiKeyAgentsError,
 )
 
@@ -93,7 +96,6 @@ def test_an_absent_section_leaves_the_api_closed_rather_than_open() -> None:
 def test_a_key_carries_its_agents_and_optional_knobs() -> None:
     configured = key(
         agent='scout',
-        router=ApiKeyRouterConfig(fallback='concierge', model='gpt-5-mini'),
         tools=ApiKeyToolsConfig(deny=('dangerous-tool',)),
     )
     config = make_config({'web-frontend': configured})
@@ -102,10 +104,7 @@ def test_a_key_carries_its_agents_and_optional_knobs() -> None:
 
     assert configured.agents == ('scout', 'concierge')
     assert configured.agent == 'scout'
-    assert configured.router == ApiKeyRouterConfig(
-        fallback='concierge',
-        model='gpt-5-mini',
-    )
+    assert configured.router is None
     assert configured.tools == ApiKeyToolsConfig(deny=('dangerous-tool',))
 
 
@@ -113,6 +112,7 @@ def test_a_router_may_pin_the_provider_that_answers() -> None:
     configured = key(
         router=ApiKeyRouterConfig(
             fallback='concierge',
+            allowed=('scout', 'concierge'),
             model='claude-sonnet-5',
             provider='bifrost',
         ),
@@ -133,7 +133,11 @@ def test_a_router_may_pin_the_provider_that_answers() -> None:
 
 def test_a_router_rejects_an_unknown_provider() -> None:
     configured = key(
-        router=ApiKeyRouterConfig(fallback='concierge', provider='ghost'),
+        router=ApiKeyRouterConfig(
+            fallback='concierge',
+            allowed=('scout', 'concierge'),
+            provider='ghost',
+        ),
     )
     config = make_config({'web-frontend': configured})
 
@@ -148,6 +152,7 @@ def test_a_router_rejects_a_model_the_named_provider_does_not_offer() -> None:
     configured = key(
         router=ApiKeyRouterConfig(
             fallback='concierge',
+            allowed=('scout', 'concierge'),
             model='claude-sonnet-5',
             provider='openai',
         ),
@@ -236,8 +241,8 @@ def test_the_router_fallback_must_be_in_the_allowed_list() -> None:
     config = make_config(
         {
             'web-frontend': key(
-                agents=('scout',),
-                router=ApiKeyRouterConfig(fallback='concierge'),
+                agents=('scout', 'concierge'),
+                router=ApiKeyRouterConfig(fallback='concierge', allowed=('scout',)),
             ),
         },
     )
@@ -248,11 +253,69 @@ def test_the_router_fallback_must_be_in_the_allowed_list() -> None:
 
 def test_a_router_without_a_model_anywhere_is_rejected() -> None:
     config = make_config(
-        {'web-frontend': key(router=ApiKeyRouterConfig(fallback='concierge'))},
+        {
+            'web-frontend': key(
+                router=ApiKeyRouterConfig(
+                    fallback='concierge',
+                    allowed=('scout', 'concierge'),
+                ),
+            ),
+        },
         model=None,
     )
 
     with pytest.raises(MissingModelError, match=re.escape('router.model')):
+        validate(config)
+
+
+def test_a_key_cannot_configure_an_agent_and_a_router_together() -> None:
+    config = make_config(
+        {
+            'web-frontend': key(
+                agent='scout',
+                router=ApiKeyRouterConfig(
+                    fallback='concierge',
+                    allowed=('scout', 'concierge'),
+                ),
+            ),
+        },
+    )
+
+    with pytest.raises(ConflictingApiKeyAgentError, match='cannot both'):
+        validate(config)
+
+
+def test_a_router_requires_at_least_one_candidate() -> None:
+    config = make_config(
+        {'web-frontend': key(router=ApiKeyRouterConfig(fallback='scout'))},
+    )
+
+    with pytest.raises(IncompleteApiKeyRoutingError, match=r'router.allowed'):
+        validate(config)
+
+
+def test_a_key_rejects_duplicate_agent_names() -> None:
+    config = make_config(
+        {'web-frontend': key(agents=('scout', 'scout'))},
+    )
+
+    with pytest.raises(DuplicateApiKeyAgentError, match='duplicate agent'):
+        validate(config)
+
+
+def test_a_router_rejects_duplicate_candidate_names() -> None:
+    config = make_config(
+        {
+            'web-frontend': key(
+                router=ApiKeyRouterConfig(
+                    fallback='scout',
+                    allowed=('scout', 'scout'),
+                ),
+            ),
+        },
+    )
+
+    with pytest.raises(DuplicateApiKeyAgentError, match='duplicate agent'):
         validate(config)
 
 
