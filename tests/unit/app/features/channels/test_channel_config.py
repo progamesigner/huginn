@@ -6,7 +6,9 @@ from app.features.channels.config import (
     TRANSCRIPTION,
     ChannelConfig,
     ChannelConfigList,
+    ChannelRouterConfig,
     TranscriptionConfig,
+    _describe_channels,
 )
 from app.features.channels.exceptions import (
     IncompleteTranscriptionError,
@@ -37,6 +39,17 @@ def test_channels_support_multiple_named_telegram_instances() -> None:
     assert config.root['support_bot'].agent == 'support'
     assert config.root['research_bot'].agent == 'research'
     assert 'support-token' not in config.model_dump_json()
+
+
+def test_channel_schema_rejects_removed_bindings() -> None:
+    with pytest.raises(ValidationError, match='bindings'):
+        TelegramChannelConfig.model_validate(
+            {
+                'kind': 'telegram',
+                'token': 'token',
+                'bindings': {'42': 'scout'},
+            },
+        )
 
 
 def test_telegram_channel_requires_token() -> None:
@@ -103,3 +116,35 @@ def test_base_channel_config_is_not_telegram_specific() -> None:
     channel = ChannelConfig(kind='custom', agent='scout')
 
     assert channel.kind == 'custom'
+
+
+def test_channel_summary_describes_pinned_and_router_channels() -> None:
+    config = HuginnConfig(
+        sections={
+            'channels': ChannelConfigList(
+                {
+                    'support_bot': TelegramChannelConfig(
+                        kind='telegram',
+                        token=SecretStr('support-token'),
+                        secret_token=SecretStr('support-secret'),
+                        agent='scout',
+                    ),
+                    'research_bot': TelegramChannelConfig(
+                        kind='telegram',
+                        token=SecretStr('research-token'),
+                        secret_token=SecretStr('research-secret'),
+                        agents=('scout', 'concierge'),
+                        router=ChannelRouterConfig(
+                            fallback='concierge',
+                            allowed=('scout', 'concierge'),
+                        ),
+                    ),
+                },
+            ),
+        },
+    )
+
+    assert _describe_channels(config) == [
+        'channels: research_bot (telegram, router, 2 candidates), '
+        'support_bot (telegram, agent=scout)',
+    ]

@@ -86,18 +86,24 @@ def _defaults(model: str | None = None, provider: str | None = None) -> Defaults
 def _selection(
     model: str | None = None,
     provider: str | None = None,
+    allowed: frozenset[str] = frozenset(),
 ) -> SelectionPolicy:
-    return SelectionPolicy(fallback='concierge', model=model, provider=provider)
+    return SelectionPolicy(
+        fallback='concierge',
+        model=model,
+        provider=provider,
+        allowed=allowed,
+    )
 
 
 def _saying(text: str) -> FakeClient:
     return FakeClient([TextChunk(text=text)])
 
 
-async def test_resolve_returns_bound_agent_without_calling_the_llm() -> None:
+async def test_resolve_returns_pinned_agent_without_calling_the_llm() -> None:
     agents = _agents()
     llm = FakeLLM(_saying('scout'))
-    policy = RoutingPolicy(bindings={'123': 'scout'}, selection=_selection())
+    policy = RoutingPolicy(agent='scout')
 
     agent = await Router(agents, llm, _defaults('default-model')).resolve(
         policy,
@@ -264,21 +270,21 @@ async def test_resolve_inherits_the_default_provider_with_the_default_model() ->
     assert llm.refs == [ModelRef(model='default-model', provider='openai')]
 
 
-async def test_resolve_raises_when_unbound_and_no_selection_policy() -> None:
+async def test_resolve_raises_when_no_agent_or_selection_policy() -> None:
     agents = _agents()
-    policy = RoutingPolicy(bindings={'123': 'scout'})
+    policy = RoutingPolicy()
 
     with pytest.raises(UnroutableError, match='999'):
         await Router(agents, FakeLLM()).resolve(policy, '999', 'hello')
 
 
-async def test_resolve_offers_the_router_only_the_agents_the_caller_may_reach() -> None:
+async def test_resolve_offers_the_router_only_its_allowed_candidates() -> None:
     # NOTE: narrowing the pool is what makes an out-of-permission choice impossible
     # rather than merely rejected -- the model never sees the agent it may not pick
     client = _saying('concierge')
     policy = RoutingPolicy(
-        selection=_selection(),
-        allowed=frozenset({'concierge'}),
+        selection=_selection(allowed=frozenset({'concierge'})),
+        allowed=frozenset({'scout', 'concierge'}),
     )
 
     routed = await Router(
@@ -296,16 +302,6 @@ async def test_resolve_offers_the_router_only_the_agents_the_caller_may_reach() 
     assert 'concierge' in prompt.text
     assert 'scout' not in prompt.text
     assert routed.name == 'concierge'
-
-
-async def test_resolve_refuses_a_binding_outside_what_the_caller_may_reach() -> None:
-    policy = RoutingPolicy(
-        bindings={'123': 'scout'},
-        allowed=frozenset({'concierge'}),
-    )
-
-    with pytest.raises(UnroutableError, match='scout'):
-        await Router(_agents(), FakeLLM()).resolve(policy, '123', 'hello')
 
 
 async def test_resolve_refuses_a_pinned_agent_outside_what_the_caller_may_reach() -> (

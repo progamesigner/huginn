@@ -36,8 +36,7 @@ channels:
     kind: telegram
     token: telegram-token
     secret_token: telegram-secret
-    bindings:
-      '42': scout
+    agent: scout
 """
 
 

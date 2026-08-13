@@ -48,7 +48,12 @@ from app.features.channels.config import (
     _validate_channels,
 )
 from app.features.channels.config import build_sections as build_channel_sections
-from app.features.channels.exceptions import DuplicateChannelSecretError
+from app.features.channels.exceptions import (
+    ConflictingChannelAgentError,
+    DuplicateChannelAgentError,
+    DuplicateChannelSecretError,
+    IncompleteChannelRoutingError,
+)
 from app.features.channels.registry import ChannelRegistry
 from app.features.channels.telegram.config import TelegramChannelConfig
 from app.features.mcp.config import (
@@ -376,8 +381,7 @@ def test_load_config_resolves_env_and_value_from_then_validates(
         '    kind: telegram\n'
         '    token: ${TELEGRAM_BOT_TOKEN}\n'
         '    secret_token: ${TELEGRAM_WEBHOOK_SECRET}\n'
-        "    bindings: {'12345': scout}\n"
-        '    router: {fallback: scout}\n',
+        '    router: {fallback: scout, allowed: [scout]}\n',
     )
 
     config = load_config(
@@ -404,7 +408,9 @@ def test_load_config_resolves_env_and_value_from_then_validates(
     assert config.section(DEFAULTS).model == 'claude-sonnet-5'
     assert websearch.api_key.get_secret_value() == 'felo-secret'
     assert agents['scout'].instructions == 'You speak for claude-sonnet-5.'
-    assert channels.root['support_bot'].bindings['12345'] == 'scout'
+    router = channels.root['support_bot'].router
+    assert router is not None
+    assert router.allowed == ('scout',)
     assert providers['openai'].api_key.get_secret_value() == 'openai-secret'
 
 
@@ -527,8 +533,7 @@ def test_validators_accept_a_fully_consistent_config() -> None:
         channels=ChannelConfigList(
             {
                 'support_bot': telegram_channel(
-                    bindings={'12345': 'scout'},
-                    router=ChannelRouterConfig(fallback='scout'),
+                    router=ChannelRouterConfig(fallback='scout', allowed=('scout',)),
                 ),
             },
         ),
@@ -722,7 +727,7 @@ def test_validate_channels_requires_an_effective_router_model() -> None:
         channels=ChannelConfigList(
             {
                 'support_bot': telegram_channel(
-                    router=ChannelRouterConfig(fallback='scout'),
+                    router=ChannelRouterConfig(fallback='scout', allowed=('scout',)),
                 ),
             },
         ),
@@ -733,15 +738,152 @@ def test_validate_channels_requires_an_effective_router_model() -> None:
         _validate_channels(config, build_channel_registry())
 
 
-def test_validate_channels_rejects_unknown_binding_agent() -> None:
+def test_validate_channels_requires_a_route() -> None:
+    config = build_app_config(
+        agents={'scout': build_agent()},
+        channels=ChannelConfigList({'support_bot': telegram_channel()}),
+    )
+
+    with pytest.raises(IncompleteChannelRoutingError, match='exactly one'):
+        _validate_channels(config, build_channel_registry())
+
+
+def test_validate_channels_rejects_conflicting_routes() -> None:
     config = build_app_config(
         agents={'scout': build_agent()},
         channels=ChannelConfigList(
-            {'support_bot': telegram_channel(bindings={'42': 'ghost'})},
+            {
+                'support_bot': telegram_channel(
+                    agent='scout',
+                    router=ChannelRouterConfig(fallback='scout', allowed=('scout',)),
+                ),
+            },
         ),
     )
 
-    with pytest.raises(UnknownAgentReferenceError, match='bindings'):
+    with pytest.raises(ConflictingChannelAgentError, match='cannot both'):
+        _validate_channels(config, build_channel_registry())
+
+
+def test_validate_channels_rejects_duplicate_agent_names() -> None:
+    config = build_app_config(
+        agents={'scout': build_agent()},
+        channels=ChannelConfigList(
+            {'support_bot': telegram_channel(agent='scout', agents=('scout', 'scout'))},
+        ),
+    )
+
+    with pytest.raises(DuplicateChannelAgentError, match='duplicate agent'):
+        _validate_channels(config, build_channel_registry())
+
+
+def test_validate_channels_requires_router_candidates() -> None:
+    config = build_app_config(
+        agents={'scout': build_agent()},
+        channels=ChannelConfigList(
+            {
+                'support_bot': telegram_channel(
+                    router=ChannelRouterConfig(fallback='scout'),
+                ),
+            },
+        ),
+    )
+
+    with pytest.raises(IncompleteChannelRoutingError, match=r'router.allowed'):
+        _validate_channels(config, build_channel_registry())
+
+
+def test_validate_channels_rejects_duplicate_router_candidates() -> None:
+    config = build_app_config(
+        agents={'scout': build_agent()},
+        channels=ChannelConfigList(
+            {
+                'support_bot': telegram_channel(
+                    router=ChannelRouterConfig(
+                        fallback='scout',
+                        allowed=('scout', 'scout'),
+                    ),
+                ),
+            },
+        ),
+    )
+
+    with pytest.raises(DuplicateChannelAgentError, match='duplicate agent'):
+        _validate_channels(config, build_channel_registry())
+
+
+def test_validate_channels_rejects_unknown_allowlisted_agent() -> None:
+    config = build_app_config(
+        agents={'scout': build_agent()},
+        channels=ChannelConfigList(
+            {'support_bot': telegram_channel(agent='scout', agents=('scout', 'ghost'))},
+        ),
+    )
+
+    with pytest.raises(
+        UnknownAgentReferenceError,
+        match=r'channels\.support_bot\.agents\[1\]',
+    ):
+        _validate_channels(config, build_channel_registry())
+
+
+def test_validate_channels_rejects_default_outside_allowlist() -> None:
+    config = build_app_config(
+        agents={'scout': build_agent(), 'concierge': build_agent()},
+        channels=ChannelConfigList(
+            {'support_bot': telegram_channel(agents=('scout',), agent='concierge')},
+        ),
+    )
+
+    with pytest.raises(
+        UnknownAgentReferenceError,
+        match=r'channels\.support_bot\.agent: .+agents',
+    ):
+        _validate_channels(config, build_channel_registry())
+
+
+def test_validate_channels_rejects_router_candidates_outside_allowlist() -> None:
+    config = build_app_config(
+        agents={'scout': build_agent(), 'concierge': build_agent()},
+        channels=ChannelConfigList(
+            {
+                'support_bot': telegram_channel(
+                    agents=('scout',),
+                    router=ChannelRouterConfig(
+                        fallback='concierge',
+                        allowed=('scout', 'concierge'),
+                        model='model',
+                    ),
+                ),
+            },
+        ),
+    )
+
+    with pytest.raises(UnknownAgentReferenceError, match=r'router.allowed: .+agents'):
+        _validate_channels(config, build_channel_registry())
+
+
+def test_validate_channels_rejects_router_fallback_outside_allowlist() -> None:
+    config = build_app_config(
+        agents={'scout': build_agent(), 'concierge': build_agent()},
+        channels=ChannelConfigList(
+            {
+                'support_bot': telegram_channel(
+                    agents=('scout',),
+                    router=ChannelRouterConfig(
+                        fallback='concierge',
+                        allowed=('scout',),
+                        model='model',
+                    ),
+                ),
+            },
+        ),
+    )
+
+    with pytest.raises(
+        UnknownAgentReferenceError,
+        match=r'channels.support_bot.router.fallback: .+allowed',
+    ):
         _validate_channels(config, build_channel_registry())
 
 
@@ -751,7 +893,7 @@ def test_validate_channels_rejects_unknown_router_fallback() -> None:
         channels=ChannelConfigList(
             {
                 'support_bot': telegram_channel(
-                    router=ChannelRouterConfig(fallback='ghost'),
+                    router=ChannelRouterConfig(fallback='ghost', allowed=('scout',)),
                 ),
             },
         ),
@@ -786,7 +928,11 @@ def test_validate_channels_accepts_a_router_without_any_provider_configured() ->
         channels=ChannelConfigList(
             {
                 'support_bot': telegram_channel(
-                    router=ChannelRouterConfig(fallback='scout', model='gpt-5-mini'),
+                    router=ChannelRouterConfig(
+                        fallback='scout',
+                        allowed=('scout',),
+                        model='gpt-5-mini',
+                    ),
                 ),
             },
         ),

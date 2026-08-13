@@ -75,10 +75,6 @@ class Router:
         message: str,
     ) -> RoutedAgent:
         routable = self._routable(policy)
-        if (name := policy.bindings.get(chat_id)) is not None:
-            logger.info('Routed chat %s to agent %r via binding', chat_id, name)
-            return self._routed(name, routable)
-
         if policy.agent is not None:
             logger.info(
                 'Routed chat %s to agent %r via channel default',
@@ -89,13 +85,25 @@ class Router:
 
         if (selection := policy.selection) is None:
             raise UnroutableError(
-                f'chat {chat_id!r} has no binding and the channel defines no router',
+                f'chat {chat_id!r} has no agent and no router',
             )
 
         return self._routed(
             await self._select(selection, chat_id, message, routable),
             routable,
         )
+
+    def _candidates(
+        self,
+        selection: SelectionPolicy,
+        routable: Mapping[str, AgentConfig],
+    ) -> Mapping[str, AgentConfig]:
+        if not selection.allowed:
+            return routable
+
+        return {
+            name: agent for name, agent in routable.items() if name in selection.allowed
+        }
 
     def _routable(self, policy: RoutingPolicy) -> Mapping[str, AgentConfig]:
         if not policy.allowed:
@@ -118,7 +126,8 @@ class Router:
         message: str,
         routable: Mapping[str, AgentConfig],
     ) -> str:
-        choice = await self._ask(selection, message, routable)
+        candidates = self._candidates(selection, routable)
+        choice = await self._ask(selection, message, candidates)
         if choice is not None:
             logger.info('Router LLM chose agent %r for chat %s', choice, chat_id)
             return choice

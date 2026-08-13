@@ -30,7 +30,10 @@ from app.features.agents.exceptions import (
 from app.features.agents.types import RoutingPolicy, SelectionPolicy
 
 from .exceptions import (
+    ConflictingChannelAgentError,
+    DuplicateChannelAgentError,
     DuplicateChannelSecretError,
+    IncompleteChannelRoutingError,
     IncompleteTranscriptionError,
     UnknownChannelKindError,
 )
@@ -41,6 +44,7 @@ type TranscriptionKind = Literal['openai']
 
 class ChannelRouterConfig(ConfigValue):
     fallback: Annotated[str, Field()]
+    allowed: Annotated[tuple[str, ...], Field()] = ()
     model: Annotated[str | None, Field()] = None
     provider: Annotated[str | None, Field()] = None
 
@@ -55,7 +59,7 @@ class TranscriptionConfig(ConfigValue):
 class ChannelConfig(ConfigValue):
     kind: Annotated[str, Field()]
     agent: Annotated[str | None, Field()] = None
-    bindings: Annotated[dict[str, str], Field()] = Field(default_factory=dict)
+    agents: Annotated[tuple[str, ...], Field()] = ()
     router: Annotated[ChannelRouterConfig | None, Field()] = None
 
 
@@ -94,7 +98,14 @@ def _describe_channels(config: HuginnConfig) -> list[str]:
         return []
 
     entries = ', '.join(
-        f'{name} ({channel.kind})' for name, channel in sorted(channels.items())
+        f'{name} ({channel.kind}, agent={channel.agent})'
+        if channel.agent is not None
+        else (
+            f'{name} ({channel.kind}, router, {len(channel.router.allowed)} candidates)'
+            if channel.router is not None
+            else f'{name} ({channel.kind})'
+        )
+        for name, channel in sorted(channels.items())
     )
     return [f'channels: {entries}']
 
@@ -123,7 +134,6 @@ def _validate_transcription(config: HuginnConfig) -> None:
 
 def routing_policy(channel: ChannelConfig) -> RoutingPolicy:
     return RoutingPolicy(
-        bindings=channel.bindings,
         agent=channel.agent,
         selection=(
             None
@@ -132,8 +142,10 @@ def routing_policy(channel: ChannelConfig) -> RoutingPolicy:
                 fallback=channel.router.fallback,
                 model=channel.router.model,
                 provider=channel.router.provider,
+                allowed=frozenset(channel.router.allowed),
             )
         ),
+        allowed=frozenset(channel.agents),
     )
 
 
@@ -148,6 +160,26 @@ def _validate_agent_reference(
 ) -> None:
     if agent_name not in agents:
         raise UnknownAgentReferenceError(f'{path}: unknown agent {agent_name!r}')
+
+
+def _duplicate_name(values: tuple[str, ...]) -> str | None:
+    seen = set()
+    for value in values:
+        if value in seen:
+            return value
+        seen.add(value)
+    return None
+
+
+def _validate_agent_names(
+    agents: Mapping[str, object],
+    values: tuple[str, ...],
+    path: str,
+) -> None:
+    if (duplicate := _duplicate_name(values)) is not None:
+        raise DuplicateChannelAgentError(f'{path}: duplicate agent {duplicate!r}')
+    for index, agent_name in enumerate(values):
+        _validate_agent_reference(agents, f'{path}[{index}]', agent_name)
 
 
 def _validate_channels(config: HuginnConfig, registry: ChannelRegistry) -> None:
@@ -170,23 +202,45 @@ def _validate_channels(config: HuginnConfig, registry: ChannelRegistry) -> None:
                     f'{base}.secret_token: duplicates channels.{owner}',
                 )
 
+        if channel.agent is not None and channel.router is not None:
+            raise ConflictingChannelAgentError(
+                f'{base}: agent and router cannot both be configured',
+            )
+        if channel.agent is None and channel.router is None:
+            raise IncompleteChannelRoutingError(
+                f'{base}: exactly one of agent or router is required',
+            )
+
+        _validate_agent_names(agents, channel.agents, f'{base}.agents')
         if channel.agent is not None:
             _validate_agent_reference(agents, f'{base}.agent', channel.agent)
-
-        for chat_id, agent_name in channel.bindings.items():
-            _validate_agent_reference(
-                agents,
-                f'{base}.bindings.{chat_id}',
-                agent_name,
-            )
+            if channel.agents and channel.agent not in channel.agents:
+                raise UnknownAgentReferenceError(
+                    f'{base}.agent: {channel.agent!r} is not in {base}.agents',
+                )
 
         if channel.router is not None:
+            router = f'{base}.router'
+            if not channel.router.allowed:
+                raise IncompleteChannelRoutingError(
+                    f'{router}.allowed: at least one candidate is required',
+                )
+            _validate_agent_names(agents, channel.router.allowed, f'{router}.allowed')
+            if channel.agents and not set(channel.router.allowed).issubset(
+                channel.agents,
+            ):
+                raise UnknownAgentReferenceError(
+                    f'{router}.allowed: candidates must be in {base}.agents',
+                )
             _validate_agent_reference(
                 agents,
-                f'{base}.router.fallback',
+                f'{router}.fallback',
                 channel.router.fallback,
             )
-            router = f'{base}.router'
+            if channel.router.fallback not in channel.router.allowed:
+                raise UnknownAgentReferenceError(
+                    f'{router}.fallback: {channel.router.fallback!r} is not in {router}.allowed',
+                )
             try:
                 ref = resolve_selection(
                     channel.router.provider,

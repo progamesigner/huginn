@@ -29,11 +29,11 @@ class SelectionPolicy:
     fallback: str
     model: str | None = None
     provider: str | None = None
+    allowed: frozenset[str] = field(default_factory=frozenset)
 
 
 @dataclass(frozen=True)
 class RoutingPolicy:
-    bindings: Mapping[str, str] = field(default_factory=dict)
     agent: str | None = None
     selection: SelectionPolicy | None = None
     allowed: frozenset[str] = field(default_factory=frozenset)

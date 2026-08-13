@@ -29,23 +29,27 @@ async def test_channel_instance_can_route_directly_to_its_agent() -> None:
     assert resolved.config is scout
 
 
-def testrouting_policy_carries_bindings_and_default_agent() -> None:
+def test_routing_policy_carries_authorization_and_pinned_agent() -> None:
     channel = ChannelConfig(
         kind='telegram',
         agent='concierge',
-        bindings={'42': 'scout'},
+        agents=('scout', 'concierge'),
     )
 
     policy = routing_policy(channel)
 
-    assert policy.bindings == {'42': 'scout'}
     assert policy.agent == 'concierge'
+    assert policy.allowed == frozenset({'scout', 'concierge'})
 
 
 def testrouting_policy_maps_the_channel_router_onto_a_selection() -> None:
     channel = ChannelConfig(
         kind='telegram',
-        router=ChannelRouterConfig(fallback='concierge', model='gpt-5-mini'),
+        router=ChannelRouterConfig(
+            fallback='concierge',
+            allowed=('scout', 'concierge'),
+            model='gpt-5-mini',
+        ),
     )
 
     selection = routing_policy(channel).selection
@@ -53,6 +57,7 @@ def testrouting_policy_maps_the_channel_router_onto_a_selection() -> None:
     assert selection is not None
     assert selection.fallback == 'concierge'
     assert selection.model == 'gpt-5-mini'
+    assert selection.allowed == frozenset({'scout', 'concierge'})
 
 
 def testrouting_policy_leaves_selection_unset_without_a_channel_router() -> None:

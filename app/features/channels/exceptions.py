@@ -1,6 +1,18 @@
 from app.core.config.exceptions import ConfigError
 
 
+class ConflictingChannelAgentError(ConfigError):
+    pass
+
+
+class IncompleteChannelRoutingError(ConfigError):
+    pass
+
+
+class DuplicateChannelAgentError(ConfigError):
+    pass
+
+
 class DuplicateChannelKindError(ConfigError):
     pass
 
