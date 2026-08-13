@@ -101,8 +101,7 @@ api_keys:
     agents:
     - scout
     - concierge
-    router:
-      fallback: concierge
+    agent: scout
 
 transcription:
   kind: openai
@@ -117,9 +116,13 @@ channels:
     token: ${TELEGRAM_BOT_TOKEN}
     secret_token: ${TELEGRAM_WEBHOOK_SECRET}
     webhook_base_url: https://huginn.example.com
-    bindings:
-      '000000000': scout
+    agents:
+    - scout
+    - concierge
     router:
       provider: openai
       model: gpt-5-mini
       fallback: concierge
+      allowed:
+      - scout
+      - concierge
