@@ -37,7 +37,7 @@ class FakeIdentities(IdentityResolverContract):
     ) -> Principal:
         self.calls.append((provider, realm, external_user_id))
         if external_user_id in self.linked:
-            return LinkedPrincipal(_LINKED, _IDENTITY)
+            return LinkedPrincipal(_LINKED, _IDENTITY, 'alice')
 
         return AnonymousPrincipal(provider, realm, external_user_id)
 
@@ -87,7 +87,7 @@ class FakeLinking(IdentityLinkingContract):
         if self.invalid:
             raise InvalidIdentityLinkError('unknown_token')
 
-        return LinkedPrincipal(_LINKED, _IDENTITY)
+        return LinkedPrincipal(_LINKED, _IDENTITY, 'alice')
 
 
 def command(name: str, args: str = '') -> InboundCommand:

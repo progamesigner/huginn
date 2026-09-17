@@ -197,17 +197,24 @@ class PrincipalLinker(IdentityLinkingContract):
         try:
             async with self.database.session() as session, session.begin():
                 repository = IdentityRepository(session, self.guid, self.clock)
-                identity = await IdentityLinkingService(
+                await IdentityLinkingService(
                     repository,
                     self.tokens,
                     self.clock,
                 ).complete(credential, provider, realm, external_user_id)
+                principal = await repository.find_linked(
+                    provider,
+                    realm,
+                    external_user_id,
+                )
         except InvalidIdentityLinkError as error:
             # NOTE: the rejection took its own transaction down with it
             await self._audit_failure(provider, realm, external_user_id, error.reason)
             raise
 
-        return LinkedPrincipal(identity.user_id, identity.id)
+        if principal is None:
+            raise LookupError('the completed link is not readable back')
+        return principal
 
     async def _audit_failure(
         self,
@@ -266,13 +273,6 @@ class IdentityResolver:
         realm: str,
         external_user_id: str,
     ) -> Principal:
-        identity = await self.repository.find_external(
-            provider,
-            realm,
-            external_user_id,
-        )
+        linked = await self.repository.find_linked(provider, realm, external_user_id)
 
-        if identity is None:
-            return AnonymousPrincipal(provider, realm, external_user_id)
-
-        return LinkedPrincipal(identity.user_id, identity.id)
+        return linked or AnonymousPrincipal(provider, realm, external_user_id)

@@ -17,6 +17,7 @@ from app.features.identities.types import (
     ExternalIdentity,
     IdentityAuditEvent,
     IdentityLinkInvite,
+    LinkedPrincipal,
     User,
 )
 from lib.guid import GUIDContract
@@ -106,6 +107,28 @@ class IdentityRepository:
         query = select(UserRecord).where(UserRecord.handle == handle.strip().lower())
         record = (await self.session.execute(query)).scalar_one_or_none()
         return _to_user(record) if record else None
+
+    async def find_linked(
+        self,
+        provider: str,
+        realm: str,
+        external_user_id: str,
+    ) -> LinkedPrincipal | None:
+        query = (
+            select(
+                ExternalIdentityRecord.user_id,
+                ExternalIdentityRecord.id,
+                UserRecord.handle,
+            )
+            .join(UserRecord, UserRecord.id == ExternalIdentityRecord.user_id)
+            .where(
+                ExternalIdentityRecord.provider == provider,
+                ExternalIdentityRecord.realm == realm,
+                ExternalIdentityRecord.external_user_id == external_user_id,
+            )
+        )
+        row = (await self.session.execute(query)).one_or_none()
+        return None if row is None else LinkedPrincipal(row.user_id, row.id, row.handle)
 
     async def find_external(
         self,

@@ -3,6 +3,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.features.identities.repositories import IdentityRepository
+from app.features.identities.types import LinkedPrincipal
 from lib.guid import GUIDManager
 from lib.temporal import ClockManager
 
@@ -80,3 +81,16 @@ async def test_unlink_removes_mapping_without_losing_audit_reference(
     assert event.external_identity_id == linked.id
     assert event.occurred_at is not None
     assert dict(event.metadata) == {'source': 'test'}
+
+
+async def test_find_linked_reads_the_principal_with_its_handle(
+    session: AsyncSession,
+) -> None:
+    identities = repository(session)
+    user = await identities.create_user('Carol', 'Carol')
+    linked = await identities.link(user.id, 'telegram', 'primary', '77')
+
+    assert await identities.find_linked('telegram', 'primary', '77') == (
+        LinkedPrincipal(user.id, linked.id, 'carol')
+    )
+    assert await identities.find_linked('telegram', 'primary', '78') is None

@@ -61,6 +61,8 @@ class TurnPrompt:
     text: str
     actor: str
     attachments: tuple[PromptAttachment, ...] = ()
+    account: str | None = None
+    handle: str | None = None
 
 
 @dataclass(frozen=True)

@@ -56,6 +56,7 @@ class IdentityLinkInvite:
 class LinkedPrincipal:
     user_id: UUID
     external_identity_id: UUID
+    handle: str
 
     @property
     def stable_key(self) -> str:

@@ -102,7 +102,7 @@ class FakeIdentities(IdentityResolverContract):
     ) -> Principal:
         self.calls.append((provider, realm, external_user_id))
         if external_user_id in self.linked:
-            return LinkedPrincipal(_LINKED, _LINKED)
+            return LinkedPrincipal(_LINKED, _LINKED, 'alice')
 
         return AnonymousPrincipal(provider, realm, external_user_id)
 
@@ -252,11 +252,16 @@ async def test_a_prompt_carries_the_resolved_principal_of_its_sender() -> None:
         (inbound(1), inbound(2, user='88')),
     )
 
-    actors = [prompt.actor for prompt in turns.requests[0].prompts]
+    prompts = turns.requests[0].prompts
+    actors = [prompt.actor for prompt in prompts]
     assert actors == [
         f'user:{_LINKED}',
         AnonymousPrincipal('telegram', 'support_bot', '88').stable_key,
     ]
+    assert prompts[0].account == str(_LINKED)
+    assert prompts[0].handle == 'alice'
+    assert prompts[1].account is None
+    assert prompts[1].handle is None
     # NOTE: the realm is the channel instance, so two bots never share a principal
     assert identities.calls == [
         ('telegram', 'support_bot', '77'),

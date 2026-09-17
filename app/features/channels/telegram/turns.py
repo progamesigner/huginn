@@ -15,6 +15,7 @@ from app.features.channels.contracts import TranscriptionContract
 from app.features.channels.exceptions import TranscriptionUnavailableError
 from app.features.channels.registry import CommandRegistry
 from app.features.identities.contracts import IdentityResolverContract
+from app.features.identities.types import LinkedPrincipal, Principal
 
 from .config import TelegramChannelConfig
 
@@ -35,6 +36,24 @@ def _decline_note(messages: tuple[InboundMessage, ...]) -> str:
     )
 
     return _UNHEARD if audible else _UNREADABLE
+
+
+def _prompt(
+    text: str,
+    attachments: tuple[PromptAttachment, ...],
+    principal: Principal | None,
+) -> TurnPrompt:
+    if isinstance(principal, LinkedPrincipal):
+        return TurnPrompt(
+            text,
+            principal.stable_key,
+            attachments,
+            account=str(principal.user_id),
+            handle=principal.handle,
+        )
+
+    actor = _UNATTRIBUTED if principal is None else principal.stable_key
+    return TurnPrompt(text, actor, attachments)
 
 
 def _hint(attachment: InboundAttachment) -> str:
@@ -115,16 +134,15 @@ class TelegramTurnProcessor:
         self,
         channel: TelegramChannelConfig,
         message: InboundMessage,
-    ) -> str:
+    ) -> Principal | None:
         if message.user is None:
-            return _UNATTRIBUTED
+            return None
 
-        principal = await self.identities.resolve(
+        return await self.identities.resolve(
             message.kind,
             message.channel,
             message.user,
         )
-        return principal.stable_key
 
     async def _attachments(
         self,
@@ -235,13 +253,7 @@ class TelegramTurnProcessor:
             key = message.user or _UNATTRIBUTED
             if key not in actors:
                 actors[key] = await self._actor(channel, message)
-            prompts.append(
-                TurnPrompt(
-                    text=message.text,
-                    actor=actors[key],
-                    attachments=attachments,
-                ),
-            )
+            prompts.append(_prompt(message.text, attachments, actors[key]))
 
         return TurnRequest(
             channel=messages[-1].channel,
