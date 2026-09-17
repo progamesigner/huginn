@@ -1,4 +1,5 @@
 import logging
+import re
 from abc import ABC, abstractmethod
 from collections.abc import Mapping
 from dataclasses import dataclass, field
@@ -10,7 +11,7 @@ from pydantic import BaseModel, ConfigDict, JsonValue, ValidationError
 from app.contracts.channels import AttachmentKind, TurnEnding
 from lib.llm import Message, ToolCallSegment, ToolResultSegment
 
-from .config import AgentConfig
+from .config import AgentConfig, BindingSource
 from .exceptions import DuplicateToolNameError
 
 logger = logging.getLogger(__name__)
@@ -73,6 +74,33 @@ class TurnRequest:
     prompts: tuple[TurnPrompt, ...]
     denied_tools: frozenset[str] = field(default_factory=frozenset)
     max_completion_tokens: int | None = None
+
+
+@dataclass(frozen=True)
+class TurnScope:
+    actor: str
+    agent: str
+    channel: str
+    chat: str
+    account: str | None = None
+    handle: str | None = None
+
+
+_SAFE_BOUND_VALUE = re.compile(r'^[A-Za-z0-9._:-]+$')
+
+
+def resolve_bindings(
+    inject: Mapping[str, JsonValue],
+    bind: Mapping[str, BindingSource],
+    scope: TurnScope,
+) -> dict[str, JsonValue] | None:
+    resolved = dict(inject)
+    for key, source in bind.items():
+        value = getattr(scope, source)
+        if not value or not _SAFE_BOUND_VALUE.fullmatch(value):
+            return None
+        resolved[key] = value
+    return resolved
 
 
 @dataclass(frozen=True)

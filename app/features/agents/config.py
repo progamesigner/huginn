@@ -1,9 +1,9 @@
 from collections.abc import Iterator
 from dataclasses import replace
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, Literal, Self
 
-from pydantic import BaseModel, Field, JsonValue, RootModel
+from pydantic import BaseModel, Field, JsonValue, RootModel, model_validator
 
 from app.core.config.llm import PROVIDERS
 from app.core.config.registry import HuginnConfig, SectionSpec
@@ -27,16 +27,28 @@ class DefaultsConfig(ConfigValue):
     max_completion_tokens: Annotated[int | None, Field(gt=0)] = None
 
 
-class ToolRef(ConfigValue):
+type BindingSource = Literal['account', 'actor', 'agent', 'channel', 'chat', 'handle']
+
+
+class InjectionConfig(ConfigValue):
+    inject: Annotated[dict[str, JsonValue], Field()] = Field(default_factory=dict)
+    bind: Annotated[dict[str, BindingSource], Field()] = Field(default_factory=dict)
+
+    @model_validator(mode='after')
+    def disjoint_injection(self) -> Self:
+        if overlap := sorted(self.inject.keys() & self.bind.keys()):
+            raise ValueError(f'inject and bind overlap: {", ".join(overlap)}')
+        return self
+
+
+class ToolRef(InjectionConfig):
     name: Annotated[str, Field()]
     params: Annotated[dict[str, JsonValue], Field()] = Field(default_factory=dict)
-    inject: Annotated[dict[str, JsonValue], Field()] = Field(default_factory=dict)
 
 
-class MCPRef(ConfigValue):
+class MCPRef(InjectionConfig):
     server: Annotated[str, Field()]
     allow: Annotated[tuple[str, ...], Field()] = ()
-    inject: Annotated[dict[str, str], Field()] = Field(default_factory=dict)
 
 
 class SkillsConfig(ConfigValue):

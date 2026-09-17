@@ -18,7 +18,7 @@ from pydantic import (
 
 from app.core.config.registry import HuginnConfig, SectionSpec
 from app.core.config.schema import ConfigValue
-from app.features.agents.config import AGENTS
+from app.features.agents.config import AGENTS, BindingSource
 
 from .exceptions import (
     InvalidToolOverlayError,
@@ -71,6 +71,25 @@ def _check_overlay(
             problem = _type_problem(fields[key].rebuild_annotation(), value)
             if problem is not None:
                 return f'{source}.{key}: {problem}'
+
+    return None
+
+
+def _check_bindings(
+    registry: ToolRegistry,
+    kind: str,
+    params: Mapping[str, JsonValue],
+    bind: Mapping[str, BindingSource],
+) -> str | None:
+    if shared := set(params) & set(bind):
+        return f'params and bind cannot share keys: {", ".join(sorted(shared))}'
+
+    model = registry.params_model(kind)
+    fields = model.model_fields if model is not None else {}
+    for key in bind:
+        if key not in fields:
+            available = ', '.join(sorted(fields)) or 'none'
+            return f'bind references unknown parameter {key!r}; available: {available}'
 
     return None
 
@@ -131,6 +150,12 @@ def _validate_agent_tool_refs(config: HuginnConfig, registry: ToolRegistry) -> N
                 configured[ref.name].kind,
                 ref.params,
                 ref.inject,
+            )
+            problem = problem or _check_bindings(
+                registry,
+                configured[ref.name].kind,
+                ref.params,
+                ref.bind,
             )
             if problem is not None:
                 raise InvalidToolOverlayError(f'{base}: {problem}')

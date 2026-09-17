@@ -83,7 +83,8 @@ agents:
       - recall_memory_notes
       inject:
         agent: default
-        user: example
+      bind:
+        user: handle
     skills:
       enabled: true
 

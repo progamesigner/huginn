@@ -6,7 +6,7 @@ from pydantic import JsonValue
 
 from app.features.agents.config import AgentConfig, SkillsConfig
 from app.features.agents.services import AgentRunner, build_tool_set
-from app.features.agents.types import TurnInput, TurnPrompt
+from app.features.agents.types import TurnInput, TurnPrompt, TurnScope
 from app.features.skills.repositories import SkillRepository
 from app.features.skills.sources.contracts import SkillSource
 from app.features.skills.tools import SkillToolSource
@@ -58,7 +58,11 @@ async def test_agent_loads_a_skill_through_the_tool_loop() -> None:
         instructions='y',
         skills=SkillsConfig(enabled=True),
     )
-    tools, _ = await build_tool_set((SkillToolSource(lambda: repository),), agent)
+    tools, _ = await build_tool_set(
+        (SkillToolSource(lambda: repository),),
+        agent,
+        TurnScope(actor='user:1', agent='test', channel='test', chat='1'),
+    )
     llm = FakeLLM(
         [
             [

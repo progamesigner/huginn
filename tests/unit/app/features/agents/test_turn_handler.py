@@ -18,13 +18,14 @@ from app.features.agents.exceptions import (
     UnservableModelError,
 )
 from app.features.agents.router import Router
-from app.features.agents.services import TurnHandler
+from app.features.agents.services import TurnHandler, _turn_scope
 from app.features.agents.types import (
     RoutingPolicy,
     Tool,
     TurnBudget,
     TurnPrompt,
     TurnRequest,
+    TurnScope,
     resolve_budget,
 )
 from lib.llm import (
@@ -162,7 +163,7 @@ class FakeSource(ToolSource):
         self.unreachable = unreachable
 
     @override
-    async def collect(self, agent: AgentConfig) -> ToolHarvest:
+    async def collect(self, agent: AgentConfig, scope: TurnScope) -> ToolHarvest:
         return ToolHarvest(tools=self.named, unreachable=self.unreachable)
 
 
@@ -239,6 +240,61 @@ def request(*texts: str) -> TurnRequest:
         policy=RoutingPolicy(agent='scout'),
         prompts=tuple(TurnPrompt(text=text, actor='user:1') for text in texts),
     )
+
+
+def test_turn_scope_carries_the_last_prompts_identity() -> None:
+    turn = request('hello')
+    turn = replace(
+        turn,
+        prompts=(
+            TurnPrompt(
+                text='hello',
+                actor='user:1',
+                account='account-1',
+                handle='alice',
+            ),
+        ),
+    )
+
+    assert _turn_scope(turn, 'scout') == TurnScope(
+        actor='user:1',
+        agent='scout',
+        channel='support_bot',
+        chat='4242',
+        account='account-1',
+        handle='alice',
+    )
+
+
+def test_turn_scope_withholds_identity_when_accounts_are_mixed() -> None:
+    turn = replace(
+        request('first', 'second'),
+        prompts=(
+            TurnPrompt('first', 'user:1', account='account-1', handle='alice'),
+            TurnPrompt('second', 'user:2', account='account-2', handle='bob'),
+        ),
+    )
+
+    scope = _turn_scope(turn, 'scout')
+
+    assert scope.actor == 'user:2'
+    assert scope.account is None
+    assert scope.handle is None
+
+
+@pytest.mark.parametrize('linked_last', [True, False])
+def test_turn_scope_withholds_identity_when_an_unlinked_actor_joins(
+    linked_last: bool,
+) -> None:
+    linked = TurnPrompt('mine', 'user:1', account='account-1', handle='alice')
+    unlinked = TurnPrompt('theirs', 'user:2')
+    prompts = (unlinked, linked) if linked_last else (linked, unlinked)
+    turn = replace(request('first', 'second'), prompts=prompts)
+
+    scope = _turn_scope(turn, 'scout')
+
+    assert scope.account is None
+    assert scope.handle is None
 
 
 async def test_a_turn_streams_the_answer_and_finishes_the_reply() -> None:
@@ -535,7 +591,7 @@ async def test_a_turn_that_raises_before_answering_records_the_prompt_alone() ->
 
 class BrokenSource(ToolSource):
     @override
-    async def collect(self, agent: AgentConfig) -> ToolHarvest:
+    async def collect(self, agent: AgentConfig, scope: TurnScope) -> ToolHarvest:
         raise RuntimeError('the tool server is unreachable')
 
 

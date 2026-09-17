@@ -1,9 +1,10 @@
-from typing import Annotated, override
+from typing import Annotated, cast, override
 
 from pydantic import Field
 
+from app.features.agents.config import BindingSource
 from app.features.agents.types import ToolOutput, ToolParams, TypedTool
-from app.features.tools.config import _check_overlay
+from app.features.tools.config import _check_bindings, _check_overlay
 from app.features.tools.registry import ToolRegistry
 
 
@@ -68,3 +69,39 @@ def test_check_overlay_rejects_constraint_violation() -> None:
 
     assert problem is not None
     assert 'max_results' in problem
+
+
+def test_check_bindings_accepts_known_parameter() -> None:
+    assert (
+        _check_bindings(
+            _registry(),
+            'search',
+            {},
+            cast(dict[str, BindingSource], {'query': 'actor'}),
+        )
+        is None
+    )
+
+
+def test_check_bindings_rejects_unknown_parameter() -> None:
+    problem = _check_bindings(
+        _registry(),
+        'search',
+        {},
+        cast(dict[str, BindingSource], {'bogus': 'actor'}),
+    )
+
+    assert problem is not None
+    assert 'bogus' in problem
+
+
+def test_check_bindings_rejects_parameter_default_overlap() -> None:
+    problem = _check_bindings(
+        _registry(),
+        'search',
+        {'query': 'visible'},
+        cast(dict[str, BindingSource], {'query': 'actor'}),
+    )
+
+    assert problem is not None
+    assert 'query' in problem

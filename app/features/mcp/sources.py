@@ -3,6 +3,7 @@ from typing import override
 
 from app.features.agents.config import AgentConfig
 from app.features.agents.contracts import ToolHarvest, ToolSource
+from app.features.agents.types import TurnScope, resolve_bindings
 from lib.mcp import MCPClientContract, MCPError
 
 from .bridge import build_mcp_tools
@@ -17,10 +18,18 @@ class MCPToolSource(ToolSource):
         self.client = client
 
     @override
-    async def collect(self, agent: AgentConfig) -> ToolHarvest:
+    async def collect(self, agent: AgentConfig, scope: TurnScope) -> ToolHarvest:
         collected = []
         unreachable = []
         for ref in agent.mcp:
+            inject = resolve_bindings(ref.inject, ref.bind, scope)
+            if inject is None:
+                logger.info(
+                    'mcp server %r omitted because bound keys are unavailable: %s',
+                    ref.server,
+                    ', '.join(sorted(ref.bind)),
+                )
+                continue
             try:
                 infos = await self.client.list_tools(ref.server)
             except MCPError as error:
@@ -38,7 +47,7 @@ class MCPToolSource(ToolSource):
                 ref.server,
                 infos,
                 ref.allow,
-                ref.inject,
+                inject,
             )
             if not tools:
                 logger.warning(

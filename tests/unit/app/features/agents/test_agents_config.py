@@ -109,6 +109,7 @@ def test_tool_ref_defaults_to_no_params_or_inject() -> None:
 
     assert ref.params == {}
     assert ref.inject == {}
+    assert ref.bind == {}
 
 
 def test_tool_ref_accepts_params_and_inject() -> None:
@@ -123,3 +124,18 @@ def test_mcp_ref_defaults_to_no_allowlist_or_injected_params() -> None:
 
     assert ref.allow == ()
     assert ref.inject == {}
+    assert ref.bind == {}
+
+
+@pytest.mark.parametrize('ref', [ToolRef, MCPRef])
+def test_inject_and_bind_cannot_share_a_key(ref: type[ToolRef] | type[MCPRef]) -> None:
+    field = {'name': 'websearch'} if ref is ToolRef else {'server': 'memory'}
+
+    with pytest.raises(ValidationError, match='inject and bind overlap: user'):
+        ref.model_validate(
+            {
+                **field,
+                'inject': {'user': 'shared'},
+                'bind': {'user': 'handle'},
+            },
+        )

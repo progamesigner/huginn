@@ -51,6 +51,7 @@ from .types import (
     TurnOutput,
     TurnPrompt,
     TurnRequest,
+    TurnScope,
     resolve_budget,
 )
 
@@ -431,9 +432,11 @@ class TurnHandler(TurnHandlerContract):
         history = await self.store.history(request.channel, request.chat, agent.name)
         witness = AnswerRecorder(reply)
         try:
+            scope = _turn_scope(request, agent.name)
             tools, unreachable = await build_tool_set(
                 self.sources.sources(),
                 agent.config,
+                scope,
                 request.denied_tools,
             )
             runner = AgentRunner(client, tools, self.clock)
@@ -487,12 +490,13 @@ class TurnHandler(TurnHandlerContract):
 async def build_tool_set(
     sources: Sequence[ToolSource],
     agent: AgentConfig,
+    scope: TurnScope,
     denied: frozenset[str] = frozenset(),
 ) -> tuple[ToolSet, tuple[str, ...]]:
     tools = ToolSet()
     unreachable = []
     for source in sources:
-        harvest = await source.collect(agent)
+        harvest = await source.collect(agent, scope)
         unreachable.extend(harvest.unreachable)
         for name, tool in harvest.tools:
             if name in denied:
@@ -502,3 +506,22 @@ async def build_tool_set(
             tools.add(name, tool)
 
     return tools, tuple(unreachable)
+
+
+def _turn_scope(request: TurnRequest, agent: str) -> TurnScope:
+    prompt = request.prompts[-1]
+    accounts = {item.account for item in request.prompts}
+    account = prompt.account
+    handle = prompt.handle
+    if len(accounts) > 1:
+        logger.info('Withholding account-bound tools: the turn mixes accounts')
+        account = None
+        handle = None
+    return TurnScope(
+        actor=prompt.actor,
+        agent=agent,
+        channel=request.channel,
+        chat=request.chat,
+        account=account,
+        handle=handle,
+    )

@@ -8,7 +8,9 @@ from app.features.agents.config import AgentConfig, SkillsConfig, load_instructi
 from app.features.agents.contracts import NamedTool, ToolHarvest, ToolSource
 from app.features.agents.exceptions import AgentError, DuplicateToolNameError
 from app.features.agents.services import build_tool_set
-from app.features.agents.types import ToolOutput, ToolParams, TypedTool
+from app.features.agents.types import ToolOutput, ToolParams, TurnScope, TypedTool
+
+_SCOPE = TurnScope(actor='user:1', agent='test', channel='test', chat='1')
 
 
 class EchoParams(ToolParams):
@@ -36,7 +38,7 @@ class FakeSource(ToolSource):
         self.unreachable = unreachable
 
     @override
-    async def collect(self, agent: AgentConfig) -> ToolHarvest:
+    async def collect(self, agent: AgentConfig, scope: TurnScope) -> ToolHarvest:
         self.seen.append(agent)
         return ToolHarvest(tools=self.named, unreachable=self.unreachable)
 
@@ -53,6 +55,7 @@ async def test_build_tool_set_merges_every_source() -> None:
     tools, unreachable = await build_tool_set(
         (FakeSource('echo'), FakeSource('recall', 'skill')),
         _agent(),
+        _SCOPE,
     )
 
     assert set(tools.tools) == {'echo', 'recall', 'skill'}
@@ -66,6 +69,7 @@ async def test_build_tool_set_gathers_what_every_source_could_not_reach() -> Non
             FakeSource('recall', unreachable=('skills',)),
         ),
         _agent(),
+        _SCOPE,
     )
 
     assert unreachable == ('muninn', 'skills')
@@ -77,6 +81,7 @@ async def test_build_tool_set_drops_a_denied_tool() -> None:
     tools, _ = await build_tool_set(
         (FakeSource('echo', 'recall'),),
         _agent(),
+        _SCOPE,
         frozenset({'recall'}),
     )
 
@@ -87,6 +92,7 @@ async def test_build_tool_set_denying_an_absent_tool_adds_nothing() -> None:
     tools, _ = await build_tool_set(
         (FakeSource('echo'),),
         _agent(),
+        _SCOPE,
         frozenset({'recall'}),
     )
 
@@ -94,7 +100,7 @@ async def test_build_tool_set_denying_an_absent_tool_adds_nothing() -> None:
 
 
 async def test_build_tool_set_is_empty_without_sources() -> None:
-    tools, _ = await build_tool_set((), _agent())
+    tools, _ = await build_tool_set((), _agent(), _SCOPE)
 
     assert tools.tools == {}
 
@@ -103,14 +109,18 @@ async def test_build_tool_set_hands_every_source_the_agent() -> None:
     agent = _agent()
     sources = (FakeSource('echo'), FakeSource('recall'))
 
-    await build_tool_set(sources, agent)
+    await build_tool_set(sources, agent, _SCOPE)
 
     assert [source.seen for source in sources] == [[agent], [agent]]
 
 
 async def test_build_tool_set_rejects_a_name_claimed_by_two_sources() -> None:
     with pytest.raises(DuplicateToolNameError, match='echo'):
-        await build_tool_set((FakeSource('echo'), FakeSource('echo')), _agent())
+        await build_tool_set(
+            (FakeSource('echo'), FakeSource('echo')),
+            _agent(),
+            _SCOPE,
+        )
 
 
 def test_load_instructions_returns_inline_instructions() -> None:

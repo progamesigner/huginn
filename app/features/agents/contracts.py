@@ -7,7 +7,7 @@ from app.contracts.channels import ChannelReplyContract, ToolPhase
 from lib.llm import Message, ModelRef
 
 from .config import AgentConfig
-from .types import Tool, TurnPrompt, TurnRequest
+from .types import Tool, TurnPrompt, TurnRequest, TurnScope
 
 type NamedTool = tuple[str, Tool]
 type ToolSourceFactory = Callable[[], ToolSource]
@@ -29,7 +29,7 @@ class ToolHarvest:
 
 class ToolSource(ABC):
     @abstractmethod
-    async def collect(self, agent: AgentConfig) -> ToolHarvest: ...
+    async def collect(self, agent: AgentConfig, scope: TurnScope) -> ToolHarvest: ...
 
 
 class TranscriptStoreContract(ABC):

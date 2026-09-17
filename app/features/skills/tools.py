@@ -6,7 +6,7 @@ from pydantic import Field
 
 from app.features.agents.config import AgentConfig
 from app.features.agents.contracts import ToolHarvest, ToolSource
-from app.features.agents.types import ToolOutput, ToolParams, TypedTool
+from app.features.agents.types import ToolOutput, ToolParams, TurnScope, TypedTool
 
 from .repositories import SkillRepository
 from .types import SkillMeta
@@ -87,7 +87,11 @@ class SkillToolSource(ToolSource):
         self.repository = repository
 
     @override
-    async def collect(self, agent: AgentConfig) -> ToolHarvest:
+    async def collect(
+        self,
+        agent: AgentConfig,
+        scope: TurnScope | None = None,
+    ) -> ToolHarvest:
         if not agent.skills.enabled:
             return ToolHarvest()
 
