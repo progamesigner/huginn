@@ -19,7 +19,6 @@ class Conversation:
     id: UUID
     channel: str
     chat_id: str
-    agent: str
     created_at: datetime | None = None
     updated_at: datetime | None = None
     compact_version: int = 0
@@ -36,6 +35,7 @@ class Part:
 @dataclass(frozen=True)
 class Turn:
     id: UUID
+    agent: str
     parts: tuple[Part, ...] = ()
     usage: Mapping[str, JsonValue] = field(default_factory=dict)
     created_at: datetime | None = None

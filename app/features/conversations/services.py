@@ -68,7 +68,12 @@ class ConversationTranscript:
             *replay_messages(turns),
         )
 
-    async def record(self, prompts: Sequence[TurnPrompt], answer: str) -> None:
+    async def record(
+        self,
+        agent: str,
+        prompts: Sequence[TurnPrompt],
+        answer: str,
+    ) -> None:
         parts = []
         for prompt in prompts:
             if prompt.text:
@@ -85,7 +90,7 @@ class ConversationTranscript:
         if answer:
             parts.append(Part(role='assistant', kind=_TEXT, payload={'text': answer}))
 
-        await self.repository.append_turn(self.conversation, parts)
+        await self.repository.append_turn(self.conversation, agent, parts)
 
     async def _media(self, attachment: PromptAttachment, actor: str) -> Part:
         blob = await self.blobs.store(attachment.mime, attachment.data)
@@ -128,46 +133,49 @@ class ConversationControl(ConversationControlContract):
         self.llm = llm
 
     @override
-    async def compact(self, channel: str, chat: str) -> int:
-        compacted = 0
+    async def compact(self, channel: str, chat: str) -> bool:
         async with self.database.session() as session, session.begin():
             repository = ConversationRepository(session, self.guid, self.clock)
-            for conversation in await repository.list_by_chat(channel, chat):
-                configured = self.config.section(AGENTS).root.get(conversation.agent)
-                if configured is None:
-                    logger.warning(
-                        'Conversation %s names agent %s, which is not configured',
-                        conversation.id,
-                        conversation.agent,
-                    )
-                    continue
-
-                ref = resolve_selection(
-                    configured.provider,
-                    configured.model,
-                    self.config.section(DEFAULTS),
+            conversation = await repository.find_by_chat(channel, chat)
+            if conversation is None:
+                return False
+            agent = await repository.latest_agent(conversation)
+            configured = (
+                None if agent is None else self.config.section(AGENTS).root.get(agent)
+            )
+            if configured is None:
+                logger.warning(
+                    'Conversation %s has no configured latest agent %r',
+                    conversation.id,
+                    agent,
                 )
-                service = CompactionService(
-                    self.llm,
-                    repository,
-                    instructions=load_instructions(configured),
-                    instruction=self.config.section(COMPACTION).summary_prompt,
-                )
-                result = await service.force(conversation, ref)
-                compacted += int(result.compacted)
+                return False
 
-        return compacted
+            ref = resolve_selection(
+                configured.provider,
+                configured.model,
+                self.config.section(DEFAULTS),
+            )
+            service = CompactionService(
+                self.llm,
+                repository,
+                instructions=load_instructions(configured),
+                instruction=self.config.section(COMPACTION).summary_prompt,
+            )
+            result = await service.force(conversation, ref)
+
+        return result.compacted
 
     @override
-    async def reset(self, channel: str, chat: str) -> int:
+    async def reset(self, channel: str, chat: str) -> bool:
         async with self.database.session() as session, session.begin():
             repository = ConversationRepository(session, self.guid, self.clock)
-            reset = [
-                await repository.reset(conversation, conversation.compact_version)
-                for conversation in await repository.list_by_chat(channel, chat)
-            ]
+            conversation = await repository.find_by_chat(channel, chat)
+            if conversation is None:
+                return False
+            reset = await repository.reset(conversation, conversation.compact_version)
 
-        return sum(1 for conversation in reset if conversation is not None)
+        return reset is not None
 
 
 class ConversationTranscriptStore(TranscriptStoreContract):
@@ -199,9 +207,8 @@ class ConversationTranscriptStore(TranscriptStoreContract):
         self,
         channel: str,
         chat: str,
-        agent: str,
     ) -> tuple[Message, ...]:
-        async with self._open(channel, chat, agent) as transcript:
+        async with self._open(channel, chat) as transcript:
             return await transcript.history()
 
     @override
@@ -213,8 +220,8 @@ class ConversationTranscriptStore(TranscriptStoreContract):
         prompts: Sequence[TurnPrompt],
         answer: str,
     ) -> None:
-        async with self._open(channel, chat, agent) as transcript:
-            await transcript.record(prompts, answer)
+        async with self._open(channel, chat) as transcript:
+            await transcript.record(agent, prompts, answer)
 
     @override
     async def maintain(
@@ -226,7 +233,7 @@ class ConversationTranscriptStore(TranscriptStoreContract):
     ) -> None:
         async with self.database.session() as session, session.begin():
             repository = self._repository(session)
-            conversation = await repository.get_or_create(channel, chat, agent)
+            conversation = await repository.get_or_create(channel, chat)
             configured = self.config.section(AGENTS).root[agent]
             service = CompactionService(
                 self.llm,
@@ -244,11 +251,10 @@ class ConversationTranscriptStore(TranscriptStoreContract):
         self,
         channel: str,
         chat: str,
-        agent: str,
     ) -> AsyncIterator[ConversationTranscript]:
         async with self.database.session() as session, session.begin():
             repository = self._repository(session)
-            conversation = await repository.get_or_create(channel, chat, agent)
+            conversation = await repository.get_or_create(channel, chat)
             yield ConversationTranscript(
                 repository,
                 self.blobs(session),

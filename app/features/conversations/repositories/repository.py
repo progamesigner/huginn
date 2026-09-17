@@ -22,7 +22,6 @@ def _to_conversation(record: ConversationRecord) -> Conversation:
         id=record.id,
         channel=record.channel,
         chat_id=record.chat_id,
-        agent=record.agent,
         created_at=record.created_at,
         updated_at=record.updated_at,
         compact_version=record.compact_version,
@@ -41,6 +40,7 @@ def _to_part(record: PartRecord) -> Part:
 def _to_turn(record: TurnRecord) -> Turn:
     return Turn(
         id=record.id,
+        agent=record.agent,
         parts=tuple(_to_part(part) for part in record.parts),
         usage=cast(Mapping[str, JsonValue], record.usage),
         created_at=record.created_at,
@@ -66,12 +66,10 @@ class ConversationRepository:
         self,
         channel: str,
         chat_id: str,
-        agent: str,
     ) -> Conversation:
         query = select(ConversationRecord).where(
             ConversationRecord.channel == channel,
             ConversationRecord.chat_id == chat_id,
-            ConversationRecord.agent == agent,
         )
         record = (await self.session.execute(query)).scalar_one_or_none()
 
@@ -81,7 +79,6 @@ class ConversationRepository:
                 id=self.guid.generate(),
                 channel=channel,
                 chat_id=chat_id,
-                agent=agent,
                 created_at=now,
                 updated_at=now,
             )
@@ -90,32 +87,30 @@ class ConversationRepository:
 
         return _to_conversation(record)
 
-    async def list_by_chat(
+    async def find_by_chat(
         self,
         channel: str,
         chat_id: str,
-    ) -> tuple[Conversation, ...]:
-        query = (
-            select(ConversationRecord)
-            .where(
-                ConversationRecord.channel == channel,
-                ConversationRecord.chat_id == chat_id,
-            )
-            .order_by(ConversationRecord.agent.asc())
+    ) -> Conversation | None:
+        query = select(ConversationRecord).where(
+            ConversationRecord.channel == channel,
+            ConversationRecord.chat_id == chat_id,
         )
-        records = (await self.session.execute(query)).scalars().all()
+        record = (await self.session.execute(query)).scalar_one_or_none()
 
-        return tuple(_to_conversation(record) for record in records)
+        return None if record is None else _to_conversation(record)
 
     async def append_turn(
         self,
         conversation: Conversation,
+        agent: str,
         parts: Sequence[Part],
         usage: Mapping[str, JsonValue] | None = None,
     ) -> Turn:
         record = TurnRecord(
             id=self.guid.generate(),
             conversation_id=conversation.id,
+            agent=agent,
             usage=dict(usage or {}),
             parts=[
                 PartRecord(
@@ -132,6 +127,15 @@ class ConversationRepository:
         await self.session.flush()
 
         return _to_turn(record)
+
+    async def latest_agent(self, conversation: Conversation) -> str | None:
+        query = (
+            select(TurnRecord.agent)
+            .where(TurnRecord.conversation_id == conversation.id)
+            .order_by(TurnRecord.id.desc())
+            .limit(1)
+        )
+        return (await self.session.execute(query)).scalar_one_or_none()
 
     async def load_recent_turns(
         self,
@@ -258,6 +262,7 @@ class ConversationRepository:
             TurnRecord(
                 id=self.guid.generate(),
                 conversation_id=conversation.id,
+                agent=boundary.agent,
                 usage={},
                 parts=[
                     PartRecord(

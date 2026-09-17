@@ -73,10 +73,11 @@ def build_service(
 
 async def test_compact_persists_summary_turn_and_advances_boundary() -> None:
     repository = FakeConversationRepository()
-    conversation = await repository.get_or_create('telegram', '1', 'scout')
+    conversation = await repository.get_or_create('telegram', '1')
     turns = [
         await repository.append_turn(
             conversation,
+            'scout',
             [Part(role='user', kind='text', payload={'text': f'turn {index}'})],
         )
         for index in range(3)
@@ -118,9 +119,10 @@ async def test_compact_persists_summary_turn_and_advances_boundary() -> None:
 
 async def test_compact_abandons_on_malformed_llm_output() -> None:
     repository = FakeConversationRepository()
-    conversation = await repository.get_or_create('telegram', '2', 'scout')
+    conversation = await repository.get_or_create('telegram', '2')
     turn = await repository.append_turn(
         conversation,
+        'scout',
         [Part(role='user', kind='text', payload={'text': 'hi'})],
     )
     non_json = [
@@ -155,9 +157,10 @@ async def test_compact_abandons_on_well_formed_json_with_invalid_shape(
     raw: str,
 ) -> None:
     repository = FakeConversationRepository()
-    conversation = await repository.get_or_create('telegram', '3', 'scout')
+    conversation = await repository.get_or_create('telegram', '3')
     turn = await repository.append_turn(
         conversation,
+        'scout',
         [Part(role='user', kind='text', payload={'text': 'hi'})],
     )
     chunks = [TextChunk(text=raw), FinishChunk(reason='stop')]
@@ -178,9 +181,10 @@ async def test_compact_abandons_on_well_formed_json_with_invalid_shape(
 
 async def test_compact_abandons_on_cas_conflict_without_retrying_the_llm() -> None:
     repository = FakeConversationRepository()
-    conversation = await repository.get_or_create('telegram', '4', 'scout')
+    conversation = await repository.get_or_create('telegram', '4')
     turn = await repository.append_turn(
         conversation,
+        'scout',
         [Part(role='user', kind='text', payload={'text': 'hi'})],
     )
     repository.force_cas_conflict = True
@@ -242,6 +246,7 @@ def test_should_compact_combined_trigger_table(
     foldable = tuple(
         Turn(
             id=UUID(int=index + 1),
+            agent='scout',
             parts=(
                 Part(role='user', kind='text', payload={'text': 'x' * payload_size}),
             ),
@@ -254,11 +259,12 @@ def test_should_compact_combined_trigger_table(
 
 async def test_maybe_compact_never_calls_the_llm_while_within_keep_turns() -> None:
     repository = FakeConversationRepository()
-    conversation = await repository.get_or_create('telegram', '6', 'scout')
+    conversation = await repository.get_or_create('telegram', '6')
     keep_turns = 3
     for _ in range(keep_turns):
         await repository.append_turn(
             conversation,
+            'scout',
             [Part(role='user', kind='text', payload={'text': 'x' * 1_000_000})],
         )
     llm_contract = FakeLLMContract(None)
@@ -277,11 +283,12 @@ async def test_maybe_compact_never_calls_the_llm_while_within_keep_turns() -> No
 
 async def test_maybe_compact_folds_prior_summary_and_accumulates_context() -> None:
     repository = FakeConversationRepository()
-    conversation = await repository.get_or_create('telegram', '7', 'scout')
+    conversation = await repository.get_or_create('telegram', '7')
 
     for index in range(3):
         await repository.append_turn(
             conversation,
+            'scout',
             [Part(role='user', kind='text', payload={'text': f'first {index}'})],
         )
     first_llm = FakeLLM(
@@ -313,6 +320,7 @@ async def test_maybe_compact_folds_prior_summary_and_accumulates_context() -> No
     for index in range(3):
         await repository.append_turn(
             conversation,
+            'scout',
             [Part(role='user', kind='text', payload={'text': f'second {index}'})],
         )
     second_llm = FakeLLM(
@@ -363,9 +371,10 @@ async def test_summary_request_leads_with_cacheable_transcript_then_instruction(
     None
 ):
     repository = FakeConversationRepository()
-    conversation = await repository.get_or_create('telegram', '10', 'scout')
+    conversation = await repository.get_or_create('telegram', '10')
     turn = await repository.append_turn(
         conversation,
+        'scout',
         [Part(role='user', kind='text', payload={'text': 'the timezone is UTC+8'})],
     )
     llm_client = FakeLLM(
@@ -396,9 +405,10 @@ async def test_summary_request_leads_with_cacheable_transcript_then_instruction(
 
 async def test_a_configured_summary_prompt_replaces_the_default_instruction() -> None:
     repository = FakeConversationRepository()
-    conversation = await repository.get_or_create('telegram', '11', 'scout')
+    conversation = await repository.get_or_create('telegram', '11')
     turn = await repository.append_turn(
         conversation,
+        'scout',
         [Part(role='user', kind='text', payload={'text': 'hi'})],
     )
     llm_client = FakeLLM(
@@ -423,9 +433,10 @@ async def test_a_configured_summary_prompt_replaces_the_default_instruction() ->
 
 async def test_compact_returns_uncompacted_when_no_client_for_model() -> None:
     repository = FakeConversationRepository()
-    conversation = await repository.get_or_create('telegram', '8', 'scout')
+    conversation = await repository.get_or_create('telegram', '8')
     turn = await repository.append_turn(
         conversation,
+        'scout',
         [Part(role='user', kind='text', payload={'text': 'hi'})],
     )
     service = build_service(FakeLLMContract(None), repository)
@@ -443,7 +454,7 @@ async def test_compact_returns_uncompacted_when_no_client_for_model() -> None:
 
 async def test_compact_with_no_turns_to_fold_raises() -> None:
     repository = FakeConversationRepository()
-    conversation = await repository.get_or_create('telegram', '9', 'scout')
+    conversation = await repository.get_or_create('telegram', '9')
     service = build_service(FakeLLMContract(None), repository)
 
     with pytest.raises(NoTurnsToCompactError):
@@ -452,10 +463,11 @@ async def test_compact_with_no_turns_to_fold_raises() -> None:
 
 async def test_force_folds_everything_the_threshold_would_have_kept() -> None:
     repository = FakeConversationRepository()
-    conversation = await repository.get_or_create('telegram', '9', 'scout')
+    conversation = await repository.get_or_create('telegram', '9')
     for index in range(2):
         await repository.append_turn(
             conversation,
+            'scout',
             [Part(role='user', kind='text', payload={'text': f'turn {index}'})],
         )
     llm_client = FakeLLM(
@@ -483,7 +495,7 @@ async def test_force_folds_everything_the_threshold_would_have_kept() -> None:
 
 async def test_force_leaves_a_conversation_with_nothing_to_fold_alone() -> None:
     repository = FakeConversationRepository()
-    conversation = await repository.get_or_create('telegram', '10', 'scout')
+    conversation = await repository.get_or_create('telegram', '10')
     llm_contract = FakeLLMContract(None)
     service = build_service(llm_contract, repository)
 

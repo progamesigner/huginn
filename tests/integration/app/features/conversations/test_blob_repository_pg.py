@@ -78,10 +78,11 @@ async def test_different_bytes_get_their_own_row(session: AsyncSession) -> None:
 async def test_a_deleted_conversation_leaves_its_blobs_behind(
     session: AsyncSession,
 ) -> None:
-    conversation = await _conversations(session).get_or_create('telegram', '5', 'scout')
+    conversation = await _conversations(session).get_or_create('telegram', '5')
     blob = await _blobs(session).store('image/jpeg', _PHOTO)
     await _conversations(session).append_turn(
         conversation,
+        'scout',
         [Part(role='user', kind='image', payload={'blob': str(blob.id)})],
     )
 

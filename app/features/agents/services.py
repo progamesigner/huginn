@@ -429,7 +429,7 @@ class TurnHandler(TurnHandlerContract):
         ref: ModelRef,
         client: LLMClient,
     ) -> None:
-        history = await self.store.history(request.channel, request.chat, agent.name)
+        history = await self.store.history(request.channel, request.chat)
         witness = AnswerRecorder(reply)
         try:
             scope = _turn_scope(request, agent.name)

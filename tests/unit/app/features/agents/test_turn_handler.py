@@ -79,7 +79,7 @@ class FakeTranscript:
 class FakeStore(TranscriptStoreContract):
     maintain_error: Exception | None
     maintained: list[tuple[str, str, str, ModelRef]]
-    opened: list[tuple[str, str, str]]
+    opened: list[tuple[str, str]]
     record_error: Exception | None
     transcript: FakeTranscript
 
@@ -101,9 +101,8 @@ class FakeStore(TranscriptStoreContract):
         self,
         channel: str,
         chat: str,
-        agent: str,
     ) -> tuple[Message, ...]:
-        self.opened.append((channel, chat, agent))
+        self.opened.append((channel, chat))
         return self.transcript.prior
 
     @override
@@ -133,6 +132,30 @@ class FakeStore(TranscriptStoreContract):
         self.maintained.append((channel, chat, agent, ref))
         if self.maintain_error is not None:
             raise self.maintain_error
+
+
+class SharedFakeStore(FakeStore):
+    @override
+    async def record(
+        self,
+        channel: str,
+        chat: str,
+        agent: str,
+        prompts: Sequence[TurnPrompt],
+        answer: str,
+    ) -> None:
+        await super().record(channel, chat, agent, prompts, answer)
+        replay = tuple(
+            Message(role='user', segments=(TextSegment(text=prompt.text),))
+            for prompt in prompts
+            if prompt.text
+        )
+        if answer:
+            replay = (
+                *replay,
+                Message(role='assistant', segments=(TextSegment(text=answer),)),
+            )
+        self.transcript.prior = (*self.transcript.prior, *replay)
 
 
 def agents() -> dict[str, AgentConfig]:
@@ -441,7 +464,7 @@ async def test_a_turn_opens_the_transcript_of_the_agent_it_routed_to() -> None:
 
     await make_handler(answering(), store).handle(request('hello'), RecordingReply())
 
-    assert store.opened == [('support_bot', '4242', 'scout')]
+    assert store.opened == [('support_bot', '4242')]
 
 
 async def test_a_turn_records_its_prompts_and_answer() -> None:
@@ -466,6 +489,48 @@ async def test_a_turn_replays_the_stored_history_into_the_model() -> None:
     # NOTE: system instructions, then the stored history, then this round's prompts
     assert [message.role for message in sent] == ['system', 'user', 'user']
     assert sent[1] is prior[0]
+
+
+async def test_a_chat_replays_history_after_routing_to_a_different_agent() -> None:
+    store = SharedFakeStore()
+    llm = FakeLLM(
+        [
+            [TextChunk(text='one'), FinishChunk(reason='stop')],
+            [TextChunk(text='two'), FinishChunk(reason='stop')],
+        ],
+    )
+    configs = {
+        'quick': AgentConfig(description='quick', instructions='answer briefly'),
+        'deep': AgentConfig(description='deep', instructions='answer fully'),
+    }
+    models = FakeModels(llm)
+    handler = TurnHandler(
+        llm=models,
+        router=Router(configs, models, DEFAULTS),
+        sources=ToolSourceRegistry(),
+        store=store,
+        clock=ClockManager(),
+        defaults=DEFAULTS,
+    )
+
+    await handler.handle(
+        replace(request('first'), policy=RoutingPolicy(agent='quick')),
+        RecordingReply(),
+    )
+    await handler.handle(
+        replace(request('second'), policy=RoutingPolicy(agent='deep')),
+        RecordingReply(),
+    )
+
+    second = llm.requests[1].messages
+    assert [message.role for message in second] == [
+        'system',
+        'user',
+        'assistant',
+        'user',
+    ]
+    assert isinstance(second[1].segments[0], TextSegment)
+    assert second[1].segments[0].text == 'first'
 
 
 async def test_every_prompt_of_a_coalesced_round_reaches_the_model() -> None:

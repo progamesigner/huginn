@@ -17,8 +17,8 @@ def _repository(session: AsyncSession) -> ConversationRepository:
 async def test_get_or_create_persists_and_is_idempotent(session: AsyncSession) -> None:
     repository = _repository(session)
 
-    first = await repository.get_or_create('telegram', '42', 'scout')
-    again = await repository.get_or_create('telegram', '42', 'scout')
+    first = await repository.get_or_create('telegram', '42')
+    again = await repository.get_or_create('telegram', '42')
 
     assert first.id == again.id
     assert first.channel == 'telegram'
@@ -26,25 +26,26 @@ async def test_get_or_create_persists_and_is_idempotent(session: AsyncSession) -
     assert first.created_at is not None
 
 
-async def test_different_agent_creates_a_distinct_conversation(
+async def test_same_chat_reuses_one_conversation(
     session: AsyncSession,
 ) -> None:
     repository = _repository(session)
 
-    scout = await repository.get_or_create('telegram', '42', 'scout')
-    sage = await repository.get_or_create('telegram', '42', 'sage')
+    scout = await repository.get_or_create('telegram', '42')
+    sage = await repository.get_or_create('telegram', '42')
 
-    assert scout.id != sage.id
+    assert scout.id == sage.id
 
 
 async def test_append_turn_round_trips_segment_kinds_and_jsonb(
     session: AsyncSession,
 ) -> None:
     repository = _repository(session)
-    conversation = await repository.get_or_create('telegram', '99', 'scout')
+    conversation = await repository.get_or_create('telegram', '99')
 
     turn = await repository.append_turn(
         conversation,
+        'scout',
         [
             Part(role='assistant', kind='text', payload={'text': 'checking'}),
             Part(role='assistant', kind='tool_call', payload={'name': 'search'}),
@@ -57,17 +58,19 @@ async def test_append_turn_round_trips_segment_kinds_and_jsonb(
         ('assistant', 'tool_call', {'name': 'search'}),
     ]
     assert turn.usage == {'input_tokens': 12, 'output_tokens': 3}
+    assert turn.agent == 'scout'
 
 
 async def test_load_recent_turns_orders_by_time_and_limits(
     session: AsyncSession,
 ) -> None:
     repository = _repository(session)
-    conversation = await repository.get_or_create('telegram', '7', 'scout')
+    conversation = await repository.get_or_create('telegram', '7')
 
     for index in range(3):
         await repository.append_turn(
             conversation,
+            'scout',
             [Part(role='user', kind='text', payload={'text': str(index)})],
         )
 
@@ -83,10 +86,11 @@ async def test_a_media_part_is_within_the_declared_vocabulary(
     kind: str,
 ) -> None:
     repository = _repository(session)
-    conversation = await repository.get_or_create('telegram', '77', 'scout')
+    conversation = await repository.get_or_create('telegram', '77')
 
     turn = await repository.append_turn(
         conversation,
+        'scout',
         [Part(role='user', kind=kind, payload={'text': 'a placeholder'})],
     )
 
@@ -106,48 +110,69 @@ async def test_a_part_outside_the_declared_vocabulary_is_refused(
     part: Part,
 ) -> None:
     repository = _repository(session)
-    conversation = await repository.get_or_create('telegram', '13', 'scout')
+    conversation = await repository.get_or_create('telegram', '13')
 
     # NOTE: the reader branches on role and kind, so the database is where the vocabulary
     # has to be closed -- a writer that invents one must not be able to persist it
     with pytest.raises(IntegrityError):
-        await repository.append_turn(conversation, [part])
+        await repository.append_turn(conversation, 'scout', [part])
 
 
 async def test_turns_are_scoped_to_their_conversation(session: AsyncSession) -> None:
     repository = _repository(session)
-    scout = await repository.get_or_create('telegram', '1', 'scout')
-    sage = await repository.get_or_create('telegram', '2', 'sage')
+    scout = await repository.get_or_create('telegram', '1')
+    sage = await repository.get_or_create('telegram', '2')
 
-    await repository.append_turn(scout, [Part(role='user', kind='text')])
+    await repository.append_turn(scout, 'scout', [Part(role='user', kind='text')])
 
     assert len(await repository.load_recent_turns(scout, limit=10)) == 1
     assert await repository.load_recent_turns(sage, limit=10) == ()
 
 
-async def test_list_by_chat_returns_every_agent_of_that_chat(
+async def test_find_by_chat_returns_the_single_conversation(
     session: AsyncSession,
 ) -> None:
     repository = _repository(session)
-    scout = await repository.get_or_create('telegram', '31', 'scout')
-    sage = await repository.get_or_create('telegram', '31', 'sage')
-    await repository.get_or_create('telegram', '32', 'scout')
+    scout = await repository.get_or_create('telegram', '31')
+    sage = await repository.get_or_create('telegram', '31')
+    await repository.get_or_create('telegram', '32')
 
-    listed = await repository.list_by_chat('telegram', '31')
+    found = await repository.find_by_chat('telegram', '31')
 
-    # NOTE: a chat holds one conversation per agent, so a chat-level command has to see
-    # all of them rather than guess which one the router last picked
-    assert [conversation.id for conversation in listed] == [sage.id, scout.id]
+    assert scout.id == sage.id
+    assert found is not None
+    assert found.id == scout.id
+    assert await repository.find_by_chat('telegram', 'missing') is None
+
+
+async def test_latest_agent_reads_the_newest_turn(session: AsyncSession) -> None:
+    repository = _repository(session)
+    conversation = await repository.get_or_create('telegram', 'latest')
+
+    assert await repository.latest_agent(conversation) is None
+    await repository.append_turn(
+        conversation,
+        'scout',
+        [Part(role='user', kind='text')],
+    )
+    await repository.append_turn(
+        conversation,
+        'sage',
+        [Part(role='assistant', kind='text')],
+    )
+
+    assert await repository.latest_agent(conversation) == 'sage'
 
 
 async def test_reset_moves_the_boundary_to_the_newest_turn(
     session: AsyncSession,
 ) -> None:
     repository = _repository(session)
-    conversation = await repository.get_or_create('telegram', '33', 'scout')
+    conversation = await repository.get_or_create('telegram', '33')
     for index in range(2):
         await repository.append_turn(
             conversation,
+            'scout',
             [Part(role='user', kind='text', payload={'text': str(index)})],
         )
     newest = (await repository.load_recent_turns(conversation, limit=1))[0]
@@ -164,7 +189,7 @@ async def test_reset_on_an_empty_conversation_holds_no_boundary(
     session: AsyncSession,
 ) -> None:
     repository = _repository(session)
-    conversation = await repository.get_or_create('telegram', '34', 'scout')
+    conversation = await repository.get_or_create('telegram', '34')
 
     reset = await repository.reset(conversation, conversation.compact_version)
 
@@ -176,9 +201,10 @@ async def test_reset_loses_a_cas_race_without_moving_anything(
     session: AsyncSession,
 ) -> None:
     repository = _repository(session)
-    conversation = await repository.get_or_create('telegram', '35', 'scout')
+    conversation = await repository.get_or_create('telegram', '35')
     await repository.append_turn(
         conversation,
+        'scout',
         [Part(role='user', kind='text', payload={'text': 'hello'})],
     )
 

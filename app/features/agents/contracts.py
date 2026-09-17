@@ -38,7 +38,6 @@ class TranscriptStoreContract(ABC):
         self,
         channel: str,
         chat: str,
-        agent: str,
     ) -> tuple[Message, ...]: ...
 
     @abstractmethod

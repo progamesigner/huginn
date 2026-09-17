@@ -32,11 +32,10 @@ class BlobRecord(AppRecord):
 
 class ConversationRecord(TimestampRecordMixin, AppRecord):
     __tablename__ = 'conversations'
-    __table_args__ = (UniqueConstraint('channel', 'chat_id', 'agent'),)
+    __table_args__ = (UniqueConstraint('channel', 'chat_id'),)
 
     channel: Mapped[str] = mapped_column()
     chat_id: Mapped[str] = mapped_column()
-    agent: Mapped[str] = mapped_column()
     compact_version: Mapped[int] = mapped_column(server_default='0')
     summarized_through_turn_id: Mapped[UUID | None] = mapped_column(default=None)
 
@@ -46,6 +45,7 @@ class TurnRecord(AppRecord):
     __table_args__ = (Index('ix_turns_conversation_id', 'conversation_id', 'id'),)
 
     conversation_id: Mapped[UUID] = mapped_column()
+    agent: Mapped[str] = mapped_column()
     usage: Mapped[JsonValue] = mapped_column(nullable=False, server_default=_EMPTY_JSON)
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())
     parts: Mapped[list[PartRecord]] = relationship(

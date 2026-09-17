@@ -130,10 +130,10 @@ async def test_a_recorded_turn_reads_back_as_the_next_turns_history(
     session: AsyncSession,
 ) -> None:
     repository = _repository(session)
-    conversation = await repository.get_or_create('support_bot', '4242', 'scout')
+    conversation = await repository.get_or_create('support_bot', '4242')
     transcript = _transcript(session, conversation)
 
-    await transcript.record([_prompt('first'), _prompt('second')], 'answer')
+    await transcript.record('scout', [_prompt('first'), _prompt('second')], 'answer')
 
     assert _texts(await transcript.history()) == [
         ('user', 'first'),
@@ -146,10 +146,10 @@ async def test_an_empty_answer_records_only_what_the_user_said(
     session: AsyncSession,
 ) -> None:
     repository = _repository(session)
-    conversation = await repository.get_or_create('support_bot', '1', 'scout')
+    conversation = await repository.get_or_create('support_bot', '1')
     transcript = _transcript(session, conversation)
 
-    await transcript.record([_prompt('hello')], '')
+    await transcript.record('scout', [_prompt('hello')], '')
 
     assert _texts(await transcript.history()) == [('user', 'hello')]
 
@@ -158,9 +158,9 @@ async def test_history_opens_with_the_summary_and_omits_folded_turns(
     session: AsyncSession,
 ) -> None:
     repository = _repository(session)
-    conversation = await repository.get_or_create('support_bot', '2', 'scout')
+    conversation = await repository.get_or_create('support_bot', '2')
     transcript = _transcript(session, conversation)
-    await transcript.record([_prompt('ancient')], 'forgotten')
+    await transcript.record('scout', [_prompt('ancient')], 'forgotten')
     folded = await repository.load_turns_since_summary(conversation)
     updated = await repository.apply_compaction(
         conversation,
@@ -171,7 +171,7 @@ async def test_history_opens_with_the_summary_and_omits_folded_turns(
 
     assert updated is not None
     after = _transcript(session, updated)
-    await after.record([_prompt('recent')], 'fresh')
+    await after.record('scout', [_prompt('recent')], 'fresh')
 
     # NOTE: the summary stands in for everything before the boundary, so the folded turn
     # must not come back as well -- that would send the model the same content twice
@@ -184,9 +184,10 @@ async def test_history_opens_with_the_summary_and_omits_folded_turns(
 
 async def test_tool_traffic_is_kept_but_never_replayed(session: AsyncSession) -> None:
     repository = _repository(session)
-    conversation = await repository.get_or_create('support_bot', '3', 'scout')
+    conversation = await repository.get_or_create('support_bot', '3')
     await repository.append_turn(
         conversation,
+        'scout',
         [
             Part(role='user', kind='text', payload={'text': 'search it'}),
             Part(role='assistant', kind='tool_call', payload={'name': 'websearch'}),
@@ -205,9 +206,10 @@ async def test_an_attached_photo_is_stored_as_a_blob_and_a_media_part(
     session: AsyncSession,
 ) -> None:
     repository = _repository(session)
-    conversation = await repository.get_or_create('support_bot', '5', 'scout')
+    conversation = await repository.get_or_create('support_bot', '5')
 
     await _transcript(session, conversation).record(
+        'scout',
         [TurnPrompt(text='what is this?', actor='user:1', attachments=(_photo(),))],
         'a duck',
     )
@@ -238,9 +240,10 @@ async def test_a_stored_photo_replays_as_its_placeholder(
     session: AsyncSession,
 ) -> None:
     repository = _repository(session)
-    conversation = await repository.get_or_create('support_bot', '6', 'scout')
+    conversation = await repository.get_or_create('support_bot', '6')
     transcript = _transcript(session, conversation)
     await transcript.record(
+        'scout',
         [TurnPrompt(text='', actor='user:1', attachments=(_photo(),))],
         'a duck',
     )
@@ -264,7 +267,7 @@ async def test_a_transcribed_voice_note_is_stored_as_what_it_said(
     session: AsyncSession,
 ) -> None:
     repository = _repository(session)
-    conversation = await repository.get_or_create('support_bot', '7', 'scout')
+    conversation = await repository.get_or_create('support_bot', '7')
     transcript = _transcript(session, conversation)
     voice = PromptAttachment(
         kind='audio',
@@ -277,6 +280,7 @@ async def test_a_transcribed_voice_note_is_stored_as_what_it_said(
     )
 
     await transcript.record(
+        'scout',
         [TurnPrompt(text='', actor='user:1', attachments=(voice,))],
         'ok',
     )
@@ -300,10 +304,36 @@ async def test_recording_a_round_commits_it_on_its_own(database_url: str) -> Non
 
         # NOTE: a separate call is a separate session, so seeing the turn back proves the
         # record committed rather than merely flushed
-        assert _texts(await store.history('support_bot', '7777', 'scout')) == [
+        assert _texts(await store.history('support_bot', '7777')) == [
             ('user', 'hello'),
             ('assistant', 'answer'),
         ]
+    finally:
+        await database.dispose()
+
+
+@pytest.mark.usefixtures('_migrated')
+async def test_history_and_agent_stamps_are_shared_across_routed_agents(
+    database_url: str,
+) -> None:
+    database = DatabaseManager({None: database_url})
+    store = _store(database)
+    try:
+        await store.record('support_bot', 'mixed', 'quick', [_prompt('first')], 'one')
+        await store.record('support_bot', 'mixed', 'deep', [_prompt('second')], 'two')
+
+        assert _texts(await store.history('support_bot', 'mixed')) == [
+            ('user', 'first'),
+            ('assistant', 'one'),
+            ('user', 'second'),
+            ('assistant', 'two'),
+        ]
+        async with database.session() as session:
+            repository = _repository(session)
+            conversation = await repository.find_by_chat('support_bot', 'mixed')
+            assert conversation is not None
+            turns = await repository.load_recent_turns(conversation, limit=10)
+            assert [turn.agent for turn in turns] == ['quick', 'deep']
     finally:
         await database.dispose()
 
@@ -326,7 +356,7 @@ async def test_a_recorded_round_survives_a_later_failure(database_url: str) -> N
         with pytest.raises(RuntimeError):
             raise RuntimeError('the turn died after answering')
 
-        assert _texts(await store.history('support_bot', '8888', 'scout')) == [
+        assert _texts(await store.history('support_bot', '8888')) == [
             ('user', 'hello'),
             ('assistant', 'partial'),
         ]
@@ -359,6 +389,6 @@ async def test_a_record_that_raises_partway_commits_nothing(database_url: str) -
         async with database.session() as session:
             assert (await session.execute(select(BlobRecord))).scalars().all() == []
 
-        assert await store.history('support_bot', '9999', 'scout') == ()
+        assert await store.history('support_bot', '9999') == ()
     finally:
         await database.dispose()

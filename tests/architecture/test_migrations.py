@@ -1,3 +1,5 @@
+from uuid import UUID
+
 import pytest
 from alembic import command
 from alembic.autogenerate import compare_metadata
@@ -208,6 +210,94 @@ async def test_migration_upgrade_downgrade_upgrade_roundtrip(database_url: str) 
         # as a missing table -- the re-upgrade has to land back on the declared schema
         assert not await _drifted(engine)
     finally:
+        await engine.dispose()
+
+
+@_integration
+async def test_shared_history_migration_merges_agent_conversations_without_losing_turns(
+    database_url: str,
+) -> None:
+    engine = create_async_engine(database_url)
+    quick_conversation = UUID(int=1)
+    deep_conversation = UUID(int=2)
+    quick_turn = UUID(int=11)
+    summary_turn = UUID(int=12)
+    deep_turn = UUID(int=13)
+    try:
+        await _drive(engine, 'down', 'default@base')
+        await _drive(engine, 'up', '38d458bfb6ac')
+        async with engine.begin() as connection:
+            for id_, agent in (
+                (quick_conversation, 'quick'),
+                (deep_conversation, 'deep'),
+            ):
+                await connection.execute(
+                    text(
+                        """
+                        insert into conversations
+                            (id, channel, chat_id, agent, created_at, updated_at,
+                             compact_version)
+                        values (:id, 'telegram', '42', :agent, now(), now(), 0)
+                        """,
+                    ),
+                    {'id': id_, 'agent': agent},
+                )
+            for id_, conversation in (
+                (quick_turn, quick_conversation),
+                (summary_turn, quick_conversation),
+                (deep_turn, deep_conversation),
+            ):
+                await connection.execute(
+                    text(
+                        'insert into turns (id, conversation_id) '
+                        'values (:id, :conversation)',
+                    ),
+                    {'id': id_, 'conversation': conversation},
+                )
+            await connection.execute(
+                text(
+                    """
+                    insert into parts (id, turn_id, seq, role, kind, payload)
+                    values (:id, :turn, 0, 'assistant', 'summary', '{}'::jsonb)
+                    """,
+                ),
+                {'id': UUID(int=21), 'turn': summary_turn},
+            )
+            await connection.execute(
+                text(
+                    'update conversations set summarized_through_turn_id = :turn '
+                    'where id = :conversation',
+                ),
+                {'turn': quick_turn, 'conversation': quick_conversation},
+            )
+
+        await _drive(engine, 'up', 'default@head')
+        async with engine.connect() as connection:
+            conversations = (
+                await connection.execute(
+                    text(
+                        'select id, compact_version, summarized_through_turn_id '
+                        "from conversations where channel = 'telegram' and chat_id = '42'",
+                    ),
+                )
+            ).all()
+            turns = (
+                await connection.execute(
+                    text(
+                        'select id, conversation_id, agent from turns '
+                        'where conversation_id = :conversation order by id',
+                    ),
+                    {'conversation': quick_conversation},
+                )
+            ).all()
+
+        assert conversations == [(quick_conversation, 1, None)]
+        assert turns == [
+            (quick_turn, quick_conversation, 'quick'),
+            (deep_turn, quick_conversation, 'deep'),
+        ]
+    finally:
+        await _drive(engine, 'down', 'default@base')
         await engine.dispose()
 
 

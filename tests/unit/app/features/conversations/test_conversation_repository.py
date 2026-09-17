@@ -10,7 +10,7 @@ from app.features.conversations.types import Conversation, Part, Turn
 
 
 class FakeConversationRepository:
-    conversations: dict[tuple[str, str, str], Conversation]
+    conversations: dict[tuple[str, str], Conversation]
     turns: dict[UUID, list[Turn]]
     counter: int
     force_cas_conflict: bool
@@ -29,15 +29,13 @@ class FakeConversationRepository:
         self,
         channel: str,
         chat_id: str,
-        agent: str,
     ) -> Conversation:
-        key = (channel, chat_id, agent)
+        key = (channel, chat_id)
         if key not in self.conversations:
             conversation = Conversation(
                 id=self._next_id(),
                 channel=channel,
                 chat_id=chat_id,
-                agent=agent,
             )
             self.conversations[key] = conversation
             self.turns[conversation.id] = []
@@ -47,10 +45,16 @@ class FakeConversationRepository:
     async def append_turn(
         self,
         conversation: Conversation,
+        agent: str,
         parts: Sequence[Part],
         usage: Mapping[str, JsonValue] | None = None,
     ) -> Turn:
-        turn = Turn(id=self._next_id(), parts=tuple(parts), usage=dict(usage or {}))
+        turn = Turn(
+            id=self._next_id(),
+            agent=agent,
+            parts=tuple(parts),
+            usage=dict(usage or {}),
+        )
         self.turns[conversation.id].append(turn)
         return turn
 
@@ -109,6 +113,7 @@ class FakeConversationRepository:
         boundary = turns_folded[-1]
         summary_turn = Turn(
             id=self._next_id(),
+            agent=boundary.agent,
             parts=(
                 Part(
                     role='assistant',
@@ -124,7 +129,7 @@ class FakeConversationRepository:
             compact_version=conversation.compact_version + 1,
             summarized_through_turn_id=boundary.id,
         )
-        key = (conversation.channel, conversation.chat_id, conversation.agent)
+        key = (conversation.channel, conversation.chat_id)
         self.conversations[key] = updated
 
         return updated
@@ -133,27 +138,28 @@ class FakeConversationRepository:
 async def test_get_or_create_is_idempotent_per_key() -> None:
     repository = FakeConversationRepository()
 
-    first = await repository.get_or_create('telegram', '42', 'scout')
-    again = await repository.get_or_create('telegram', '42', 'scout')
+    first = await repository.get_or_create('telegram', '42')
+    again = await repository.get_or_create('telegram', '42')
 
     assert first.id == again.id
 
 
-async def test_different_agent_starts_a_separate_conversation() -> None:
+async def test_agent_changes_share_the_same_conversation() -> None:
     repository = FakeConversationRepository()
 
-    scout = await repository.get_or_create('telegram', '42', 'scout')
-    sage = await repository.get_or_create('telegram', '42', 'sage')
+    scout = await repository.get_or_create('telegram', '42')
+    sage = await repository.get_or_create('telegram', '42')
 
-    assert scout.id != sage.id
+    assert scout.id == sage.id
 
 
 async def test_a_turn_holds_ordered_segments_with_their_kinds() -> None:
     repository = FakeConversationRepository()
-    conversation = await repository.get_or_create('telegram', '42', 'scout')
+    conversation = await repository.get_or_create('telegram', '42')
 
     turn = await repository.append_turn(
         conversation,
+        'scout',
         [
             Part(role='assistant', kind='text', payload={'text': 'checking'}),
             Part(role='assistant', kind='tool_call', payload={'name': 'search'}),
@@ -164,15 +170,17 @@ async def test_a_turn_holds_ordered_segments_with_their_kinds() -> None:
         ('assistant', 'text'),
         ('assistant', 'tool_call'),
     ]
+    assert turn.agent == 'scout'
 
 
 async def test_append_then_load_recent_turns_honours_order_and_limit() -> None:
     repository = FakeConversationRepository()
-    conversation = await repository.get_or_create('telegram', '42', 'scout')
+    conversation = await repository.get_or_create('telegram', '42')
 
     for index in range(3):
         await repository.append_turn(
             conversation,
+            'scout',
             [Part(role='user', kind='text', payload={'text': str(index)})],
         )
 

@@ -43,25 +43,25 @@ class FakeIdentities(IdentityResolverContract):
 
 
 class FakeControl(ConversationControlContract):
-    cleared: int
+    cleared: bool
     compactions: list[tuple[str, str]]
-    folded: int
+    folded: bool
     resets: list[tuple[str, str]]
 
-    def __init__(self, *, cleared: int = 1, folded: int = 1) -> None:
+    def __init__(self, *, cleared: bool = True, folded: bool = True) -> None:
         self.cleared = cleared
         self.compactions = []
         self.folded = folded
         self.resets = []
 
     @override
-    async def compact(self, channel: str, chat: str) -> int:
+    async def compact(self, channel: str, chat: str) -> bool:
         self.compactions.append((channel, chat))
 
         return self.folded
 
     @override
-    async def reset(self, channel: str, chat: str) -> int:
+    async def reset(self, channel: str, chat: str) -> bool:
         self.resets.append((channel, chat))
 
         return self.cleared
@@ -235,7 +235,7 @@ async def test_the_provider_of_a_link_is_the_vendor_the_message_named() -> None:
 
 
 async def test_new_resets_every_conversation_of_the_chat() -> None:
-    control = FakeControl(cleared=2)
+    control = FakeControl(cleared=True)
     handlers, _ = make_handlers(control=control)
 
     answer = await handlers.new(command('new'), inbound())
@@ -247,7 +247,7 @@ async def test_new_resets_every_conversation_of_the_chat() -> None:
 
 
 async def test_new_says_so_when_there_was_nothing_to_forget() -> None:
-    handlers, _ = make_handlers(control=FakeControl(cleared=0))
+    handlers, _ = make_handlers(control=FakeControl(cleared=False))
 
     answer = await handlers.new(command('new'), inbound())
 
@@ -255,7 +255,7 @@ async def test_new_says_so_when_there_was_nothing_to_forget() -> None:
 
 
 async def test_compact_folds_every_conversation_of_the_chat() -> None:
-    control = FakeControl(folded=2)
+    control = FakeControl(folded=True)
     handlers, _ = make_handlers(control=control)
 
     answer = await handlers.compact(command('compact'), inbound())
@@ -265,7 +265,7 @@ async def test_compact_folds_every_conversation_of_the_chat() -> None:
 
 
 async def test_compact_says_so_when_there_was_nothing_to_fold() -> None:
-    handlers, _ = make_handlers(control=FakeControl(folded=0))
+    handlers, _ = make_handlers(control=FakeControl(folded=False))
 
     answer = await handlers.compact(command('compact'), inbound())
 

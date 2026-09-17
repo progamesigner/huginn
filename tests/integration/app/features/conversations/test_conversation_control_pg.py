@@ -98,9 +98,10 @@ def _control(database: DatabaseContract, llm: LLMContract) -> ConversationContro
 async def _said(database: DatabaseContract, chat: str, agent: str) -> None:
     async with database.session() as session, session.begin():
         repository = ConversationRepository(session, GUIDManager(), ClockManager())
-        conversation = await repository.get_or_create('support_bot', chat, agent)
+        conversation = await repository.get_or_create('support_bot', chat)
         await repository.append_turn(
             conversation,
+            agent,
             [
                 Part(role='user', kind='text', payload={'text': f'hello {agent}'}),
                 Part(role='assistant', kind='text', payload={'text': 'hi'}),
@@ -111,7 +112,7 @@ async def _said(database: DatabaseContract, chat: str, agent: str) -> None:
 async def _history(database: DatabaseContract, chat: str, agent: str) -> list[str]:
     async with database.session() as session, session.begin():
         repository = ConversationRepository(session, GUIDManager(), ClockManager())
-        conversation = await repository.get_or_create('support_bot', chat, agent)
+        conversation = await repository.get_or_create('support_bot', chat)
         transcript = ConversationTranscript(
             repository,
             BlobRepository(session, GUIDManager()),
@@ -127,7 +128,7 @@ async def _history(database: DatabaseContract, chat: str, agent: str) -> list[st
 
 
 @pytest.mark.usefixtures('_migrated')
-async def test_reset_clears_every_agent_of_the_chat_and_leaves_others(
+async def test_reset_clears_the_shared_chat_and_leaves_others(
     database_url: str,
 ) -> None:
     database = DatabaseManager({None: database_url})
@@ -141,9 +142,7 @@ async def test_reset_clears_every_agent_of_the_chat_and_leaves_others(
             '900',
         )
 
-        # NOTE: Han's ruling -- a chat-level command means the whole chat, so every
-        # agent's conversation in it starts over and no other chat is touched
-        assert cleared == 2
+        assert cleared is True
         assert await _history(database, '900', 'scout') == []
         assert await _history(database, '900', 'sage') == []
         assert await _history(database, '901', 'scout') == ['hello scout', 'hi']
@@ -159,12 +158,14 @@ async def test_a_reset_chat_does_not_replay_the_summary_it_had_before(
     llm = Summarizer()
     try:
         await _said(database, '902', 'scout')
-        assert await _control(database, Models(llm)).compact('support_bot', '902') == 1
+        assert (
+            await _control(database, Models(llm)).compact('support_bot', '902') is True
+        )
         assert await _history(database, '902', 'scout') == [
             'Summary of the conversation so far: they said things',
         ]
 
-        assert await _control(database, Models(llm)).reset('support_bot', '902') == 1
+        assert await _control(database, Models(llm)).reset('support_bot', '902') is True
 
         # NOTE: the summary lives in a turn after the boundary compaction set, so the
         # reset has to cut it off too or the model keeps being told the old story
@@ -174,7 +175,7 @@ async def test_a_reset_chat_does_not_replay_the_summary_it_had_before(
 
 
 @pytest.mark.usefixtures('_migrated')
-async def test_compact_folds_every_agent_of_the_chat_once(
+async def test_compact_folds_the_shared_chat_once(
     database_url: str,
 ) -> None:
     database = DatabaseManager({None: database_url})
@@ -185,8 +186,8 @@ async def test_compact_folds_every_agent_of_the_chat_once(
 
         folded = await _control(database, Models(llm)).compact('support_bot', '903')
 
-        assert folded == 2
-        assert llm.calls == 2
+        assert folded is True
+        assert llm.calls == 1
         assert await _history(database, '903', 'scout') == [
             'Summary of the conversation so far: they said things',
         ]
@@ -195,12 +196,9 @@ async def test_compact_folds_every_agent_of_the_chat_once(
 
 
 @pytest.mark.usefixtures('_migrated')
-async def test_compact_uses_each_conversations_own_agent_instructions(
+async def test_compact_uses_the_latest_agents_instructions(
     database_url: str,
 ) -> None:
-    # NOTE: CompactionService is built fresh per conversation inside compact()'s loop
-    # specifically so each agent's own system prompt reaches the summarizer -- this
-    # pins that down against a regression back to one shared instance for the batch
     database = DatabaseManager({None: database_url})
     llm = Summarizer()
     try:
@@ -210,13 +208,13 @@ async def test_compact_uses_each_conversations_own_agent_instructions(
         await _control(database, Models(llm)).compact('support_bot', '905')
 
         assert all(request.messages[0].role == 'system' for request in llm.requests)
-        texts = sorted(
+        texts = [
             segment.text
             for request in llm.requests
             for segment in [request.messages[0].segments[0]]
             if isinstance(segment, TextSegment)
-        )
-        assert texts == ['be brief', 'be thorough']
+        ]
+        assert texts == ['be thorough']
     finally:
         await database.dispose()
 
@@ -227,11 +225,52 @@ async def test_nothing_to_fold_asks_no_model(database_url: str) -> None:
     llm = Summarizer()
     try:
         await _said(database, '904', 'scout')
-        assert await _control(database, Models(llm)).reset('support_bot', '904') == 1
+        assert await _control(database, Models(llm)).reset('support_bot', '904') is True
 
         folded = await _control(database, Models(llm)).compact('support_bot', '904')
 
-        assert folded == 0
+        assert folded is False
         assert llm.calls == 0
+    finally:
+        await database.dispose()
+
+
+@pytest.mark.usefixtures('_migrated')
+async def test_compact_skips_an_empty_conversation(database_url: str) -> None:
+    database = DatabaseManager({None: database_url})
+    llm = Summarizer()
+    try:
+        async with database.session() as session, session.begin():
+            repository = ConversationRepository(session, GUIDManager(), ClockManager())
+            await repository.get_or_create('support_bot', 'empty')
+
+        assert (
+            await _control(database, Models(llm)).compact('support_bot', 'empty')
+            is False
+        )
+        assert llm.calls == 0
+    finally:
+        await database.dispose()
+
+
+@pytest.mark.usefixtures('_migrated')
+async def test_compact_skips_a_removed_latest_agent(
+    database_url: str,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    database = DatabaseManager({None: database_url})
+    llm = Summarizer()
+    try:
+        await _said(database, 'retired', 'retired-agent')
+
+        with caplog.at_level('WARNING'):
+            result = await _control(database, Models(llm)).compact(
+                'support_bot',
+                'retired',
+            )
+
+        assert result is False
+        assert llm.calls == 0
+        assert any('retired-agent' in message for message in caplog.messages)
     finally:
         await database.dispose()

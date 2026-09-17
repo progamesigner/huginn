@@ -63,11 +63,12 @@ async def _summary_turn_id(
 
 async def test_compact_end_to_end_against_real_postgres(session: AsyncSession) -> None:
     repository = _repository(session)
-    conversation = await repository.get_or_create('telegram', 'compact-1', 'scout')
+    conversation = await repository.get_or_create('telegram', 'compact-1')
     keep_turns = 4
     turns = [
         await repository.append_turn(
             conversation,
+            'scout',
             [Part(role='user', kind='text', payload={'text': f'turn {index}'})],
         )
         for index in range(keep_turns * 2 + 3)
@@ -108,10 +109,11 @@ async def test_compact_leaves_database_untouched_when_llm_output_is_not_json(
     session: AsyncSession,
 ) -> None:
     repository = _repository(session)
-    conversation = await repository.get_or_create('telegram', 'compact-2', 'scout')
+    conversation = await repository.get_or_create('telegram', 'compact-2')
     turns = [
         await repository.append_turn(
             conversation,
+            'scout',
             [Part(role='user', kind='text', payload={'text': f'turn {index}'})],
         )
         for index in range(5)
@@ -146,11 +148,12 @@ async def test_second_compaction_folds_prior_summary_turn(
     session: AsyncSession,
 ) -> None:
     repository = _repository(session)
-    conversation = await repository.get_or_create('telegram', 'compact-3', 'scout')
+    conversation = await repository.get_or_create('telegram', 'compact-3')
 
     for index in range(3):
         await repository.append_turn(
             conversation,
+            'scout',
             [Part(role='user', kind='text', payload={'text': f'first {index}'})],
         )
     first_llm = FakeLLM(
@@ -178,6 +181,7 @@ async def test_second_compaction_folds_prior_summary_turn(
     for index in range(3):
         await repository.append_turn(
             conversation,
+            'scout',
             [Part(role='user', kind='text', payload={'text': f'second {index}'})],
         )
     second_llm = FakeLLM(
@@ -235,12 +239,12 @@ async def test_concurrent_compact_yields_exactly_one_winner(database_url: str) -
         conversation = await setup_repository.get_or_create(
             'telegram',
             'compact-race',
-            'scout',
         )
         turns = tuple(
             [
                 await setup_repository.append_turn(
                     conversation,
+                    'scout',
                     [Part(role='user', kind='text', payload={'text': f'turn {index}'})],
                 )
                 for index in range(5)
@@ -262,12 +266,10 @@ async def test_concurrent_compact_yields_exactly_one_winner(database_url: str) -
         conversation_a = await repository_a.get_or_create(
             'telegram',
             'compact-race',
-            'scout',
         )
         conversation_b = await repository_b.get_or_create(
             'telegram',
             'compact-race',
-            'scout',
         )
         assert conversation_a.compact_version == 0
         assert conversation_b.compact_version == 0
@@ -320,7 +322,6 @@ async def test_concurrent_compact_yields_exactly_one_winner(database_url: str) -
         final = await repository_verify.get_or_create(
             'telegram',
             'compact-race',
-            'scout',
         )
         assert final.compact_version == 1
 
