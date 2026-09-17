@@ -3,17 +3,15 @@ from typing import Annotated
 from pydantic import Field
 
 from app.core.config.registry import HuginnConfig, SectionSpec
-from app.core.config.schema import ConfigValue
-from app.features.agents.config import AGENTS
+from app.features.agents.config import AGENTS, InjectionConfig
 
 from .exceptions import SkillsNotConfiguredError
 
 _DEFAULT_GLOB = 'Agents/skills/**/SKILL.md'
 
 
-class SkillsSourceConfig(ConfigValue):
+class SkillsSourceConfig(InjectionConfig):
     server: Annotated[str | None, Field()] = None
-    inject: Annotated[dict[str, str], Field()] = Field(default_factory=dict)
     glob: Annotated[str, Field()] = _DEFAULT_GLOB
 
 

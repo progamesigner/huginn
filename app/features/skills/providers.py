@@ -25,7 +25,6 @@ def _repository(container: ContainerContract) -> SkillRepository:
     source = MuninnSkillSource(
         container.resolve(MCPClientContract),
         settings.server,
-        settings.inject,
         settings.glob,
     )
     return SkillRepository(source, container.resolve(ClockContract))
@@ -46,5 +45,8 @@ class SkillsProvider(ProviderContract):
     def __call__(self, container: ContainerContract) -> None:
         container.bind(SkillRepository, factory=_repository, shared=True)
         container.resolve(ToolSourceRegistry).register(
-            lambda: SkillToolSource(lambda: container.resolve(SkillRepository)),
+            lambda: SkillToolSource(
+                lambda: container.resolve(SkillRepository),
+                container.resolve(HuginnConfig).section(SKILLS),
+            ),
         )

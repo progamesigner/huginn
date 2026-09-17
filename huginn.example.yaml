@@ -55,7 +55,8 @@ skills:
   server: memory
   inject:
     agent: default
-    user: example
+  bind:
+    user: handle
 
 agents:
   scout:

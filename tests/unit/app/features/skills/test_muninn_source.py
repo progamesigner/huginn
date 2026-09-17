@@ -62,7 +62,6 @@ def source() -> tuple[MuninnSkillSource, FakeMCP]:
     skills = MuninnSkillSource(
         client,
         'memory',
-        {'agent': 'default', 'user': 'swag'},
         'Agents/skills/**/SKILL.md',
     )
     return skills, client
@@ -71,7 +70,7 @@ def source() -> tuple[MuninnSkillSource, FakeMCP]:
 async def test_list_parses_frontmatter_into_inventory() -> None:
     skills, client = source()
 
-    inventory = await skills.list()
+    inventory = await skills.list({'agent': 'default', 'user': 'swag'})
 
     assert {meta.name for meta in inventory} == {'create-incident-report', 'mystery'}
     incident = next(m for m in inventory if m.name == 'create-incident-report')
@@ -88,7 +87,7 @@ async def test_list_parses_frontmatter_into_inventory() -> None:
 async def test_list_falls_back_to_name_when_description_missing() -> None:
     skills, _ = source()
 
-    inventory = await skills.list()
+    inventory = await skills.list({'agent': 'default', 'user': 'swag'})
 
     mystery = next(m for m in inventory if m.name == 'mystery')
     assert mystery.description == 'mystery'
@@ -97,7 +96,10 @@ async def test_list_falls_back_to_name_when_description_missing() -> None:
 async def test_load_returns_body_without_frontmatter() -> None:
     skills, _ = source()
 
-    skill = await skills.load('Agents/skills/create-incident-report/SKILL.md')
+    skill = await skills.load(
+        'Agents/skills/create-incident-report/SKILL.md',
+        {'agent': 'default', 'user': 'swag'},
+    )
 
     assert skill.meta.name == 'create-incident-report'
     assert skill.body.startswith('# Incident report')

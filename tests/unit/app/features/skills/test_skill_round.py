@@ -7,6 +7,7 @@ from pydantic import JsonValue
 from app.features.agents.config import AgentConfig, SkillsConfig
 from app.features.agents.services import AgentRunner, build_tool_set
 from app.features.agents.types import TurnInput, TurnPrompt, TurnScope
+from app.features.skills.config import SkillsSourceConfig
 from app.features.skills.repositories import SkillRepository
 from app.features.skills.sources.contracts import SkillSource
 from app.features.skills.tools import SkillToolSource
@@ -21,11 +22,11 @@ from tests.unit.app.features.agents.test_agent_runner import FakeLLM
 
 class FakeSource(SkillSource):
     @override
-    async def list(self) -> tuple[SkillMeta, ...]:
+    async def list(self, scope: Mapping[str, JsonValue]) -> tuple[SkillMeta, ...]:
         return (SkillMeta(name='triage', description='triage', path='s/triage.md'),)
 
     @override
-    async def load(self, path: str) -> Skill:
+    async def load(self, path: str, scope: Mapping[str, JsonValue]) -> Skill:
         return Skill(
             meta=SkillMeta(name='triage', description='triage', path=path),
             body='# Triage\n\n1. Stay calm.',
@@ -59,7 +60,7 @@ async def test_agent_loads_a_skill_through_the_tool_loop() -> None:
         skills=SkillsConfig(enabled=True),
     )
     tools, _ = await build_tool_set(
-        (SkillToolSource(lambda: repository),),
+        (SkillToolSource(lambda: repository, SkillsSourceConfig()),),
         agent,
         TurnScope(actor='user:1', agent='test', channel='test', chat='1'),
     )

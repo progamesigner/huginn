@@ -1,10 +1,14 @@
+import builtins
+from collections.abc import Mapping
 from datetime import timedelta
 from typing import override
 
 import pytest
+from pydantic import JsonValue
 
 from app.features.agents.config import AgentConfig, SkillsConfig
-from app.features.agents.types import ToolSet
+from app.features.agents.types import ToolSet, TurnScope
+from app.features.skills.config import SkillsSourceConfig
 from app.features.skills.repositories import SkillRepository
 from app.features.skills.sources.contracts import SkillSource
 from app.features.skills.tools import SkillParams, SkillToolSource, _build_skill_tool
@@ -15,16 +19,22 @@ from tests.helpers.clock import FakeClock
 
 class FakeSource(SkillSource):
     metas: tuple[SkillMeta, ...]
+    list_scopes: builtins.list[dict[str, JsonValue]]
+    load_scopes: builtins.list[dict[str, JsonValue]]
 
     def __init__(self, metas: tuple[SkillMeta, ...]) -> None:
         self.metas = metas
+        self.list_scopes = []
+        self.load_scopes = []
 
     @override
-    async def list(self) -> tuple[SkillMeta, ...]:
+    async def list(self, scope: Mapping[str, JsonValue]) -> tuple[SkillMeta, ...]:
+        self.list_scopes.append(dict(scope))
         return self.metas
 
     @override
-    async def load(self, path: str) -> Skill:
+    async def load(self, path: str, scope: Mapping[str, JsonValue]) -> Skill:
+        self.load_scopes.append(dict(scope))
         meta = next(meta for meta in self.metas if meta.path == path)
         return Skill(meta=meta, body=f'# {meta.name}\n\ndo the thing')
 
@@ -36,9 +46,9 @@ def _meta(name: str) -> SkillMeta:
 async def build(*names: str) -> tuple[ToolSet, SkillRepository]:
     source = FakeSource(tuple(_meta(name) for name in names))
     repository = SkillRepository(source, FakeClock(), ttl=timedelta(minutes=15))
-    inventory = await repository.inventory()
+    inventory = await repository.inventory({})
     tools = ToolSet()
-    tools.add('skill', _build_skill_tool(repository, inventory))
+    tools.add('skill', _build_skill_tool(repository, inventory, {}))
     return tools, repository
 
 
@@ -70,11 +80,11 @@ async def test_loading_a_skill_returns_its_body() -> None:
 
 class BrokenSource(SkillSource):
     @override
-    async def list(self) -> tuple[SkillMeta, ...]:
+    async def list(self, scope: Mapping[str, JsonValue]) -> tuple[SkillMeta, ...]:
         raise RuntimeError('memory: not connected')
 
     @override
-    async def load(self, path: str) -> Skill:
+    async def load(self, path: str, scope: Mapping[str, JsonValue]) -> Skill:
         raise RuntimeError('memory: not connected')
 
 
@@ -85,7 +95,7 @@ def _broken_repository() -> SkillRepository:
 def _source(*names: str) -> SkillToolSource:
     source = FakeSource(tuple(_meta(name) for name in names))
     repository = SkillRepository(source, FakeClock(), ttl=timedelta(minutes=15))
-    return SkillToolSource(lambda: repository)
+    return SkillToolSource(lambda: repository, SkillsSourceConfig())
 
 
 def _agent(*, enabled: bool = True, allow: tuple[str, ...] = ()) -> AgentConfig:
@@ -96,31 +106,73 @@ def _agent(*, enabled: bool = True, allow: tuple[str, ...] = ()) -> AgentConfig:
     )
 
 
+_SCOPE = TurnScope(actor='user:1', agent='test', channel='test', chat='1')
+
+
 async def test_source_narrows_the_inventory_to_the_allowlist() -> None:
-    harvest = await _source('triage', 'report').collect(_agent(allow=('triage',)))
+    harvest = await _source('triage', 'report').collect(
+        _agent(allow=('triage',)),
+        _SCOPE,
+    )
 
     assert 'triage' in harvest.tools[0][1].description
     assert 'report' not in harvest.tools[0][1].description
 
 
 async def test_source_offers_everything_when_the_allowlist_is_empty() -> None:
-    harvest = await _source('triage', 'report').collect(_agent())
+    harvest = await _source('triage', 'report').collect(_agent(), _SCOPE)
 
     assert 'triage' in harvest.tools[0][1].description
     assert 'report' in harvest.tools[0][1].description
 
 
 async def test_source_names_the_tool_so_agents_need_not_hardcode_it() -> None:
-    harvest = await _source('triage').collect(_agent())
+    harvest = await _source('triage').collect(_agent(), _SCOPE)
 
     assert [name for name, _ in harvest.tools] == ['skill']
 
 
 async def test_source_contributes_nothing_when_the_agent_disables_skills() -> None:
-    harvest = await _source('triage').collect(_agent(enabled=False))
+    harvest = await _source('triage').collect(_agent(enabled=False), _SCOPE)
 
     assert harvest.tools == ()
     assert harvest.unreachable == ()
+
+
+async def test_source_withholds_skills_when_a_bound_scope_is_missing() -> None:
+    source = FakeSource((_meta('triage'),))
+    repository = SkillRepository(source, FakeClock(), ttl=timedelta(minutes=15))
+    tools = SkillToolSource(
+        lambda: repository,
+        SkillsSourceConfig(bind={'user': 'handle'}),
+    )
+
+    harvest = await tools.collect(_agent(), _SCOPE)
+
+    assert harvest.tools == ()
+
+
+async def test_source_carries_bound_scope_from_inventory_into_load() -> None:
+    source = FakeSource((_meta('triage'),))
+    repository = SkillRepository(source, FakeClock(), ttl=timedelta(minutes=15))
+    tools = SkillToolSource(
+        lambda: repository,
+        SkillsSourceConfig(inject={'agent': 'default'}, bind={'user': 'handle'}),
+    )
+    scope = TurnScope(
+        actor='user:1',
+        agent='test',
+        channel='test',
+        chat='1',
+        handle='alice',
+    )
+
+    harvest = await tools.collect(_agent(), scope)
+    result = await harvest.tools[0][1].invoke('{"name":"triage"}')
+
+    assert 'do the thing' in result
+    assert source.list_scopes == [{'agent': 'default', 'user': 'alice'}]
+    assert source.load_scopes == [{'agent': 'default', 'user': 'alice'}]
 
 
 # NOTE: the inventory is read off a remote server, so this is a thing that happens --
@@ -128,10 +180,10 @@ async def test_source_contributes_nothing_when_the_agent_disables_skills() -> No
 async def test_a_source_that_cannot_read_the_inventory_offers_no_skills(
     caplog: pytest.LogCaptureFixture,
 ) -> None:
-    source = SkillToolSource(lambda: _broken_repository())
+    source = SkillToolSource(lambda: _broken_repository(), SkillsSourceConfig())
 
     with caplog.at_level('ERROR'):
-        harvest = await source.collect(_agent())
+        harvest = await source.collect(_agent(), _SCOPE)
 
     assert harvest.tools == ()
     assert harvest.unreachable == ('skills',)

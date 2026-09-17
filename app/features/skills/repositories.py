@@ -1,4 +1,9 @@
+import json
+from collections.abc import Mapping
+from dataclasses import dataclass
 from datetime import datetime, timedelta
+
+from pydantic import JsonValue
 
 from lib.temporal import ClockContract
 
@@ -7,13 +12,20 @@ from .types import Skill, SkillMeta
 
 _DEFAULT_TTL = timedelta(minutes=15)
 
+type _ScopeKey = tuple[tuple[str, str], ...]
+
+
+@dataclass(frozen=True)
+class _Inventory:
+    expires_at: datetime
+    skills: tuple[SkillMeta, ...]
+
 
 class SkillRepository:
     source: SkillSource
     clock: ClockContract
     ttl: timedelta
-    cache: tuple[SkillMeta, ...] | None
-    expires_at: datetime | None
+    cache: dict[_ScopeKey, _Inventory]
 
     def __init__(
         self,
@@ -24,20 +36,36 @@ class SkillRepository:
         self.source = source
         self.clock = clock
         self.ttl = ttl
-        self.cache = None
-        self.expires_at = None
+        self.cache = {}
 
-    async def inventory(self) -> tuple[SkillMeta, ...]:
+    async def inventory(
+        self,
+        scope: Mapping[str, JsonValue],
+    ) -> tuple[SkillMeta, ...]:
         now = self.clock.now()
-        if self.cache is None or self.expires_at is None or now >= self.expires_at:
-            self.cache = await self.source.list()
-            self.expires_at = now + self.ttl
-        return self.cache
+        self.cache = {
+            key: cached for key, cached in self.cache.items() if cached.expires_at > now
+        }
+        key = tuple(
+            sorted(
+                (name, json.dumps(value, sort_keys=True))
+                for name, value in scope.items()
+            ),
+        )
+        cached = self.cache.get(key)
+        if cached is None:
+            cached = _Inventory(now + self.ttl, await self.source.list(scope))
+            self.cache[key] = cached
+        return cached.skills
 
-    async def load(self, name: str) -> Skill | None:
+    async def load(
+        self,
+        name: str,
+        scope: Mapping[str, JsonValue],
+    ) -> Skill | None:
         meta = next(
-            (meta for meta in await self.inventory() if meta.name == name),
+            (meta for meta in await self.inventory(scope) if meta.name == name),
             None,
         )
         # NOTE: full body is read fresh (uncached) so an edited skill takes effect
-        return await self.source.load(meta.path) if meta is not None else None
+        return await self.source.load(meta.path, scope) if meta is not None else None

@@ -43,40 +43,40 @@ class MuninnSkillSource(SkillSource):
     client: MCPClientContract
     server: str
     glob: str
-    scope: dict[str, JsonValue]
 
     def __init__(
         self,
         client: MCPClientContract,
         server: str,
-        scope: Mapping[str, JsonValue],
         glob: str,
     ) -> None:
         self.client = client
         self.server = server
-        self.scope = dict(scope)
         self.glob = glob
 
     @override
-    async def list(self) -> tuple[SkillMeta, ...]:
+    async def list(
+        self,
+        scope: Mapping[str, JsonValue],
+    ) -> tuple[SkillMeta, ...]:
         raw = await self.client.call_tool(
             self.server,
             'list_memory_notes',
-            {'glob': self.glob, **self.scope},
+            {'glob': self.glob, **scope},
         )
-        metas = [_meta(path, await self._read(path)) for path in _paths(raw)]
+        metas = [_meta(path, await self._read(path, scope)) for path in _paths(raw)]
         return tuple(metas)
 
     @override
-    async def load(self, path: str) -> Skill:
-        content = await self._read(path)
+    async def load(self, path: str, scope: Mapping[str, JsonValue]) -> Skill:
+        content = await self._read(path, scope)
         return Skill(meta=_meta(path, content), body=_split(content)[1])
 
-    async def _read(self, path: str) -> str:
+    async def _read(self, path: str, scope: Mapping[str, JsonValue]) -> str:
         raw = await self.client.call_tool(
             self.server,
             'read_memory_note',
-            {'path': path, **self.scope},
+            {'path': path, **scope},
         )
         return _content(raw)
 
