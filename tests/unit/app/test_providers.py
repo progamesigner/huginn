@@ -49,6 +49,7 @@ def test_base_provider_registers_every_feature_section() -> None:
 
     assert {'agents', 'channels', 'mcp_servers', 'skills', 'tools'} <= keys
     assert 'websearch' in container.resolve(ToolRegistry).tools
+    assert 'read_document' in container.resolve(ToolRegistry).tools
 
 
 def test_base_provider_binds_services_without_any_endpoint() -> None:

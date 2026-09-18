@@ -81,6 +81,12 @@ def test_tool_provider_registers_websearch_kind() -> None:
     assert 'websearch' in app.resolve(ToolRegistry).tools
 
 
+def test_tool_provider_registers_read_document_kind() -> None:
+    app = App().build(ToolProvider())
+
+    assert 'read_document' in app.resolve(ToolRegistry).tools
+
+
 def test_tools_config_provider_contributes_tools_on_top_of_agents() -> None:
     app = App().build(ToolsConfigProvider())
 

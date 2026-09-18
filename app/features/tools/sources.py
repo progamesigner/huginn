@@ -42,6 +42,7 @@ class ConfiguredToolSource(ToolSource):
                         configured[ref.name],
                         ref.params,
                         inject,
+                        scope,
                     ),
                 ),
             )

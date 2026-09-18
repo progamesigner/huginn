@@ -86,6 +86,7 @@ class TurnScope:
     chat: str
     account: str | None = None
     handle: str | None = None
+    document_blobs: frozenset[str] = field(default_factory=frozenset)
 
 
 _SAFE_BOUND_VALUE = re.compile(r'^[A-Za-z0-9._:-]+$')

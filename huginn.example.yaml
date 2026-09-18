@@ -35,6 +35,9 @@ providers:
     - claude-sonnet-5
 
 tools:
+  read_document:
+    kind: read_document
+    description: Read sections of extracted documents from the current conversation.
   websearch:
     kind: websearch
     api_key:
@@ -76,6 +79,7 @@ agents:
       Use websearch for anything time-sensitive.
       Use memory to recall prior context before answering.
     tools:
+    - name: read_document
     - name: websearch
       params:
         max_results: 5

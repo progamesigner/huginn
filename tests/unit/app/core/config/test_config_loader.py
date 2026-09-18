@@ -71,6 +71,8 @@ from app.features.tools.config import (
     _validate_tools,
 )
 from app.features.tools.config import build_sections as build_tool_sections
+from app.features.tools.document.config import DocumentToolConfig
+from app.features.tools.document.tool import ReadDocumentTool
 from app.features.tools.exceptions import (
     UnknownToolKindError,
     UnknownToolReferenceError,
@@ -117,6 +119,7 @@ class FakeToolConfig(ToolConfig):
 def build_tool_registry() -> ToolRegistry:
     registry = ToolRegistry()
     registry.register(WebSearchTool, WebSearchToolConfig)
+    registry.register(ReadDocumentTool, DocumentToolConfig)
     return registry
 
 
@@ -317,6 +320,26 @@ def test_load_config_requires_agents_section(tmp_path: Path) -> None:
 
     with pytest.raises(MissingSectionError, match='agents'):
         load_config(config_file, build_section_registry())
+
+
+def test_load_config_parses_read_document_tool(tmp_path: Path) -> None:
+    config_file = tmp_path / 'huginn.yaml'
+    config_file.write_text(
+        'defaults:\n'
+        '  model: test-model\n'
+        'agents:\n'
+        '  scout:\n'
+        '    description: Test agent\n'
+        '    instructions: Answer clearly.\n'
+        '    tools: [{name: read_document}]\n'
+        'tools:\n'
+        '  read_document:\n'
+        '    kind: read_document\n',
+    )
+
+    config = load_config(config_file, build_section_registry())
+
+    assert isinstance(config.section(TOOLS).root['read_document'], DocumentToolConfig)
 
 
 def test_load_config_rejects_unknown_section(tmp_path: Path) -> None:

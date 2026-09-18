@@ -2,11 +2,11 @@ from collections.abc import Callable
 
 from pydantic import BaseModel
 
-from app.features.agents.types import Tool
+from app.features.agents.types import Tool, TurnScope
 
 from .exceptions import DuplicateToolError, UnknownToolError
 
-type ToolBuilder = Callable[[BaseModel], Tool]
+type ToolBuilder = Callable[[BaseModel, TurnScope], Tool]
 type Builders = dict[str, ToolBuilder]
 type Configs = dict[str, type[BaseModel]]
 type Tools = dict[str, type[Tool]]
@@ -36,13 +36,13 @@ class ToolRegistry:
             raise DuplicateToolError(f'tool {tool.name!r} is already registered')
 
         self.tools[tool.name] = tool
-        self.builders[tool.name] = builder or (lambda _: tool())
+        self.builders[tool.name] = builder or (lambda _config, _scope: tool())
         if config is not None:
             self.configs[tool.name] = config
 
-    def build(self, kind: str, config: BaseModel) -> Tool:
+    def build(self, kind: str, config: BaseModel, scope: TurnScope) -> Tool:
         self.get(kind)
-        return self.builders[kind](config)
+        return self.builders[kind](config, scope)
 
     def get(self, kind: str) -> type[Tool]:
         if kind not in self.tools:

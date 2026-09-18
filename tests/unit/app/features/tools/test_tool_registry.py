@@ -4,9 +4,17 @@ import pytest
 from pydantic import BaseModel, Field
 
 from app.features.agents.exceptions import DuplicateToolNameError
-from app.features.agents.types import ToolOutput, ToolParams, ToolSet, TypedTool
+from app.features.agents.types import (
+    ToolOutput,
+    ToolParams,
+    ToolSet,
+    TurnScope,
+    TypedTool,
+)
 from app.features.tools.exceptions import DuplicateToolError, UnknownToolError
 from app.features.tools.registry import ToolRegistry
+
+_SCOPE = TurnScope(actor='user:1', agent='scout', channel='support_bot', chat='1')
 
 
 class GreetParams(ToolParams):
@@ -54,7 +62,7 @@ def test_get_reports_unknown_kind_with_available_list() -> None:
 def test_build_constructs_through_registered_builder() -> None:
     built = []
 
-    def builder(config: BaseModel) -> GreetTool:
+    def builder(config: BaseModel, scope: TurnScope) -> GreetTool:
         assert isinstance(config, GreetConfig)
         built.append(config)
         return GreetTool()
@@ -62,7 +70,7 @@ def test_build_constructs_through_registered_builder() -> None:
     registry = ToolRegistry()
     registry.register(GreetTool, builder=builder)
 
-    tool = registry.build('greet', GreetConfig(greeting='hi'))
+    tool = registry.build('greet', GreetConfig(greeting='hi'), _SCOPE)
 
     assert isinstance(tool, GreetTool)
     assert built == [GreetConfig(greeting='hi')]
@@ -72,14 +80,17 @@ def test_build_defaults_to_argless_construction() -> None:
     registry = ToolRegistry()
     registry.register(GreetTool)
 
-    assert isinstance(registry.build('greet', GreetConfig(greeting='hi')), GreetTool)
+    assert isinstance(
+        registry.build('greet', GreetConfig(greeting='hi'), _SCOPE),
+        GreetTool,
+    )
 
 
 def test_build_rejects_unknown_kind() -> None:
     registry = ToolRegistry()
 
     with pytest.raises(UnknownToolError, match='none'):
-        registry.build('greet', GreetConfig(greeting='hi'))
+        registry.build('greet', GreetConfig(greeting='hi'), _SCOPE)
 
 
 def test_register_records_config_model() -> None:

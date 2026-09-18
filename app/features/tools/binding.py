@@ -4,7 +4,7 @@ from typing import override
 
 from pydantic import JsonValue
 
-from app.features.agents.types import Tool, ToolOutput
+from app.features.agents.types import Tool, ToolOutput, TurnScope
 
 from .config import ToolConfig
 from .registry import ToolRegistry
@@ -78,6 +78,7 @@ def build_bound_tool(
     config: ToolConfig,
     params: Mapping[str, JsonValue],
     inject: Mapping[str, JsonValue],
+    scope: TurnScope,
 ) -> Tool:
-    base = registry.build(config.kind, config)
+    base = registry.build(config.kind, config, scope)
     return ConfiguredTool(base, params, inject, config.description or base.description)

@@ -2,10 +2,19 @@ from typing import Annotated, Any, cast, override
 
 from pydantic import Field
 
-from app.features.agents.types import Tool, ToolOutput, ToolParams, ToolSet, TypedTool
+from app.features.agents.types import (
+    Tool,
+    ToolOutput,
+    ToolParams,
+    ToolSet,
+    TurnScope,
+    TypedTool,
+)
 from app.features.tools.binding import ConfiguredTool, build_bound_tool
 from app.features.tools.config import ToolConfig
 from app.features.tools.registry import ToolRegistry
+
+_SCOPE = TurnScope(actor='user:1', agent='scout', channel='support_bot', chat='1')
 
 
 class SearchParams(ToolParams):
@@ -97,7 +106,7 @@ async def test_invoke_accepts_empty_arguments_when_overlay_supplies_all() -> Non
 
 
 def test_build_bound_tool_uses_class_description_by_default() -> None:
-    tool = build_bound_tool(_registry(), ToolConfig(kind='search'), {}, {})
+    tool = build_bound_tool(_registry(), ToolConfig(kind='search'), {}, {}, _SCOPE)
 
     assert tool.description == 'Search the web'
 
@@ -105,7 +114,7 @@ def test_build_bound_tool_uses_class_description_by_default() -> None:
 def test_build_bound_tool_applies_description_override() -> None:
     config = ToolConfig(kind='search', description='Premium search, wide access')
 
-    tool = build_bound_tool(_registry(), config, {}, {})
+    tool = build_bound_tool(_registry(), config, {}, {}, _SCOPE)
 
     assert tool.description == 'Premium search, wide access'
 
@@ -120,6 +129,7 @@ def test_same_kind_instances_are_distinguishable_in_a_tool_set() -> None:
             ToolConfig(kind='search', description='Basic'),
             {},
             {},
+            _SCOPE,
         ),
     )
     tools.add(
@@ -129,6 +139,7 @@ def test_same_kind_instances_are_distinguishable_in_a_tool_set() -> None:
             ToolConfig(kind='search', description='Deep'),
             {},
             {},
+            _SCOPE,
         ),
     )
 

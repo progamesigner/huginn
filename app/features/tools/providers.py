@@ -5,10 +5,13 @@ from app.core.providers.config import ConfigProvider
 from app.core.providers.http import HTTPClientProvider
 from app.features.agents.contracts import ToolSourceRegistry
 from app.features.agents.providers import AgentProvider
+from app.features.blobs.contracts import BlobStoreContract
 from lib.container import ContainerContract, ProviderContract
 from lib.http import HTTPClientContract
 
 from .config import build_sections
+from .document.config import DocumentToolConfig
+from .document.tool import ReadDocumentTool, build_read_document
 from .registry import ToolRegistry
 from .sources import ConfiguredToolSource
 from .websearch.config import WebSearchToolConfig
@@ -45,7 +48,16 @@ class ToolProvider(ProviderContract):
         registry.register(
             WebSearchTool,
             WebSearchToolConfig,
-            builder=lambda config: build_websearch(repository, config),
+            builder=lambda config, _scope: build_websearch(repository, config),
+        )
+        registry.register(
+            ReadDocumentTool,
+            DocumentToolConfig,
+            builder=lambda config, scope: build_read_document(
+                container.resolve(BlobStoreContract),
+                config,
+                scope,
+            ),
         )
 
         container.resolve(ToolSourceRegistry).register(
