@@ -4,6 +4,7 @@ from .manager import LLMManager
 from .types import (
     CompletionChunk,
     CompletionRequest,
+    DocumentSegment,
     Effort,
     FinishChunk,
     FinishReason,
@@ -27,6 +28,7 @@ __all__ = [
     'Adapter',
     'CompletionChunk',
     'CompletionRequest',
+    'DocumentSegment',
     'Effort',
     'FinishChunk',
     'FinishReason',

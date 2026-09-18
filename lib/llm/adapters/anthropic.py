@@ -5,7 +5,9 @@ from typing import Literal, cast
 from anthropic import AsyncAnthropic, omit
 from anthropic.types import (
     Base64ImageSourceParam,
+    Base64PDFSourceParam,
     CacheControlEphemeralParam,
+    DocumentBlockParam,
     ImageBlockParam,
     InputJSONDelta,
     JSONOutputFormatParam,
@@ -34,6 +36,7 @@ from lib.llm.client import ProviderConfig
 from lib.llm.types import (
     CompletionChunk,
     CompletionRequest,
+    DocumentSegment,
     FinishChunk,
     FinishReason,
     ImageSegment,
@@ -63,6 +66,7 @@ type _Block = (
     | ImageBlockParam
     | ToolUseBlockParam
     | ToolResultBlockParam
+    | DocumentBlockParam
     | ThinkingBlockParam
 )
 type _MediaType = Literal['image/gif', 'image/jpeg', 'image/png', 'image/webp']
@@ -97,6 +101,20 @@ def build_messages(messages: tuple[Message, ...]) -> Iterator[MessageParam]:
                     if cache_control:
                         image['cache_control'] = cache_control
                     yield image
+                case DocumentSegment(media_type=media_type, data=data, name=name):
+                    document = DocumentBlockParam(
+                        type='document',
+                        source=Base64PDFSourceParam(
+                            type='base64',
+                            media_type=media_type,
+                            data=data,
+                        ),
+                    )
+                    if name is not None:
+                        document['title'] = name
+                    if cache_control:
+                        document['cache_control'] = cache_control
+                    yield document
                 case ToolCallSegment(id=id_, name=name, arguments=arguments):
                     tool_use = ToolUseBlockParam(
                         type='tool_use',

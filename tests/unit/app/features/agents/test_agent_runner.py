@@ -1,6 +1,6 @@
 import asyncio
 import time
-from base64 import b64decode
+from base64 import b64decode, b64encode
 from collections.abc import AsyncIterator, Sequence
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
@@ -26,6 +26,7 @@ from app.features.agents.types import (
 from lib.llm import (
     CompletionChunk,
     CompletionRequest,
+    DocumentSegment,
     FinishChunk,
     ImageSegment,
     Message,
@@ -881,6 +882,43 @@ async def test_a_model_without_vision_gets_the_image_hint(
         TextSegment(text='[image: image/jpeg 8x8]'),
     )
     assert 'kind=image reason=no_vision' in caplog.text
+
+
+@pytest.mark.parametrize('documents', [True, False])
+async def test_a_pdf_reaches_the_model_as_a_document_only_when_it_reads_them(
+    documents: bool,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    llm = answering()
+    runner = AgentRunner(llm, make_toolset(), ClockManager())
+    pdf = replace(
+        attachment('document', data=b'%PDF', mime='application/pdf', hint='[pdf]'),
+        name='report.pdf',
+        transcript='[pdf] (1 pages)\nfirst words',
+    )
+    prompt = TurnPrompt(text='', actor='user:1', attachments=(pdf,))
+
+    with caplog.at_level('INFO'):
+        await runner.run(
+            replace(
+                make_turn(prompts=(prompt,)),
+                capabilities=ModelCapabilities(documents=documents),
+            ),
+            discard(),
+        )
+
+    segments = llm.requests[0].messages[-1].segments[1:]
+    if documents:
+        assert segments == (
+            DocumentSegment(
+                media_type='application/pdf',
+                data=b64encode(b'%PDF').decode('ascii'),
+                name='report.pdf',
+            ),
+        )
+    else:
+        assert segments == (TextSegment(text='[pdf] (1 pages)\nfirst words'),)
+        assert 'kind=document reason=no_documents' in caplog.text
 
 
 async def test_a_transcribed_voice_note_arrives_as_what_it_said() -> None:

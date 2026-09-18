@@ -13,9 +13,9 @@ from openai.types.responses import (
     ResponseFunctionToolCall,
     ResponseFunctionToolCallParam,
     ResponseIncompleteEvent,
+    ResponseInputFileParam,
     ResponseInputImageParam,
     ResponseInputItemParam,
-    ResponseInputMessageContentListParam,
     ResponseInputTextParam,
     ResponseOutputItemAddedEvent,
     ResponseReasoningTextDeltaEvent,
@@ -30,6 +30,7 @@ from lib.llm.client import ProviderConfig
 from lib.llm.types import (
     CompletionChunk,
     CompletionRequest,
+    DocumentSegment,
     FinishChunk,
     ImageSegment,
     Message,
@@ -110,20 +111,31 @@ def build_messages(
             if message.role == 'user'
             else []
         )
-        if texts or images:
-            if images:
+        documents = (
+            [
+                ResponseInputFileParam(
+                    type='input_file',
+                    file_data=f'data:{segment.media_type};base64,{segment.data}',
+                    filename=segment.name or 'document',
+                )
+                for segment in message.segments
+                if isinstance(segment, DocumentSegment)
+            ]
+            if message.role == 'user'
+            else []
+        )
+        if texts or images or documents:
+            if images or documents:
                 entry = EasyInputMessageParam(
                     role=message.role,
-                    content=cast(
-                        ResponseInputMessageContentListParam,
-                        [
-                            *(
-                                ResponseInputTextParam(type='input_text', text=text)
-                                for text in texts
-                            ),
-                            *images,
-                        ],
-                    ),
+                    content=[
+                        *(
+                            ResponseInputTextParam(type='input_text', text=text)
+                            for text in texts
+                        ),
+                        *images,
+                        *documents,
+                    ],
                 )
             else:
                 entry = EasyInputMessageParam(
@@ -135,12 +147,12 @@ def build_messages(
         if message.role == 'assistant':
             for segment in message.segments:
                 match segment:
-                    case ToolCallSegment(id=id_, name=name, arguments=arguments):
+                    case ToolCallSegment() as call:
                         yield ResponseFunctionToolCallParam(
                             type='function_call',
-                            call_id=id_,
-                            name=name,
-                            arguments=arguments,
+                            call_id=call.id,
+                            name=call.name,
+                            arguments=call.arguments,
                         )
 
     for message in messages:

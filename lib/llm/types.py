@@ -31,6 +31,12 @@ class ImageSegment(LLMValue):
     data: Annotated[str, Field()]
 
 
+class DocumentSegment(LLMValue):
+    media_type: Annotated[Literal['application/pdf'], Field()]
+    data: Annotated[str, Field()]
+    name: Annotated[str | None, Field()] = None
+
+
 class ToolCallSegment(LLMValue):
     id: Annotated[str, Field()]
     name: Annotated[str, Field()]
@@ -48,7 +54,12 @@ class ThinkingSegment(LLMValue):
 
 
 type Segment = (
-    TextSegment | ImageSegment | ToolCallSegment | ToolResultSegment | ThinkingSegment
+    TextSegment
+    | ImageSegment
+    | DocumentSegment
+    | ToolCallSegment
+    | ToolResultSegment
+    | ThinkingSegment
 )
 
 

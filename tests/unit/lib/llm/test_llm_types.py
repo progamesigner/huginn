@@ -4,6 +4,7 @@ from pydantic import BaseModel, ValidationError, create_model
 from lib.llm import (
     CompletionChunk,
     CompletionRequest,
+    DocumentSegment,
     FinishChunk,
     ImageSegment,
     Message,
@@ -64,6 +65,8 @@ def test_segment_union_matches_exhaustively() -> None:
                 return f'text:{text}'
             case ImageSegment(media_type=media_type):
                 return f'image:{media_type}'
+            case DocumentSegment(media_type=media_type):
+                return f'document:{media_type}'
             case ToolCallSegment(name=name):
                 return f'tool_call:{name}'
             case ToolResultSegment(tool_call_id=tool_call_id):
@@ -81,6 +84,9 @@ def test_segment_union_matches_exhaustively() -> None:
     assert describe(ThinkingSegment(data='...')) == 'thinking:...'
     assert describe(ImageSegment(media_type='image/jpeg', data='YQ==')) == (
         'image:image/jpeg'
+    )
+    assert describe(DocumentSegment(media_type='application/pdf', data='YQ==')) == (
+        'document:application/pdf'
     )
 
 

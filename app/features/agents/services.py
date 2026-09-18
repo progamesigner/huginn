@@ -11,6 +11,7 @@ from app.contracts.channels import ChannelReplyContract, ToolPhase
 from lib.llm import (
     CompletionChunk,
     CompletionRequest,
+    DocumentSegment,
     FinishChunk,
     ImageSegment,
     LLMClient,
@@ -57,6 +58,8 @@ from .types import (
 )
 
 logger = logging.getLogger(__name__)
+
+_PDF = 'application/pdf'
 
 _UNREACHABLE_NOTE = (
     '\n\nUnavailable for this turn, and not because the agent lacks them: {missing}.'
@@ -164,6 +167,19 @@ def _prompt_segments(
                 model,
             )
             yield TextSegment(text=attachment.hint)
+        elif attachment.kind == 'document' and attachment.mime == _PDF:
+            if capabilities.documents:
+                yield DocumentSegment(
+                    media_type=_PDF,
+                    data=b64encode(attachment.data).decode('ascii'),
+                    name=attachment.name,
+                )
+            else:
+                logger.info(
+                    'Degrading attachment model=%s kind=document reason=no_documents',
+                    model,
+                )
+                yield TextSegment(text=attachment.transcript or attachment.hint)
         else:
             yield TextSegment(text=attachment.transcript or attachment.hint)
 
