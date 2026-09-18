@@ -10,6 +10,7 @@ from app.features.agents.types import ToolSet, TurnInput, TurnPrompt
 from app.features.tools.websearch.repositories import WebSearchRepository
 from app.features.tools.websearch.tool import WebSearchTool
 from lib.http import HTTPClientManager
+from lib.llm import ModelCapabilities
 from lib.llm.adapters.openai import OpenAIAdapter
 from lib.llm.client import ProviderConfig
 from lib.temporal import ClockManager
@@ -87,6 +88,7 @@ async def test_agent_loop_with_websearch_live() -> None:
         model=_OPENAI_MODEL,
         now=ClockManager().now(),
         channel='support_bot',
+        capabilities=ModelCapabilities(),
     )
 
     sink = RecordingReply()

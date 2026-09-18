@@ -9,7 +9,7 @@ from typing import override
 from pydantic import BaseModel, ConfigDict, JsonValue, ValidationError
 
 from app.contracts.channels import AttachmentKind, TurnEnding
-from lib.llm import Message, ToolCallSegment, ToolResultSegment
+from lib.llm import Message, ModelCapabilities, ToolCallSegment, ToolResultSegment
 
 from .config import AgentConfig, BindingSource
 from .exceptions import DuplicateToolNameError
@@ -140,6 +140,7 @@ class TurnInput:
     model: str
     now: datetime
     channel: str
+    capabilities: ModelCapabilities
     prior_turns: tuple[Message, ...] = ()
     max_completion_tokens: int | None = None
     budget: TurnBudget = field(default_factory=TurnBudget)

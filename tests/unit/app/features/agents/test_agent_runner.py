@@ -29,6 +29,7 @@ from lib.llm import (
     FinishChunk,
     ImageSegment,
     Message,
+    ModelCapabilities,
     TextChunk,
     TextSegment,
     ToolCallChunk,
@@ -37,6 +38,8 @@ from lib.llm import (
 from lib.temporal import ClockManager
 from tests.helpers.clock import FakeClock
 from tests.helpers.replies import RecordingReply
+
+_VISION = ModelCapabilities(vision=True)
 
 
 class FakeLLM:
@@ -160,6 +163,7 @@ def make_turn(
     model: str = 'test-model',
     now: datetime = datetime(2026, 1, 1, tzinfo=UTC),
     channel: str = 'support_bot',
+    capabilities: ModelCapabilities = _VISION,
     prior_turns: tuple[Message, ...] = (),
     max_completion_tokens: int | None = None,
     max_iterations: int = 10,
@@ -173,6 +177,7 @@ def make_turn(
         model=model,
         now=now,
         channel=channel,
+        capabilities=capabilities,
         prior_turns=prior_turns,
         max_completion_tokens=max_completion_tokens,
         budget=TurnBudget(
@@ -857,6 +862,25 @@ async def test_a_photo_without_a_caption_is_still_a_message() -> None:
     # current-time stamp every user message carries.
     segments = llm.requests[0].messages[-1].segments[1:]
     assert [type(segment) for segment in segments] == [ImageSegment]
+
+
+async def test_a_model_without_vision_gets_the_image_hint(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    llm = answering()
+    runner = AgentRunner(llm, make_toolset(), ClockManager())
+    prompt = TurnPrompt(text='', actor='user:1', attachments=(attachment(),))
+
+    with caplog.at_level('INFO'):
+        await runner.run(
+            replace(make_turn(prompts=(prompt,)), capabilities=ModelCapabilities()),
+            discard(),
+        )
+
+    assert llm.requests[0].messages[-1].segments[1:] == (
+        TextSegment(text='[image: image/jpeg 8x8]'),
+    )
+    assert 'kind=image reason=no_vision' in caplog.text
 
 
 async def test_a_transcribed_voice_note_arrives_as_what_it_said() -> None:

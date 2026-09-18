@@ -12,7 +12,13 @@ from app.features.skills.repositories import SkillRepository
 from app.features.skills.sources.contracts import SkillSource
 from app.features.skills.tools import SkillToolSource
 from app.features.skills.types import Skill, SkillMeta
-from lib.llm import FinishChunk, TextChunk, ToolCallChunk, ToolResultSegment
+from lib.llm import (
+    FinishChunk,
+    ModelCapabilities,
+    TextChunk,
+    ToolCallChunk,
+    ToolResultSegment,
+)
 from lib.mcp import MCPClientContract, MCPToolInfo
 from lib.temporal import ClockManager
 from tests.helpers.clock import FakeClock
@@ -87,6 +93,7 @@ async def test_agent_loads_a_skill_through_the_tool_loop() -> None:
             model='test-model',
             now=FakeClock().now(),
             channel='support_bot',
+            capabilities=ModelCapabilities(),
         ),
         RecordingReply(),
     )

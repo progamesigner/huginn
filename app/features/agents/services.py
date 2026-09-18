@@ -16,6 +16,7 @@ from lib.llm import (
     LLMClient,
     LLMContract,
     Message,
+    ModelCapabilities,
     ModelRef,
     Segment,
     TextChunk,
@@ -143,16 +144,26 @@ class TurnDraft:
         return tuple(segments)
 
 
-def _prompt_segments(prompt: TurnPrompt) -> Iterator[Segment]:
+def _prompt_segments(
+    prompt: TurnPrompt,
+    capabilities: ModelCapabilities,
+    model: str,
+) -> Iterator[Segment]:
     if prompt.text:
         yield TextSegment(text=prompt.text)
 
     for attachment in prompt.attachments:
-        if attachment.kind == 'image':
+        if attachment.kind == 'image' and capabilities.vision:
             yield ImageSegment(
                 media_type=attachment.mime,
                 data=b64encode(attachment.data).decode('ascii'),
             )
+        elif attachment.kind == 'image':
+            logger.info(
+                'Degrading attachment model=%s kind=image reason=no_vision',
+                model,
+            )
+            yield TextSegment(text=attachment.hint)
         else:
             yield TextSegment(text=attachment.transcript or attachment.hint)
 
@@ -166,7 +177,7 @@ def _build_messages(turn: TurnInput) -> Iterator[Message]:
     yield from turn.prior_turns
     dt = isoformat(turn.now)
     for prompt in turn.prompts:
-        if segments := tuple(_prompt_segments(prompt)):
+        if segments := tuple(_prompt_segments(prompt, turn.capabilities, turn.model)):
             header = TextSegment(text=f'[{dt}] ({turn.channel}) {prompt.actor}:\n\n')
             yield Message(role='user', segments=(header, *segments))
 
@@ -445,6 +456,7 @@ class TurnHandler(TurnHandlerContract):
                     instructions=_instructions(agent.config, unreachable),
                     prompts=request.prompts,
                     model=ref.model,
+                    capabilities=self.llm.capabilities(ref),
                     now=self.clock.now(),
                     channel=request.channel,
                     prior_turns=history,
