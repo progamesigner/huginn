@@ -27,6 +27,7 @@ class ConversationRecord(TimestampRecordMixin, AppRecord):
     chat_id: Mapped[str] = mapped_column()
     compact_version: Mapped[int] = mapped_column(server_default='0')
     summarized_through_turn_id: Mapped[UUID | None] = mapped_column(default=None)
+    reset_through_turn_id: Mapped[UUID | None] = mapped_column(default=None)
 
 
 class TurnRecord(AppRecord):
@@ -79,6 +80,14 @@ class PartRecord(AppRecord):
 ConversationRecord.__table__.append_constraint(
     ForeignKeyConstraint(
         [ConversationRecord.summarized_through_turn_id],
+        [TurnRecord.id],
+        ondelete='SET NULL',
+    ),
+)
+
+ConversationRecord.__table__.append_constraint(
+    ForeignKeyConstraint(
+        [ConversationRecord.reset_through_turn_id],
         [TurnRecord.id],
         ondelete='SET NULL',
     ),

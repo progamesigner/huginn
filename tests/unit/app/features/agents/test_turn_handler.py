@@ -106,6 +106,10 @@ class FakeStore(TranscriptStoreContract):
         return self.transcript.prior
 
     @override
+    async def document_blobs(self, channel: str, chat: str) -> frozenset[str]:
+        return frozenset()
+
+    @override
     async def record(
         self,
         channel: str,

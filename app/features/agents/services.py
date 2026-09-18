@@ -459,7 +459,11 @@ class TurnHandler(TurnHandlerContract):
         history = await self.store.history(request.channel, request.chat)
         witness = AnswerRecorder(reply)
         try:
-            scope = _turn_scope(request, agent.name)
+            document_blobs = await self.store.document_blobs(
+                request.channel,
+                request.chat,
+            )
+            scope = _turn_scope(request, agent.name, document_blobs)
             tools, unreachable = await build_tool_set(
                 self.sources.sources(),
                 agent.config,
@@ -536,7 +540,11 @@ async def build_tool_set(
     return tools, tuple(unreachable)
 
 
-def _turn_scope(request: TurnRequest, agent: str) -> TurnScope:
+def _turn_scope(
+    request: TurnRequest,
+    agent: str,
+    document_blobs: frozenset[str] = frozenset(),
+) -> TurnScope:
     prompt = request.prompts[-1]
     accounts = {item.account for item in request.prompts}
     account = prompt.account
@@ -552,4 +560,5 @@ def _turn_scope(request: TurnRequest, agent: str) -> TurnScope:
         chat=request.chat,
         account=account,
         handle=handle,
+        document_blobs=document_blobs,
     )

@@ -80,6 +80,19 @@ class FakeConversationRepository:
 
         return tuple(sorted(real_turns, key=lambda turn: turn.id))
 
+    async def load_document_blob_ids(
+        self,
+        conversation: Conversation,
+    ) -> frozenset[str]:
+        reset = conversation.reset_through_turn_id
+        return frozenset(
+            value
+            for turn in self.turns[conversation.id]
+            if reset is None or turn.id > reset
+            for part in turn.parts
+            if isinstance(value := part.payload.get('extracted_blob'), str)
+        )
+
     async def load_current_summary(
         self,
         conversation: Conversation,

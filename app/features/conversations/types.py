@@ -15,6 +15,7 @@ class Conversation:
     updated_at: datetime | None = None
     compact_version: int = 0
     summarized_through_turn_id: UUID | None = None
+    reset_through_turn_id: UUID | None = None
 
 
 @dataclass(frozen=True)

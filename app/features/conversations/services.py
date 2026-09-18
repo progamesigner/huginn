@@ -230,6 +230,15 @@ class ConversationTranscriptStore(TranscriptStoreContract):
             return await transcript.history()
 
     @override
+    async def document_blobs(self, channel: str, chat: str) -> frozenset[str]:
+        async with self.database.session() as session, session.begin():
+            repository = self._repository(session)
+            conversation = await repository.find_by_chat(channel, chat)
+            if conversation is None:
+                return frozenset()
+            return await repository.load_document_blob_ids(conversation)
+
+    @override
     async def record(
         self,
         channel: str,

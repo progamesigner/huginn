@@ -1,3 +1,5 @@
+from uuid import uuid4
+
 import pytest
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -213,3 +215,67 @@ async def test_reset_loses_a_cas_race_without_moving_anything(
     assert (
         await repository.reset(conversation, conversation.compact_version + 1) is None
     )
+
+
+async def test_document_blob_ids_span_the_whole_conversation(
+    session: AsyncSession,
+) -> None:
+    repository = _repository(session)
+    conversation = await repository.get_or_create('telegram', '36')
+    other = await repository.get_or_create('telegram', '37')
+    first = str(uuid4())
+    second = str(uuid4())
+    await repository.append_turn(
+        conversation,
+        'scout',
+        [Part(role='user', kind='document', payload={'extracted_blob': first})],
+    )
+    folded = await repository.load_turns_since_summary(conversation)
+    compacted = await repository.apply_compaction(
+        conversation,
+        summary_payload={'summary': 'a document was shared'},
+        turns_folded=folded,
+        expected_version=conversation.compact_version,
+    )
+    assert compacted is not None
+    await repository.append_turn(
+        compacted,
+        'scout',
+        [
+            Part(role='user', kind='document', payload={'extracted_blob': second}),
+            Part(role='user', kind='document', payload={'extracted_blob': None}),
+            Part(role='user', kind='text', payload={'extracted_blob': 123}),
+        ],
+    )
+    await repository.append_turn(
+        other,
+        'scout',
+        [Part(role='user', kind='document', payload={'extracted_blob': str(uuid4())})],
+    )
+
+    assert await repository.load_document_blob_ids(compacted) == {first, second}
+
+
+async def test_a_reset_hides_the_documents_shared_before_it(
+    session: AsyncSession,
+) -> None:
+    repository = _repository(session)
+    conversation = await repository.get_or_create('telegram', '38')
+    before = str(uuid4())
+    after = str(uuid4())
+    await repository.append_turn(
+        conversation,
+        'scout',
+        [Part(role='user', kind='document', payload={'extracted_blob': before})],
+    )
+
+    reset = await repository.reset(conversation, conversation.compact_version)
+    assert reset is not None
+    assert await repository.load_document_blob_ids(reset) == frozenset()
+
+    await repository.append_turn(
+        reset,
+        'scout',
+        [Part(role='user', kind='document', payload={'extracted_blob': after})],
+    )
+    assert await repository.load_document_blob_ids(reset) == {after}

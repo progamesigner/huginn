@@ -28,6 +28,7 @@ def _to_conversation(record: ConversationRecord) -> Conversation:
         updated_at=record.updated_at,
         compact_version=record.compact_version,
         summarized_through_turn_id=record.summarized_through_turn_id,
+        reset_through_turn_id=record.reset_through_turn_id,
     )
 
 
@@ -190,6 +191,24 @@ class ConversationRepository(BlobReferenceContract):
         )
         return frozenset(UUID(value) for row in rows for value in row if value in keys)
 
+    async def load_document_blob_ids(
+        self,
+        conversation: Conversation,
+    ) -> frozenset[str]:
+        query = (
+            select(PartRecord.payload)
+            .join(TurnRecord, PartRecord.turn_id == TurnRecord.id)
+            .where(TurnRecord.conversation_id == conversation.id)
+        )
+        if (reset_id := conversation.reset_through_turn_id) is not None:
+            query = query.where(TurnRecord.id > reset_id)
+        payloads = (await self.session.execute(query)).scalars().all()
+        return frozenset(
+            value
+            for payload in (cast(Mapping[str, JsonValue], raw) for raw in payloads)
+            if isinstance(value := payload.get('extracted_blob'), str)
+        )
+
     async def load_current_summary(
         self,
         conversation: Conversation,
@@ -233,6 +252,7 @@ class ConversationRepository(BlobReferenceContract):
             .values(
                 compact_version=ConversationRecord.compact_version + 1,
                 summarized_through_turn_id=newest,
+                reset_through_turn_id=newest,
                 updated_at=self.clock.now(),
             )
             .returning(ConversationRecord)

@@ -41,6 +41,9 @@ class TranscriptStoreContract(ABC):
     ) -> tuple[Message, ...]: ...
 
     @abstractmethod
+    async def document_blobs(self, channel: str, chat: str) -> frozenset[str]: ...
+
+    @abstractmethod
     async def record(
         self,
         channel: str,
