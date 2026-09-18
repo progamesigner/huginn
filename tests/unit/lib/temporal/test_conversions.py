@@ -9,6 +9,7 @@ from lib.temporal import (
     from_epoch,
     isoformat,
     parse,
+    parse_duration,
     parse_formats,
     to_epoch,
     truncate,
@@ -179,3 +180,25 @@ def test_truncate_preserves_the_original_zone() -> None:
 def test_truncate_rejects_naive() -> None:
     with pytest.raises(ValueError, match='naive'):
         truncate(datetime.fromisoformat('2026-07-23T12:00:00'), 'day')
+
+
+@pytest.mark.parametrize(
+    ('value', 'expected'),
+    [
+        ('30s', timedelta(seconds=30)),
+        ('10m', timedelta(minutes=10)),
+        ('1h', timedelta(hours=1)),
+        ('30d', timedelta(days=30)),
+    ],
+)
+def test_parse_duration_reads_one_amount_and_unit(
+    value: str,
+    expected: timedelta,
+) -> None:
+    assert parse_duration(value) == expected
+
+
+@pytest.mark.parametrize('value', ['', '0d', '1w', '1h30m', '-1d', 'd'])
+def test_parse_duration_refuses_anything_else(value: str) -> None:
+    with pytest.raises(ValueError, match='not a positive duration'):
+        parse_duration(value)

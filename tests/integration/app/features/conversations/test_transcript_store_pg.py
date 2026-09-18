@@ -1,4 +1,5 @@
 from collections.abc import Sequence
+from datetime import timedelta
 from hashlib import sha256
 from typing import override
 from uuid import UUID
@@ -9,18 +10,19 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config.registry import HuginnConfig
 from app.features.agents.types import PromptAttachment, TurnPrompt
+from app.features.blobs.config import BlobsConfig, RetentionConfig
+from app.features.blobs.contracts import BlobStoreContract, BlobStoreFactoryContract
+from app.features.blobs.providers import BlobStoreFactory
+from app.features.blobs.repositories import BlobRepository
+from app.features.blobs.schemas.sqlalchemy import BlobRecord
+from app.features.blobs.types import Blob, BlobKind
 from app.features.conversations.config import CompactionConfig
-from app.features.conversations.contracts import BlobStoreContract
-from app.features.conversations.repositories import (
-    BlobRepository,
-    ConversationRepository,
-)
-from app.features.conversations.schemas.sqlalchemy import BlobRecord
+from app.features.conversations.repositories import ConversationRepository
 from app.features.conversations.services import (
     ConversationTranscript,
     ConversationTranscriptStore,
 )
-from app.features.conversations.types import Blob, Conversation, Part
+from app.features.conversations.types import Conversation, Part
 from lib.database import DatabaseContract, DatabaseManager
 from lib.guid import GUIDManager
 from lib.llm import (
@@ -55,16 +57,44 @@ class FlakyBlobs(BlobStoreContract):
     stored: int
 
     def __init__(self, session: AsyncSession) -> None:
-        self.blobs = BlobRepository(session, GUIDManager())
+        self.blobs = BlobRepository(session, GUIDManager(), ClockManager())
         self.stored = 0
 
     @override
-    async def store(self, mime: str, data: bytes) -> Blob:
+    async def store(
+        self,
+        mime: str,
+        data: bytes,
+        *,
+        kind: BlobKind,
+        filename: str | None = None,
+        ttl: timedelta | None = None,
+    ) -> Blob:
         self.stored += 1
         if self.stored > 1:
             raise RuntimeError('blob store is down')
 
-        return await self.blobs.store(mime, data)
+        return await self.blobs.store(
+            mime,
+            data,
+            kind=kind,
+            filename=filename,
+            ttl=ttl,
+        )
+
+    @override
+    async def load(self, id: UUID) -> Blob | None:
+        return await self.blobs.load(id)
+
+    @override
+    async def head(self, id: UUID) -> Blob | None:
+        return await self.blobs.head(id)
+
+
+class FlakyBlobsFactory(BlobStoreFactoryContract):
+    @override
+    def for_session(self, session: AsyncSession) -> BlobStoreContract:
+        return FlakyBlobs(session)
 
 
 async def _blob(session: AsyncSession, id_: str) -> bytes:
@@ -74,7 +104,7 @@ async def _blob(session: AsyncSession, id_: str) -> bytes:
 
 
 def _blobs(session: AsyncSession) -> BlobRepository:
-    return BlobRepository(session, GUIDManager())
+    return BlobRepository(session, GUIDManager(), ClockManager())
 
 
 def _repository(session: AsyncSession) -> ConversationRepository:
@@ -87,8 +117,10 @@ def _store(database: DatabaseContract) -> ConversationTranscriptStore:
         GUIDManager(),
         ClockManager(),
         NoModels(),
-        HuginnConfig(sections={'compaction': CompactionConfig()}),
-        _blobs,
+        HuginnConfig(
+            sections={'blobs': BlobsConfig(), 'compaction': CompactionConfig()},
+        ),
+        BlobStoreFactory(GUIDManager(), ClockManager()),
     )
 
 
@@ -96,7 +128,12 @@ def _transcript(
     session: AsyncSession,
     conversation: Conversation,
 ) -> ConversationTranscript:
-    return ConversationTranscript(_repository(session), _blobs(session), conversation)
+    return ConversationTranscript(
+        _repository(session),
+        _blobs(session),
+        conversation,
+        RetentionConfig(),
+    )
 
 
 def _prompt(text: str) -> TurnPrompt:
@@ -234,6 +271,31 @@ async def test_an_attached_photo_is_stored_as_a_blob_and_a_media_part(
         'unique': 'unique-1',
     }
     assert await _blob(session, str(stored)) == _PHOTO
+
+
+async def test_an_inbound_blob_expires_after_the_configured_retention(
+    session: AsyncSession,
+) -> None:
+    repository = _repository(session)
+    conversation = await repository.get_or_create('support_bot', '6')
+    transcript = ConversationTranscript(
+        repository,
+        _blobs(session),
+        conversation,
+        RetentionConfig(inbound=timedelta(days=7)),
+    )
+    before = ClockManager().now()
+
+    await transcript.record(
+        'scout',
+        [TurnPrompt(text='keep this', actor='user:1', attachments=(_photo(),))],
+        'kept',
+    )
+
+    record = (await session.execute(select(BlobRecord))).scalar_one()
+    assert record.expires_at is not None
+    assert before + timedelta(days=7) <= record.expires_at
+    assert record.expires_at <= ClockManager().now() + timedelta(days=7)
 
 
 async def test_a_stored_photo_replays_as_its_placeholder(
@@ -374,8 +436,10 @@ async def test_a_record_that_raises_partway_commits_nothing(database_url: str) -
         GUIDManager(),
         ClockManager(),
         NoModels(),
-        HuginnConfig(sections={'compaction': CompactionConfig()}),
-        FlakyBlobs,
+        HuginnConfig(
+            sections={'blobs': BlobsConfig(), 'compaction': CompactionConfig()},
+        ),
+        FlakyBlobsFactory(),
     )
     prompt = TurnPrompt(
         text='look',

@@ -1,11 +1,13 @@
-from collections.abc import Mapping, Sequence
-from typing import cast
+from collections.abc import Collection, Mapping, Sequence
+from typing import cast, override
+from uuid import UUID
 
 from pydantic import JsonValue
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from app.features.blobs.contracts import BlobReferenceContract
 from app.features.conversations.exceptions import NoTurnsToCompactError
 from app.features.conversations.schemas.sqlalchemy import (
     ConversationRecord,
@@ -47,7 +49,7 @@ def _to_turn(record: TurnRecord) -> Turn:
     )
 
 
-class ConversationRepository:
+class ConversationRepository(BlobReferenceContract):
     clock: ClockContract
     guid: GUIDContract
     session: AsyncSession
@@ -174,6 +176,16 @@ class ConversationRepository:
         records = (await self.session.execute(query)).scalars().all()
 
         return tuple(_to_turn(record) for record in records)
+
+    @override
+    async def referenced(self, ids: Collection[UUID]) -> frozenset[UUID]:
+        keys = [str(id_) for id_ in ids]
+        if not keys:
+            return frozenset()
+
+        blob = PartRecord.payload['blob'].as_string()
+        rows = await self.session.scalars(select(blob).where(blob.in_(keys)))
+        return frozenset(UUID(value) for value in rows)
 
     async def load_current_summary(
         self,

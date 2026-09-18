@@ -1,15 +1,18 @@
+from datetime import timedelta
 from hashlib import sha256
+from uuid import UUID
 
 import pytest
 from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.features.blobs.exceptions import BlobError
+from app.features.blobs.repositories import BlobRepository
+from app.features.blobs.schemas.sqlalchemy import BlobRecord
 from app.features.conversations.repositories import (
-    BlobRepository,
     ConversationRepository,
 )
 from app.features.conversations.schemas.sqlalchemy import (
-    BlobRecord,
     ConversationRecord,
 )
 from app.features.conversations.types import Part
@@ -23,7 +26,7 @@ _VOICE = b'OggS not really an ogg'
 
 
 def _blobs(session: AsyncSession) -> BlobRepository:
-    return BlobRepository(session, GUIDManager())
+    return BlobRepository(session, GUIDManager(), ClockManager())
 
 
 def _conversations(session: AsyncSession) -> ConversationRepository:
@@ -43,20 +46,59 @@ async def _record(session: AsyncSession, digest: str) -> BlobRecord:
 
 
 async def test_store_keeps_the_bytes_and_what_they_are(session: AsyncSession) -> None:
-    blob = await _blobs(session).store('image/jpeg', _PHOTO)
+    blob = await _blobs(session).store(
+        'image/jpeg',
+        _PHOTO,
+        kind='image',
+        filename='photo.jpg',
+    )
 
     assert blob.sha256 == sha256(_PHOTO).hexdigest()
     assert blob.mime == 'image/jpeg'
     assert blob.size == len(_PHOTO)
     assert blob.id.version == 7
+    assert blob.kind == 'image'
+    assert blob.filename == 'photo.jpg'
     assert (await _record(session, blob.sha256)).data == _PHOTO
+
+
+async def test_load_returns_data_but_head_does_not_fetch_it(
+    session: AsyncSession,
+) -> None:
+    repository = _blobs(session)
+    blob = await repository.store('image/jpeg', _PHOTO, kind='image')
+
+    loaded = await repository.load(blob.id)
+    headed = await repository.head(blob.id)
+
+    assert loaded is not None
+    assert loaded.data == _PHOTO
+    assert headed is not None
+    assert headed.data is None
+    assert await repository.load(UUID(int=99)) is None
+
+
+async def test_duplicate_storage_keeps_the_longest_retention(
+    session: AsyncSession,
+) -> None:
+    repository = _blobs(session)
+    first = await repository.store(
+        'image/jpeg',
+        _PHOTO,
+        kind='image',
+        ttl=timedelta(days=1),
+    )
+    permanent = await repository.store('image/jpeg', _PHOTO, kind='image')
+
+    assert first.id == permanent.id
+    assert permanent.expires_at is None
 
 
 async def test_the_same_bytes_stored_twice_stay_one_row(session: AsyncSession) -> None:
     repository = _blobs(session)
 
-    first = await repository.store('image/jpeg', _PHOTO)
-    again = await repository.store('image/jpeg', _PHOTO)
+    first = await repository.store('image/jpeg', _PHOTO, kind='image')
+    again = await repository.store('image/jpeg', _PHOTO, kind='image')
 
     # NOTE: forwarding the same photo again must cost nothing; the digest is what
     # identifies the bytes, so the second store has to land on the first row
@@ -67,8 +109,8 @@ async def test_the_same_bytes_stored_twice_stay_one_row(session: AsyncSession) -
 async def test_different_bytes_get_their_own_row(session: AsyncSession) -> None:
     repository = _blobs(session)
 
-    photo = await repository.store('image/jpeg', _PHOTO)
-    voice = await repository.store('audio/ogg', _VOICE)
+    photo = await repository.store('image/jpeg', _PHOTO, kind='image')
+    voice = await repository.store('audio/ogg', _VOICE, kind='audio')
 
     assert photo.id != voice.id
     assert photo.sha256 != voice.sha256
@@ -79,7 +121,7 @@ async def test_a_deleted_conversation_leaves_its_blobs_behind(
     session: AsyncSession,
 ) -> None:
     conversation = await _conversations(session).get_or_create('telegram', '5')
-    blob = await _blobs(session).store('image/jpeg', _PHOTO)
+    blob = await _blobs(session).store('image/jpeg', _PHOTO, kind='image')
     await _conversations(session).append_turn(
         conversation,
         'scout',
@@ -92,4 +134,16 @@ async def test_a_deleted_conversation_leaves_its_blobs_behind(
 
     # NOTE: a part points at a blob through its payload, not a foreign key, so the
     # cascade stops at the turn -- there is no reclaim path yet and this pins that
+    assert await _count(session) == 1
+
+
+async def test_prune_refuses_to_run_without_a_reference_source(
+    session: AsyncSession,
+) -> None:
+    blobs = _blobs(session)
+    await blobs.store('image/jpeg', _PHOTO, kind='image', ttl=timedelta(days=1))
+
+    with pytest.raises(BlobError, match='refusing to prune'):
+        await blobs.prune(ClockManager().now() + timedelta(days=2), ())
+
     assert await _count(session) == 1

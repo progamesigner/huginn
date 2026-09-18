@@ -112,6 +112,11 @@ transcription:
     value_from:
       env: OPENAI_API_KEY
 
+blobs:
+  retention:
+    generated: 30d
+    inbound: null
+
 channels:
   support_bot:
     kind: telegram

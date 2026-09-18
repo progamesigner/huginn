@@ -96,6 +96,7 @@ def test_agent_provider_contributes_only_its_own_sections() -> None:
 
     assert keys == {
         'agents',
+        'blobs',
         'channels',
         'compaction',
         'defaults',

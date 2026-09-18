@@ -23,6 +23,7 @@ FEATURE_TIERS: tuple[frozenset[str], ...] = (
     frozenset({'identities'}),
     frozenset({'mcp'}),
     frozenset({'agents'}),
+    frozenset({'blobs'}),
 )
 # A feature's public face: what it declares and how it is wired, never how it works.
 # There is no exception list; a feature that needs more than this needs a contract on

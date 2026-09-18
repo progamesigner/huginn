@@ -1,5 +1,4 @@
 import asyncio
-import re
 from collections.abc import Awaitable, Callable
 from datetime import timedelta
 from typing import Annotated
@@ -8,17 +7,10 @@ from sqlalchemy.exc import IntegrityError
 
 from lib.command import Argument, Exit, Typer, echo, scoped
 from lib.container import ContainerContract
+from lib.temporal import parse_duration
 
 from .repositories import IdentityRepository
 from .services import IdentityLinkingService
-
-_TTL_PATTERN = re.compile(r'(?P<amount>[1-9][0-9]*)(?P<unit>[smhd])')
-_TTL_UNITS = {
-    's': timedelta(seconds=1),
-    'm': timedelta(minutes=1),
-    'h': timedelta(hours=1),
-    'd': timedelta(days=1),
-}
 
 cli = Typer(no_args_is_help=True, help='Manage canonical users and identity links.')
 users = Typer(no_args_is_help=True, help='Manage canonical users.')
@@ -26,10 +18,12 @@ cli.add_typer(users, name='user')
 
 
 def _ttl(value: str) -> timedelta:
-    match = _TTL_PATTERN.fullmatch(value)
-    if match is None:
-        raise ValueError('ttl must be a positive duration such as 10m, 1h, or 1d')
-    return int(match['amount']) * _TTL_UNITS[match['unit']]
+    try:
+        return parse_duration(value)
+    except ValueError as error:
+        raise ValueError(
+            'ttl must be a positive duration such as 10m, 1h, or 1d',
+        ) from error
 
 
 def _run[T](

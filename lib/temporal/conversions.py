@@ -1,3 +1,4 @@
+import re
 from datetime import UTC, datetime, timedelta, tzinfo
 from typing import Literal
 
@@ -5,6 +6,13 @@ type EpochUnit = Literal['s', 'ms', 'us']
 type TruncateUnit = Literal['day', 'hour', 'minute', 'second']
 
 _EPOCH = datetime(1970, 1, 1, tzinfo=UTC)
+_DURATION = re.compile(r'(?P<amount>[1-9][0-9]*)(?P<unit>[smhd])')
+_DURATION_UNITS = {
+    's': timedelta(seconds=1),
+    'm': timedelta(minutes=1),
+    'h': timedelta(hours=1),
+    'd': timedelta(days=1),
+}
 _MICROS_PER_UNIT = {'s': 1_000_000, 'ms': 1_000, 'us': 1}
 _COMMON_FORMATS = (
     '%Y-%m-%d %H:%M:%S',
@@ -76,3 +84,10 @@ def truncate(dt: datetime, unit: TruncateUnit) -> datetime:
 
 def with_timezone(dt: datetime, tz: tzinfo) -> datetime:
     return as_utc(dt).astimezone(tz)
+
+
+def parse_duration(value: str) -> timedelta:
+    match = _DURATION.fullmatch(value)
+    if match is None:
+        raise ValueError(f'{value!r} is not a positive duration such as 10m, 1h or 1d')
+    return int(match['amount']) * _DURATION_UNITS[match['unit']]

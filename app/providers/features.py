@@ -3,6 +3,7 @@ from typing import override
 from app.features.agents.providers import AgentProvider
 from app.features.auditor.providers import AuditorProvider
 from app.features.auth.providers import AuthProvider
+from app.features.blobs.providers import BlobProvider
 from app.features.channels.providers import ChannelProvider
 from app.features.channels.telegram.providers import TelegramProvider
 from app.features.conversations.providers import ConversationProvider
@@ -19,6 +20,7 @@ class HuginnProvider(ProviderContract):
         AgentProvider,
         AuditorProvider,
         AuthProvider,
+        BlobProvider,
         ChannelProvider,
         ConversationProvider,
         IdentityProvider,

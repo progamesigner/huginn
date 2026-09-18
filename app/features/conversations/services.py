@@ -14,6 +14,8 @@ from app.features.agents.config import (
 )
 from app.features.agents.contracts import TranscriptStoreContract
 from app.features.agents.types import PromptAttachment, TurnPrompt
+from app.features.blobs.config import BLOBS, RetentionConfig
+from app.features.blobs.contracts import BlobStoreContract, BlobStoreFactoryContract
 from lib.database import DatabaseContract
 from lib.guid import GUIDContract
 from lib.llm import LLMContract, Message, ModelRef
@@ -26,11 +28,7 @@ from .compaction import (
     summary_message,
 )
 from .config import COMPACTION
-from .contracts import (
-    BlobStoreContract,
-    BlobStoreFactory,
-    ConversationControlContract,
-)
+from .contracts import ConversationControlContract
 from .repositories import ConversationRepository
 from .types import Conversation, Part
 
@@ -43,16 +41,19 @@ class ConversationTranscript:
     blobs: BlobStoreContract
     conversation: Conversation
     repository: ConversationRepository
+    retention: RetentionConfig
 
     def __init__(
         self,
         repository: ConversationRepository,
         blobs: BlobStoreContract,
         conversation: Conversation,
+        retention: RetentionConfig,
     ) -> None:
         self.blobs = blobs
         self.conversation = conversation
         self.repository = repository
+        self.retention = retention
 
     async def history(self) -> tuple[Message, ...]:
         payload = await self.repository.load_current_summary(self.conversation)
@@ -93,7 +94,12 @@ class ConversationTranscript:
         await self.repository.append_turn(self.conversation, agent, parts)
 
     async def _media(self, attachment: PromptAttachment, actor: str) -> Part:
-        blob = await self.blobs.store(attachment.mime, attachment.data)
+        blob = await self.blobs.store(
+            attachment.mime,
+            attachment.data,
+            kind=attachment.kind,
+            ttl=self.retention.inbound,
+        )
 
         return Part(
             role='user',
@@ -179,7 +185,7 @@ class ConversationControl(ConversationControlContract):
 
 
 class ConversationTranscriptStore(TranscriptStoreContract):
-    blobs: BlobStoreFactory
+    blobs: BlobStoreFactoryContract
     clock: ClockContract
     config: HuginnConfig
     database: DatabaseContract
@@ -193,7 +199,7 @@ class ConversationTranscriptStore(TranscriptStoreContract):
         clock: ClockContract,
         llm: LLMContract,
         config: HuginnConfig,
-        blobs: BlobStoreFactory,
+        blobs: BlobStoreFactoryContract,
     ) -> None:
         self.blobs = blobs
         self.clock = clock
@@ -257,8 +263,9 @@ class ConversationTranscriptStore(TranscriptStoreContract):
             conversation = await repository.get_or_create(channel, chat)
             yield ConversationTranscript(
                 repository,
-                self.blobs(session),
+                self.blobs.for_session(session),
                 conversation,
+                self.config.section(BLOBS).retention,
             )
 
     def _repository(self, session: AsyncSession) -> ConversationRepository:
