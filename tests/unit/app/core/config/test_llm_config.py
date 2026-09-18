@@ -1,7 +1,10 @@
 import pytest
 from pydantic import SecretStr, ValidationError
 
-from app.core.config.exceptions import UnknownCacheControlModelError
+from app.core.config.exceptions import (
+    UnknownCacheControlModelError,
+    UnknownCapabilityModelError,
+)
 from app.core.config.llm import PROVIDERS, ProviderConfig, ProviderConfigList
 from app.core.config.registry import HuginnConfig
 
@@ -47,6 +50,8 @@ def test_provider_config_defaults_cache_control_to_no_models() -> None:
     )
 
     assert provider.cache_control == ()
+    assert provider.vision == ()
+    assert provider.documents == ()
 
 
 def _config(cache_control: tuple[str, ...]) -> HuginnConfig:
@@ -77,6 +82,22 @@ def test_validate_providers_rejects_a_cache_control_model_it_does_not_serve() ->
 
     with pytest.raises(UnknownCacheControlModelError, match='anthropic/claude-opus-5'):
         PROVIDERS.validate(_config(('anthropic/claude-opus-5',)))
+
+
+def test_validate_providers_rejects_an_unknown_capability_model() -> None:
+    provider = ProviderConfig(
+        adapter='openai',
+        api_key=SecretStr('sk-test'),
+        models=('gpt-5-mini',),
+        vision=('gpt-5-vision',),
+    )
+    config = HuginnConfig(
+        sections={PROVIDERS.key: ProviderConfigList({'openai': provider})},
+    )
+
+    assert PROVIDERS.validate is not None
+    with pytest.raises(UnknownCapabilityModelError, match='gpt-5-vision'):
+        PROVIDERS.validate(config)
 
 
 def test_provider_config_rejects_name_field() -> None:

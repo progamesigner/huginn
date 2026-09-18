@@ -39,6 +39,19 @@ def test_provider_config_caches_nothing_by_default() -> None:
     assert not provider.caches('claude-opus-4-8')
 
 
+def test_provider_config_reports_declared_model_capabilities() -> None:
+    provider = ProviderConfig(
+        name='anthropic',
+        adapter='anthropic',
+        api_key=SecretStr('secret'),
+        models=('claude-opus-4-8',),
+        vision=('claude-opus-4-8',),
+    )
+
+    assert provider.capabilities('claude-opus-4-8').vision
+    assert not provider.capabilities('claude-opus-4-8').documents
+
+
 def test_provider_config_requires_api_key() -> None:
     with pytest.raises(ValidationError):
         ProviderConfig.model_validate(

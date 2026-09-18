@@ -4,7 +4,13 @@ from typing import Annotated, Literal, Protocol
 
 from pydantic import Field, SecretStr
 
-from .types import CompletionChunk, CompletionRequest, LLMValue, ModelRef
+from .types import (
+    CompletionChunk,
+    CompletionRequest,
+    LLMValue,
+    ModelCapabilities,
+    ModelRef,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -19,9 +25,17 @@ class ProviderConfig(LLMValue):
     base_url: Annotated[str | None, Field()] = None
     # NOTE: opt-in per model, not per provider
     cache_control: Annotated[tuple[str, ...], Field()] = ()
+    vision: Annotated[tuple[str, ...], Field()] = ()
+    documents: Annotated[tuple[str, ...], Field()] = ()
 
     def caches(self, model: str) -> bool:
         return model in self.cache_control
+
+    def capabilities(self, model: str) -> ModelCapabilities:
+        return ModelCapabilities(
+            vision=model in self.vision,
+            documents=model in self.documents,
+        )
 
 
 class LLMClient(Protocol):

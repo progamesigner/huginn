@@ -2,7 +2,10 @@ from typing import Annotated
 
 from pydantic import Field, RootModel, SecretStr
 
-from app.core.config.exceptions import UnknownCacheControlModelError
+from app.core.config.exceptions import (
+    UnknownCacheControlModelError,
+    UnknownCapabilityModelError,
+)
 from app.core.config.registry import HuginnConfig, SectionSpec
 from app.core.config.schema import ConfigValue
 from lib.llm import Adapter
@@ -14,6 +17,8 @@ class ProviderConfig(ConfigValue):
     models: Annotated[tuple[str, ...], Field()]
     base_url: Annotated[str | None, Field()] = None
     cache_control: Annotated[tuple[str, ...], Field()] = ()
+    vision: Annotated[tuple[str, ...], Field()] = ()
+    documents: Annotated[tuple[str, ...], Field()] = ()
 
 
 class ProviderConfigList(RootModel[dict[str, ProviderConfig]]):
@@ -45,6 +50,13 @@ def _validate_providers(config: HuginnConfig) -> None:
                 f'providers.{name}.cache_control: '
                 f'{", ".join(unknown)} not listed in models',
             )
+        capabilities = {'vision': provider.vision, 'documents': provider.documents}
+        for capability, models in capabilities.items():
+            if unknown := sorted(set(models) - set(provider.models)):
+                raise UnknownCapabilityModelError(
+                    f'providers.{name}.{capability}: '
+                    f'{", ".join(unknown)} not listed in models',
+                )
 
 
 PROVIDERS = SectionSpec(

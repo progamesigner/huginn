@@ -21,6 +21,8 @@ def _build_providers(providers: ProviderConfigList) -> tuple[LLMProviderConfig, 
             models=provider.models,
             base_url=provider.base_url,
             cache_control=provider.cache_control,
+            vision=provider.vision,
+            documents=provider.documents,
         )
         for name, provider in providers.root.items()
     )

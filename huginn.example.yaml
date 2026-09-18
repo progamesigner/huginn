@@ -18,6 +18,10 @@ providers:
         env: ANTHROPIC_API_KEY
     models:
     - claude-sonnet-5
+    vision:
+    - claude-sonnet-5
+    documents:
+    - claude-sonnet-5
   bifrost:
     adapter: openai
     base_url: http://bifrost:8080/v1

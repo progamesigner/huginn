@@ -30,5 +30,9 @@ class UnknownCacheControlModelError(ConfigError):
     pass
 
 
+class UnknownCapabilityModelError(ConfigError):
+    pass
+
+
 class UnknownSectionError(ConfigError):
     pass

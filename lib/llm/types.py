@@ -17,6 +17,11 @@ class ModelRef(LLMValue):
     provider: Annotated[str | None, Field()] = None
 
 
+class ModelCapabilities(LLMValue):
+    vision: Annotated[bool, Field()] = False
+    documents: Annotated[bool, Field()] = False
+
+
 class TextSegment(LLMValue):
     text: Annotated[str, Field()]
 
