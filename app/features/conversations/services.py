@@ -98,6 +98,7 @@ class ConversationTranscript:
             attachment.mime,
             attachment.data,
             kind=attachment.kind,
+            filename=attachment.name,
             ttl=self.retention.inbound,
         )
 

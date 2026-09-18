@@ -1,9 +1,27 @@
 from abc import ABC, abstractmethod
+from collections.abc import Mapping
+from types import MappingProxyType
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict
 
-type AttachmentKind = Literal['audio', 'image']
+type AttachmentKind = Literal['audio', 'document', 'image']
+ATTACHMENT_LIMITS: Mapping[AttachmentKind, int] = MappingProxyType(
+    {
+        'image': 5 * 1024 * 1024,
+        'audio': 10 * 1024 * 1024,
+        'document': 20 * 1024 * 1024,
+    },
+)
+SUPPORTED_DOCUMENT_MIMES = (
+    'application/pdf',
+    'application/vnd.openxmlformats-officedocument.',
+    'application/vnd.ms-excel',
+    'text/csv',
+    'text/plain',
+    'text/markdown',
+    'application/json',
+)
 type ToolPhase = Literal['started', 'finished', 'failed']
 type TurnEnding = Literal['complete', 'timeout', 'exhausted']
 
@@ -15,6 +33,7 @@ class InboundAttachment(BaseModel):
     mime: str
     reference: str
     unique: str
+    name: str | None = None
     duration: int | None = None
     height: int | None = None
     size: int | None = None

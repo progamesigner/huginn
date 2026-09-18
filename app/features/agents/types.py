@@ -54,6 +54,7 @@ class PromptAttachment:
     unique: str
     data: bytes
     hint: str
+    name: str | None = None
     transcript: str | None = None
 
 
