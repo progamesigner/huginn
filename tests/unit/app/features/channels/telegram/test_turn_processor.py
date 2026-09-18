@@ -160,6 +160,21 @@ def voice() -> InboundAttachment:
     )
 
 
+def document(
+    mime: str = 'application/pdf',
+    name: str = 'report.pdf',
+    size: int | None = 2048,
+) -> InboundAttachment:
+    return InboundAttachment(
+        kind='document',
+        mime=mime,
+        reference='file-3',
+        unique='unique-3',
+        name=name,
+        size=size,
+    )
+
+
 def inbound(
     event: int,
     *,
@@ -338,6 +353,46 @@ async def test_a_photo_without_a_caption_is_still_a_prompt() -> None:
     assert len(prompt.attachments) == 1
 
 
+async def test_a_document_is_forwarded_with_its_filename_hint() -> None:
+    turns = FakeTurns()
+
+    await make_processor(turns, FakeIdentities(), FakeGateway()).process(
+        channel(),
+        (inbound(1, text='', attachments=(document(),)),),
+    )
+
+    attachment = turns.requests[0].prompts[0].attachments[0]
+    assert attachment.kind == 'document'
+    assert attachment.name == 'report.pdf'
+    assert attachment.hint == '[document: application/pdf report.pdf]'
+
+
+async def test_an_unsupported_document_is_declined_without_fetching() -> None:
+    gateway = FakeGateway()
+    turns = FakeTurns()
+
+    await make_processor(turns, FakeIdentities(), gateway).process(
+        channel(),
+        (inbound(1, text='', attachments=(document('application/zip', 'data.zip'),)),),
+    )
+
+    assert gateway.fetched == []
+    assert gateway.replies[0].fragments == ['I cannot read that file type.']
+
+
+async def test_an_oversized_document_is_declined_without_fetching() -> None:
+    gateway = FakeGateway()
+    turns = FakeTurns()
+
+    await make_processor(turns, FakeIdentities(), gateway).process(
+        channel(),
+        (inbound(1, text='', attachments=(document(size=21 * 1024 * 1024),)),),
+    )
+
+    assert gateway.fetched == []
+    assert gateway.replies[0].fragments == ['That file is too large for me to read.']
+
+
 async def test_a_voice_note_is_named_by_its_duration() -> None:
     turns = FakeTurns()
 
@@ -457,7 +512,7 @@ async def test_a_round_with_nothing_readable_says_so_instead_of_going_quiet() ->
     # that was never going to be answered -- no answer and no failure either
     assert turns.requests == []
     assert gateway.replies[0].fragments == [
-        'I can only read text, photos and voice messages.',
+        'I can only read text, photos, voice messages and supported documents.',
     ]
     assert gateway.replies[0].finished
     assert gateway.abandoned == []

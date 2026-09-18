@@ -7,6 +7,8 @@ from typing import Annotated, Literal
 from pydantic import BaseModel, ConfigDict, Field, JsonValue
 from telegramify_markdown import convert, utf16_len
 
+from app.contracts.channels import ATTACHMENT_LIMITS, SUPPORTED_DOCUMENT_MIMES
+
 
 class TelegramValue(BaseModel):
     model_config = ConfigDict(extra='ignore', frozen=True, hide_input_in_errors=True)
@@ -28,9 +30,9 @@ class MessageSpec:
 
 @dataclass(frozen=True)
 class MediaSpec:
-    size_limit: int
     photo_mime: str
     audio_mime: str
+    document_mimes: tuple[str, ...]
 
 
 @dataclass(frozen=True)
@@ -47,9 +49,9 @@ WEBHOOK = WebhookSpec(
 )
 MESSAGE = MessageSpec(length_limit=4096, edit_interval=timedelta(seconds=1.1))
 MEDIA = MediaSpec(
-    size_limit=5 * 1024 * 1024,
     photo_mime='image/jpeg',
     audio_mime='audio/ogg',
+    document_mimes=SUPPORTED_DOCUMENT_MIMES,
 )
 TYPING = TypingSpec(action='typing', refresh_interval=timedelta(seconds=4))
 
@@ -90,6 +92,14 @@ class Audio(TelegramValue):
     file_size: Annotated[int | None, Field()] = None
 
 
+class Document(TelegramValue):
+    file_id: Annotated[str, Field()]
+    file_unique_id: Annotated[str, Field()]
+    mime_type: Annotated[str | None, Field()] = None
+    file_name: Annotated[str | None, Field()] = None
+    file_size: Annotated[int | None, Field()] = None
+
+
 class MessageEntity(TelegramValue):
     type: Annotated[str, Field()]
     offset: Annotated[int, Field()]
@@ -110,6 +120,7 @@ class Message(TelegramValue):
     photo: Annotated[tuple[PhotoSize, ...], Field()] = ()
     audio: Annotated[Audio | None, Field()] = None
     voice: Annotated[Voice | None, Field()] = None
+    document: Annotated[Document | None, Field()] = None
 
 
 class Update(TelegramValue):
@@ -185,7 +196,7 @@ def render(markdown: str) -> tuple[str, tuple[MessageEntity, ...]]:
 
 def select_photo(
     photos: Sequence[PhotoSize],
-    limit: int = MEDIA.size_limit,
+    limit: int = ATTACHMENT_LIMITS['image'],
 ) -> PhotoSize | None:
     fitting = [
         photo for photo in photos if photo.file_size is None or photo.file_size <= limit

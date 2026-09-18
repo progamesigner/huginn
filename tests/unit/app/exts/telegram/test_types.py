@@ -71,8 +71,9 @@ def test_message_spec_pins_the_vendor_limits() -> None:
     assert MESSAGE.edit_interval == timedelta(seconds=1.1)
 
 
-def test_media_spec_pins_the_vendor_limits() -> None:
-    assert MEDIA.size_limit == 5 * 1024 * 1024
+def test_media_spec_pins_the_vendor_mimes() -> None:
+    assert MEDIA.photo_mime == 'image/jpeg'
+    assert MEDIA.audio_mime == 'audio/ogg'
 
 
 def test_typing_spec_pins_the_vendor_limits() -> None:

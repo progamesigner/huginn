@@ -9,6 +9,7 @@ import httpx
 from pydantic import SecretStr
 
 from app.contracts.channels import (
+    ATTACHMENT_LIMITS,
     ChannelGatewayContract,
     ChannelReplyContract,
     InboundAttachment,
@@ -20,7 +21,14 @@ from lib.http import HTTPClientContract
 from lib.temporal import ClockContract, Timer
 
 from .clients import TelegramClient
-from .types import MESSAGE, TYPING, MessageEntity, clip_entities, render, utf16_offsets
+from .types import (
+    MESSAGE,
+    TYPING,
+    MessageEntity,
+    clip_entities,
+    render,
+    utf16_offsets,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -241,7 +249,10 @@ class TelegramGateway(ChannelGatewayContract):
 
     @override
     async def fetch(self, attachment: InboundAttachment) -> bytes:
-        return await self.client.fetch_file(attachment.reference)
+        return await self.client.fetch_file(
+            attachment.reference,
+            ATTACHMENT_LIMITS[attachment.kind],
+        )
 
     @override
     def reply(self, message: InboundMessage) -> ChannelReplyContract:

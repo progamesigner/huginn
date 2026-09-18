@@ -137,6 +137,28 @@ def test_inbound_carries_an_audio_file() -> None:
     assert attachment.reference == 'audio-file'
 
 
+def test_inbound_carries_a_document_with_its_filename() -> None:
+    message = _inbound(
+        'support',
+        body(
+            document={
+                'file_id': 'document-file',
+                'file_unique_id': 'document-unique',
+                'file_name': 'report.xlsx',
+                'mime_type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+                'file_size': 12_000,
+            },
+        ),
+    )
+
+    assert message is not None
+    assert len(message.attachments) == 1
+    attachment = message.attachments[0]
+    assert attachment.kind == 'document'
+    assert attachment.name == 'report.xlsx'
+    assert attachment.size == 12_000
+
+
 def test_inbound_carries_both_a_photo_and_a_voice_note() -> None:
     message = _inbound(
         'support',

@@ -3,11 +3,11 @@ from collections.abc import Sequence
 
 from pydantic import JsonValue, SecretStr, TypeAdapter
 
+from app.contracts.channels import ATTACHMENT_LIMITS
 from lib.http import HTTPClientContract
 
 from .exceptions import MediaTooLargeError, MediaUnavailableError
 from .types import (
-    MEDIA,
     WEBHOOK,
     BotCommand,
     File,
@@ -71,7 +71,11 @@ class TelegramClient:
             Message,
         )
 
-    async def fetch_file(self, file_id: str, limit: int = MEDIA.size_limit) -> bytes:
+    async def fetch_file(
+        self,
+        file_id: str,
+        limit: int = ATTACHMENT_LIMITS['image'],
+    ) -> bytes:
         file = await self.get_file(file_id)
         if file.file_path is None:
             raise MediaUnavailableError(f'telegram file {file_id} has no download path')

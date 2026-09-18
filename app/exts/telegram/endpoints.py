@@ -56,6 +56,27 @@ def _attachments(message: Message) -> Iterator[InboundAttachment]:
                 size=sound.file_size,
             )
 
+    if (document := message.document) is not None:
+        mime = document.mime_type or 'application/octet-stream'
+        supported = any(
+            mime == allowed or mime.startswith(allowed)
+            for allowed in MEDIA.document_mimes
+        )
+        if not supported:
+            logger.info(
+                'Telegram document %s has unsupported mime %s',
+                document.file_id,
+                mime,
+            )
+        yield InboundAttachment(
+            kind='document',
+            mime=mime,
+            reference=document.file_id,
+            unique=document.file_unique_id,
+            name=document.file_name,
+            size=document.file_size,
+        )
+
 
 def _command(message: Message) -> InboundCommand | None:
     text = message.text or ''

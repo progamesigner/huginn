@@ -2,6 +2,8 @@ import logging
 from collections.abc import Callable
 
 from app.contracts.channels import (
+    ATTACHMENT_LIMITS,
+    SUPPORTED_DOCUMENT_MIMES,
     ChannelGatewayContract,
     ChannelReplyContract,
     InboundAttachment,
@@ -25,15 +27,27 @@ type GatewayFactory = Callable[[TelegramChannelConfig], ChannelGatewayContract]
 
 _UNATTRIBUTED = ''
 _UNHEARD = 'I could not read that voice message; please send it as text.'
-_UNREADABLE = 'I can only read text, photos and voice messages.'
+_UNREADABLE = 'I can only read text, photos, voice messages and supported documents.'
+_TOO_LARGE = 'That file is too large for me to read.'
+_UNSUPPORTED = 'I cannot read that file type.'
 
 
 def _decline_note(messages: tuple[InboundMessage, ...]) -> str:
-    audible = any(
-        attachment.kind == 'audio'
-        for message in messages
-        for attachment in message.attachments
+    attachments = tuple(
+        attachment for message in messages for attachment in message.attachments
     )
+    if any(
+        attachment.size is not None
+        and attachment.size > ATTACHMENT_LIMITS[attachment.kind]
+        for attachment in attachments
+    ):
+        return _TOO_LARGE
+    if any(
+        attachment.kind == 'document' and not _supported_document(attachment.mime)
+        for attachment in attachments
+    ):
+        return _UNSUPPORTED
+    audible = any(attachment.kind == 'audio' for attachment in attachments)
 
     return _UNHEARD if audible else _UNREADABLE
 
@@ -56,6 +70,13 @@ def _prompt(
     return TurnPrompt(text, actor, attachments)
 
 
+def _supported_document(mime: str) -> bool:
+    return any(
+        mime == allowed or mime.startswith(allowed)
+        for allowed in SUPPORTED_DOCUMENT_MIMES
+    )
+
+
 def _hint(attachment: InboundAttachment) -> str:
     if attachment.width is not None and attachment.height is not None:
         detail = f' {attachment.width}x{attachment.height}'
@@ -63,6 +84,9 @@ def _hint(attachment: InboundAttachment) -> str:
         detail = f' {attachment.duration}s'
     else:
         detail = ''
+
+    if attachment.name is not None:
+        detail = f' {attachment.name}{detail}'
 
     return f'[{attachment.kind}: {attachment.mime}{detail}]'
 
@@ -151,6 +175,15 @@ class TelegramTurnProcessor:
     ) -> tuple[PromptAttachment, ...]:
         carried = []
         for attachment in message.attachments:
+            if attachment.kind == 'document' and not _supported_document(
+                attachment.mime,
+            ):
+                continue
+            if (
+                attachment.size is not None
+                and attachment.size > ATTACHMENT_LIMITS[attachment.kind]
+            ):
+                continue
             try:
                 data = await gateway.fetch(attachment)
             except Exception:
@@ -185,6 +218,7 @@ class TelegramTurnProcessor:
             unique=attachment.unique,
             data=data,
             hint=_hint(attachment),
+            name=attachment.name,
             transcript=transcript,
         )
 
