@@ -367,13 +367,40 @@ async def test_a_document_is_forwarded_with_its_filename_hint() -> None:
     assert attachment.hint == '[document: application/pdf report.pdf]'
 
 
-async def test_an_unsupported_document_is_declined_without_fetching() -> None:
+async def test_a_text_document_is_extracted_and_previewed() -> None:
+    turns = FakeTurns()
+
+    await make_processor(turns, FakeIdentities(), FakeGateway()).process(
+        channel(),
+        (inbound(1, text='', attachments=(document('text/plain', 'note.txt'),)),),
+    )
+
+    attachment = turns.requests[0].prompts[0].attachments[0]
+    assert attachment.document_text == 'bytes'
+    assert attachment.transcript == '[document: text/plain note.txt]\nbytes'
+
+
+@pytest.mark.parametrize(
+    ('mime', 'name'),
+    [
+        ('application/zip', 'data.zip'),
+        ('application/vnd.ms-excel', 'old.xls'),
+        (
+            'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+            'deck.pptx',
+        ),
+    ],
+)
+async def test_an_unsupported_document_is_declined_without_fetching(
+    mime: str,
+    name: str,
+) -> None:
     gateway = FakeGateway()
     turns = FakeTurns()
 
     await make_processor(turns, FakeIdentities(), gateway).process(
         channel(),
-        (inbound(1, text='', attachments=(document('application/zip', 'data.zip'),)),),
+        (inbound(1, text='', attachments=(document(mime, name),)),),
     )
 
     assert gateway.fetched == []

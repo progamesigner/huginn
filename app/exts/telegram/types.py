@@ -7,7 +7,7 @@ from typing import Annotated, Literal
 from pydantic import BaseModel, ConfigDict, Field, JsonValue
 from telegramify_markdown import convert, utf16_len
 
-from app.contracts.channels import ATTACHMENT_LIMITS, SUPPORTED_DOCUMENT_MIMES
+from app.contracts.channels import ATTACHMENT_LIMITS
 
 
 class TelegramValue(BaseModel):
@@ -32,7 +32,6 @@ class MessageSpec:
 class MediaSpec:
     photo_mime: str
     audio_mime: str
-    document_mimes: tuple[str, ...]
 
 
 @dataclass(frozen=True)
@@ -51,7 +50,6 @@ MESSAGE = MessageSpec(length_limit=4096, edit_interval=timedelta(seconds=1.1))
 MEDIA = MediaSpec(
     photo_mime='image/jpeg',
     audio_mime='audio/ogg',
-    document_mimes=SUPPORTED_DOCUMENT_MIMES,
 )
 TYPING = TypingSpec(action='typing', refresh_interval=timedelta(seconds=4))
 

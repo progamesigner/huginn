@@ -3,7 +3,7 @@ from typing import cast, override
 from uuid import UUID
 
 from pydantic import JsonValue
-from sqlalchemy import select, update
+from sqlalchemy import or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -184,8 +184,11 @@ class ConversationRepository(BlobReferenceContract):
             return frozenset()
 
         blob = PartRecord.payload['blob'].as_string()
-        rows = await self.session.scalars(select(blob).where(blob.in_(keys)))
-        return frozenset(UUID(value) for value in rows)
+        extracted = PartRecord.payload['extracted_blob'].as_string()
+        rows = await self.session.execute(
+            select(blob, extracted).where(or_(blob.in_(keys), extracted.in_(keys))),
+        )
+        return frozenset(UUID(value) for row in rows for value in row if value in keys)
 
     async def load_current_summary(
         self,

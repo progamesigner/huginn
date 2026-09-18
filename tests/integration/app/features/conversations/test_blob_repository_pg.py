@@ -137,6 +137,40 @@ async def test_a_deleted_conversation_leaves_its_blobs_behind(
     assert await _count(session) == 1
 
 
+async def test_prune_keeps_expired_blobs_that_a_part_still_references(
+    session: AsyncSession,
+) -> None:
+    blobs = _blobs(session)
+    day = timedelta(days=1)
+    original = await blobs.store('application/pdf', b'%PDF', kind='document', ttl=day)
+    extracted = await blobs.store('text/markdown', b'text', kind='document', ttl=day)
+    orphan = await blobs.store('image/jpeg', _PHOTO, kind='image', ttl=day)
+    conversation = await _conversations(session).get_or_create('telegram', '6')
+    await _conversations(session).append_turn(
+        conversation,
+        'scout',
+        [
+            Part(
+                role='user',
+                kind='document',
+                payload={
+                    'blob': str(original.id),
+                    'extracted_blob': str(extracted.id),
+                },
+            ),
+        ],
+    )
+    later = ClockManager().now() + 2 * day
+    references = (_conversations(session),)
+
+    assert await blobs.prune(later, references, dry_run=True) == 1
+    assert await blobs.prune(later, references) == 1
+
+    remaining = set((await session.execute(select(BlobRecord.id))).scalars())
+    assert remaining == {original.id, extracted.id}
+    assert orphan.id not in remaining
+
+
 async def test_prune_refuses_to_run_without_a_reference_source(
     session: AsyncSession,
 ) -> None:

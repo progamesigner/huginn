@@ -101,6 +101,16 @@ class ConversationTranscript:
             filename=attachment.name,
             ttl=self.retention.inbound,
         )
+        extracted_blob = None
+        if attachment.document_text is not None:
+            extracted = await self.blobs.store(
+                'text/markdown',
+                attachment.document_text.encode(),
+                kind='document',
+                filename=attachment.name,
+                ttl=self.retention.generated,
+            )
+            extracted_blob = str(extracted.id)
 
         return Part(
             role='user',
@@ -114,6 +124,7 @@ class ConversationTranscript:
                 'size': blob.size,
                 'reference': attachment.reference,
                 'unique': attachment.unique,
+                'extracted_blob': extracted_blob,
             },
         )
 

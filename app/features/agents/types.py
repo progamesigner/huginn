@@ -56,6 +56,7 @@ class PromptAttachment:
     hint: str
     name: str | None = None
     transcript: str | None = None
+    document_text: str | None = None
 
 
 @dataclass(frozen=True)

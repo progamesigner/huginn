@@ -13,15 +13,6 @@ ATTACHMENT_LIMITS: Mapping[AttachmentKind, int] = MappingProxyType(
         'document': 20 * 1024 * 1024,
     },
 )
-SUPPORTED_DOCUMENT_MIMES = (
-    'application/pdf',
-    'application/vnd.openxmlformats-officedocument.',
-    'application/vnd.ms-excel',
-    'text/csv',
-    'text/plain',
-    'text/markdown',
-    'application/json',
-)
 type ToolPhase = Literal['started', 'finished', 'failed']
 type TurnEnding = Literal['complete', 'timeout', 'exhausted']
 

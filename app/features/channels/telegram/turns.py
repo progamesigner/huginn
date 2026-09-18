@@ -3,7 +3,6 @@ from collections.abc import Callable
 
 from app.contracts.channels import (
     ATTACHMENT_LIMITS,
-    SUPPORTED_DOCUMENT_MIMES,
     ChannelGatewayContract,
     ChannelReplyContract,
     InboundAttachment,
@@ -14,10 +13,12 @@ from app.features.agents.contracts import TurnHandlerContract
 from app.features.agents.types import PromptAttachment, TurnPrompt, TurnRequest
 from app.features.channels.config import routing_policy
 from app.features.channels.contracts import TranscriptionContract
+from app.features.channels.documents import read_document
 from app.features.channels.exceptions import TranscriptionUnavailableError
 from app.features.channels.registry import CommandRegistry
 from app.features.identities.contracts import IdentityResolverContract
 from app.features.identities.types import LinkedPrincipal, Principal
+from lib.documents import SUPPORTED_MIMES
 
 from .config import TelegramChannelConfig
 
@@ -43,7 +44,7 @@ def _decline_note(messages: tuple[InboundMessage, ...]) -> str:
     ):
         return _TOO_LARGE
     if any(
-        attachment.kind == 'document' and not _supported_document(attachment.mime)
+        attachment.kind == 'document' and attachment.mime not in SUPPORTED_MIMES
         for attachment in attachments
     ):
         return _UNSUPPORTED
@@ -68,13 +69,6 @@ def _prompt(
 
     actor = _UNATTRIBUTED if principal is None else principal.stable_key
     return TurnPrompt(text, actor, attachments)
-
-
-def _supported_document(mime: str) -> bool:
-    return any(
-        mime == allowed or mime.startswith(allowed)
-        for allowed in SUPPORTED_DOCUMENT_MIMES
-    )
 
 
 def _hint(attachment: InboundAttachment) -> str:
@@ -175,9 +169,7 @@ class TelegramTurnProcessor:
     ) -> tuple[PromptAttachment, ...]:
         carried = []
         for attachment in message.attachments:
-            if attachment.kind == 'document' and not _supported_document(
-                attachment.mime,
-            ):
+            if attachment.kind == 'document' and attachment.mime not in SUPPORTED_MIMES:
                 continue
             if (
                 attachment.size is not None
@@ -206,10 +198,20 @@ class TelegramTurnProcessor:
         message: InboundMessage,
     ) -> PromptAttachment | None:
         transcript = None
+        document_text = None
         if attachment.kind == 'audio':
             transcript = await self._transcript(attachment, data, message)
             if transcript is None:
                 return None
+        elif attachment.kind == 'document':
+            reading = await read_document(
+                attachment.mime,
+                data,
+                attachment.name,
+                _hint(attachment),
+            )
+            transcript = reading.transcript
+            document_text = reading.text
 
         return PromptAttachment(
             kind=attachment.kind,
@@ -220,6 +222,7 @@ class TelegramTurnProcessor:
             hint=_hint(attachment),
             name=attachment.name,
             transcript=transcript,
+            document_text=document_text,
         )
 
     async def _command(

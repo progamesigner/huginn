@@ -269,6 +269,7 @@ async def test_an_attached_photo_is_stored_as_a_blob_and_a_media_part(
         'size': len(_PHOTO),
         'reference': 'file-1',
         'unique': 'unique-1',
+        'extracted_blob': None,
     }
     assert await _blob(session, str(stored)) == _PHOTO
 
@@ -296,6 +297,36 @@ async def test_an_inbound_blob_expires_after_the_configured_retention(
     assert record.expires_at is not None
     assert before + timedelta(days=7) <= record.expires_at
     assert record.expires_at <= ClockManager().now() + timedelta(days=7)
+
+
+async def test_extracted_text_expires_while_the_inbound_original_is_kept(
+    session: AsyncSession,
+) -> None:
+    repository = _repository(session)
+    conversation = await repository.get_or_create('support_bot', '7')
+    document = PromptAttachment(
+        kind='document',
+        mime='application/pdf',
+        reference='file-2',
+        unique='unique-2',
+        data=b'%PDF not really a pdf',
+        hint='[document: application/pdf]',
+        document_text='the extracted words',
+    )
+
+    await _transcript(session, conversation).record(
+        'scout',
+        [TurnPrompt(text='read this', actor='user:1', attachments=(document,))],
+        'read',
+    )
+
+    part = (await repository.load_recent_turns(conversation, limit=1))[0].parts[1]
+    original = await _blobs(session).head(UUID(str(part.payload['blob'])))
+    extracted = await _blobs(session).head(UUID(str(part.payload['extracted_blob'])))
+    assert original is not None
+    assert extracted is not None
+    assert original.expires_at is None
+    assert extracted.expires_at is not None
 
 
 async def test_a_stored_photo_replays_as_its_placeholder(
