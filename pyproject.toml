@@ -25,6 +25,11 @@ dependencies = [
 [project.optional-dependencies]
 anthropic = ["anthropic==0.116.0"]
 openai = ["openai==2.45.0"]
+documents = [
+    "openpyxl==3.1.5",
+    "pypdf==6.4.0",
+    "python-docx==1.2.0",
+]
 
 [project.scripts]
 huginn = "bin.cli:main"
@@ -33,6 +38,7 @@ server = "bin.server:main"
 [dependency-groups]
 dev = [
     "huginn[anthropic,openai]",
+    "huginn[documents]",
     "import-linter==2.13",
     "pre-commit==4.6.0",
     "pytest==9.1.1",
