@@ -12,6 +12,7 @@ from .exceptions import (
     DecisionTimeoutError,
     DecisionTransportError,
 )
+from .manager import DecisionManager
 from .types import (
     MAX_CHOICES,
     ChoiceAnswer,
@@ -32,6 +33,7 @@ __all__ = [
     'DecisionContract',
     'DecisionError',
     'DecisionHTTPError',
+    'DecisionManager',
     'DecisionProviderConfig',
     'DecisionProviderRegistry',
     'DecisionRef',
