@@ -1,0 +1,59 @@
+{
+  "source": "Derived from the recorded TypeSafe answer via the Bifrost v2.2.2 field mapping (docs/providers/supported-providers/typesafe.mdx); not yet recorded from a live gateway.",
+  "request": {
+    "model": "typesafe/jev-1.13.0",
+    "state": {
+      "summary": null,
+      "previous_turns": [
+        {
+          "handled_by": "assistant-advanced",
+          "user": [
+            "幫我分析這段 Rust 程式為什麼會 deadlock"
+          ],
+          "assistant": "問題出在兩個 Mutex 的取得順序不一致……"
+        }
+      ],
+      "current": [
+        "照剛剛那個繼續，把修正後的版本寫出來"
+      ]
+    },
+    "questions": {
+      "agent": {
+        "kind": "choice",
+        "instructions": "Which agent should handle the current message? Use previous turns to judge follow-ups.",
+        "criteria": {
+          "assistant-fast": "Quick everyday questions, short answers, casual chat.",
+          "assistant-balanced": "General tasks needing moderate reasoning: planning, writing, summarising.",
+          "assistant-advanced": "Hard problems: multi-step reasoning, deep analysis, complex code.",
+          "__none__": "None of the agents fit, or the request is too vague to decide."
+        }
+      }
+    }
+  },
+  "status": 200,
+  "response": {
+    "model": "jev-1.13.0",
+    "answers": {
+      "agent": {
+        "kind": "choice",
+        "value": "assistant-advanced",
+        "confidence": 0.96,
+        "probabilities": {
+          "__none__": 0.0,
+          "assistant-advanced": 0.97,
+          "assistant-fast": 0.0,
+          "assistant-balanced": 0.03
+        }
+      }
+    },
+    "usage": {
+      "prompt_tokens": 507,
+      "completion_tokens": 57,
+      "total_tokens": 564
+    },
+    "extra_fields": {
+      "provider": "typesafe",
+      "request_type": "decision"
+    }
+  }
+}

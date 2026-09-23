@@ -1,0 +1,25 @@
+{
+  "source": "Shapes from Bifrost v2.2.2 docs and a live unauthenticated probe of the deployed gateway on 2026-09-24.",
+  "errors": {
+    "missing_key": {
+      "status": 401,
+      "response": {
+        "type": "virtual_key_required",
+        "is_bifrost_error": false,
+        "status_code": 401,
+        "error": {
+          "message": "virtual key is required. Provide a virtual key via the x-bf-vk header."
+        }
+      }
+    },
+    "upstream_auth": {
+      "status": 401,
+      "response": {
+        "detail": {
+          "error_type": "authentication_error",
+          "message": "Cannot authenticate with the server. Please check your API key and try again."
+        }
+      }
+    }
+  }
+}
