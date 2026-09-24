@@ -146,13 +146,24 @@ async def test_adapter_maps_a_recorded_choice(route: Route) -> None:
 
     recorded = _recorded(route)
     assert isinstance(recorded, dict)
+    answers = recorded['answers']
+    usage = recorded['usage']
+    assert isinstance(answers, dict)
+    assert isinstance(usage, dict)
+    expected = answers['agent']
+    assert isinstance(expected, dict)
     answer = result.answers['agent']
     assert answer.choice == 'assistant-advanced'
-    assert answer.confidence in {0.95, 0.96}
-    assert answer.probabilities['assistant-advanced'] == pytest.approx(0.97)
+    assert answer.choice == expected[_answer_field(route)]
+    assert answer.confidence == expected['confidence']
+    assert answer.probabilities == expected['probabilities']
     assert result.model == recorded['model']
     assert result.usage is not None
-    assert (result.usage.input_tokens, result.usage.output_tokens) == (507, 57)
+    assert result.usage.input_tokens == 507
+    assert result.usage.output_tokens in {
+        usage.get('output_tokens'),
+        usage.get('completion_tokens'),
+    }
     [sent] = http.requests
     assert str(sent.url) == ROUTES[route][3]
     assert sent.headers['Authorization'] == 'Bearer secret'

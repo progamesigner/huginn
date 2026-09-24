@@ -1,5 +1,5 @@
 {
-  "source": "Derived from the recorded TypeSafe answer via the Bifrost v2.2.2 field mapping (docs/providers/supported-providers/typesafe.mdx); not yet recorded from a live gateway.",
+  "source": "Recorded from the deployed Bifrost gateway on 2026-09-24 with synthetic routing text.",
   "request": {
     "model": "typesafe/jev-1.13.0",
     "state": {
@@ -37,23 +37,33 @@
       "agent": {
         "kind": "choice",
         "value": "assistant-advanced",
-        "confidence": 0.96,
+        "confidence": 0.95,
         "probabilities": {
-          "__none__": 0.0,
-          "assistant-advanced": 0.97,
-          "assistant-fast": 0.0,
-          "assistant-balanced": 0.03
+          "__none__": 0.01,
+          "assistant-advanced": 0.96,
+          "assistant-balanced": 0.03,
+          "assistant-fast": 0
         }
       }
     },
     "usage": {
       "prompt_tokens": 507,
-      "completion_tokens": 57,
-      "total_tokens": 564
+      "completion_tokens": 58,
+      "total_tokens": 565
     },
     "extra_fields": {
+      "request_type": "decisions",
+      "routing_info": {
+        "provider": "typesafe",
+        "model": "jev-1.13.0",
+        "key": "typesafe/default"
+      },
       "provider": "typesafe",
-      "request_type": "decision"
+      "original_model_requested": "jev-1.13.0",
+      "resolved_model_used": "jev-1.13.0",
+      "latency": 569,
+      "upstream_latency": 569,
+      "chunk_index": 0
     }
   }
 }
