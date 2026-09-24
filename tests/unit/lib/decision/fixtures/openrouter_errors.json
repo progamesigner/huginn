@@ -1,0 +1,41 @@
+{
+  "source": "Recorded from openrouter.ai on 2026-09-24 with synthetic routing text.",
+  "errors": {
+    "bad_model": {
+      "status": 400,
+      "response": {
+        "error": {
+          "message": "Model typesafe/jev-nope does not exist",
+          "code": 400
+        }
+      }
+    },
+    "bad_key": {
+      "status": 401,
+      "response": {
+        "error": {
+          "message": "Missing Authentication header",
+          "code": 401
+        }
+      }
+    },
+    "too_many": {
+      "status": 400,
+      "response": {
+        "error": {
+          "message": "HTTP 400: {\"detail\":\"Too many choices. Must have at most 255 choices.\"}",
+          "code": 400
+        }
+      }
+    },
+    "kind_field": {
+      "status": 400,
+      "response": {
+        "error": {
+          "message": "[\n  {\n    \"code\": \"invalid_union\",\n    \"errors\": [],\n    \"note\": \"No matching discriminator\",\n    \"discriminator\": \"type\",\n    \"options\": [\n      \"noul\",\n      \"choice\",\n      \"score\"\n    ],\n    \"path\": [\n      \"questions\",\n      \"agent\",\n      \"type\"\n    ],\n    \"message\": \"Invalid discriminator value. Expected 'noul' | 'choice' | 'score'\"\n  }\n]",
+          "code": 400
+        }
+      }
+    }
+  }
+}

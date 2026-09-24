@@ -1,5 +1,5 @@
 {
-  "source": "Shapes from Bifrost v2.2.2 docs and a live unauthenticated probe of the deployed gateway on 2026-09-24.",
+  "source": "Recorded from the deployed Bifrost gateway on 2026-09-24, except upstream_auth which follows the v2.2.2 docs.",
   "errors": {
     "missing_key": {
       "status": 401,
@@ -18,6 +18,34 @@
         "detail": {
           "error_type": "authentication_error",
           "message": "Cannot authenticate with the server. Please check your API key and try again."
+        }
+      }
+    },
+    "provider_blocked": {
+      "status": 403,
+      "response": {
+        "type": "provider_blocked",
+        "is_bifrost_error": false,
+        "status_code": 403,
+        "error": {
+          "message": "Provider 'typesafe' is not allowed for virtual key 'default'"
+        },
+        "extra_fields": {
+          "routing_info": {},
+          "provider": "typesafe",
+          "original_model_requested": "jev-1.13.0",
+          "resolved_model_used": "jev-1.13.0",
+          "request_type": "decisions",
+          "error_type": "policy_provider_blocked"
+        }
+      }
+    },
+    "native_provider_blocked": {
+      "status": 403,
+      "response": {
+        "detail": {
+          "error_type": "api_error",
+          "message": "Provider 'typesafe' is not allowed for virtual key 'default'"
         }
       }
     }

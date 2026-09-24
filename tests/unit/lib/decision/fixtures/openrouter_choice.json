@@ -1,0 +1,57 @@
+{
+  "source": "Recorded from openrouter.ai on 2026-09-24 with synthetic routing text.",
+  "request": {
+    "model": "typesafe/jev-1.13",
+    "state": {
+      "summary": null,
+      "previous_turns": [
+        {
+          "handled_by": "assistant-advanced",
+          "user": [
+            "幫我分析這段 Rust 程式為什麼會 deadlock"
+          ],
+          "assistant": "問題出在兩個 Mutex 的取得順序不一致……"
+        }
+      ],
+      "current": [
+        "照剛剛那個繼續，把修正後的版本寫出來"
+      ]
+    },
+    "questions": {
+      "agent": {
+        "type": "choice",
+        "instructions": "Which agent should handle the current message? Use previous turns to judge follow-ups.",
+        "criteria": {
+          "assistant-fast": "Quick everyday questions, short answers, casual chat.",
+          "assistant-balanced": "General tasks needing moderate reasoning: planning, writing, summarising.",
+          "assistant-advanced": "Hard problems: multi-step reasoning, deep analysis, complex code.",
+          "__none__": "None of the agents fit, or the request is too vague to decide."
+        }
+      }
+    }
+  },
+  "status": 200,
+  "response": {
+    "model": "typesafe/jev-1.13-20260917",
+    "answers": {
+      "agent": {
+        "type": "choice",
+        "choice": "assistant-advanced",
+        "probabilities": {
+          "assistant-fast": 0,
+          "assistant-advanced": 0.97,
+          "assistant-balanced": 0.03,
+          "__none__": 0
+        },
+        "confidence": 0.95
+      }
+    },
+    "usage": {
+      "input_tokens": 507,
+      "output_tokens": 57,
+      "cost": 2.1294e-05
+    },
+    "id": "gen-dec-1790215317-8vadAm6VFmsodokbHY4q",
+    "provider": "TypeSafe"
+  }
+}
