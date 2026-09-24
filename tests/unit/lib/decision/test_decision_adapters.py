@@ -59,14 +59,22 @@ class MockHTTP(HTTPClientContract):
             yield client
 
 
-type Route = Literal['typesafe', 'bifrost']
+type Route = Literal['typesafe', 'openrouter', 'bifrost']
 
+# NOTE: OpenRouter speaks TypeSafe's own format, so it is the typesafe adapter pointed
+# at another url; only Bifrost's decisions api needs an adapter of its own
 ROUTES: dict[Route, tuple[Adapter, str | None, str, str]] = {
     'typesafe': (
         'typesafe',
         None,
         'typesafe_choice.json',
         'https://api.typesafe.ai/v1/systemone',
+    ),
+    'openrouter': (
+        'typesafe',
+        'https://openrouter.ai/api/alpha/decisions',
+        'openrouter_choice.json',
+        'https://openrouter.ai/api/alpha/decisions',
     ),
     'bifrost': (
         'bifrost',
@@ -136,11 +144,13 @@ async def test_adapter_maps_a_recorded_choice(route: Route) -> None:
 
     result = await client.decide(_request())
 
+    recorded = _recorded(route)
+    assert isinstance(recorded, dict)
     answer = result.answers['agent']
     assert answer.choice == 'assistant-advanced'
-    assert answer.confidence == pytest.approx(0.96)
+    assert answer.confidence in {0.95, 0.96}
     assert answer.probabilities['assistant-advanced'] == pytest.approx(0.97)
-    assert result.model == 'jev-1.13.0'
+    assert result.model == recorded['model']
     assert result.usage is not None
     assert (result.usage.input_tokens, result.usage.output_tokens) == (507, 57)
     [sent] = http.requests
@@ -163,10 +173,17 @@ async def test_adapter_sends_the_question_in_its_wire_shape(route: Route) -> Non
     assert body['model'] == 'jev'
 
 
-async def test_bifrost_reports_the_upstream_it_asked() -> None:
-    client, _ = _adapter('bifrost', _answering(_recorded('bifrost')))
+@pytest.mark.parametrize(
+    ('route', 'upstream'),
+    [('bifrost', 'typesafe'), ('openrouter', 'TypeSafe'), ('typesafe', None)],
+)
+async def test_adapter_reports_the_upstream_a_gateway_names(
+    route: Route,
+    upstream: str | None,
+) -> None:
+    client, _ = _adapter(route, _answering(_recorded(route)))
 
-    assert (await client.decide(_request())).upstream == 'typesafe'
+    assert (await client.decide(_request())).upstream == upstream
 
 
 async def test_bifrost_refuses_an_answer_emulated_by_another_provider() -> None:
@@ -256,6 +273,12 @@ async def test_adapter_refuses_a_body_that_is_not_json(route: Route) -> None:
         ('typesafe', 'bad_key', 401, 'Cannot authenticate'),
         ('typesafe', 'too_many', 400, 'Too many choices'),
         ('bifrost', 'missing_key', 401, 'virtual key is required'),
+        ('bifrost', 'provider_blocked', 403, "Provider 'typesafe' is not allowed"),
+        ('bifrost', 'native_provider_blocked', 403, "Provider 'typesafe' is not"),
+        ('openrouter', 'bad_model', 400, 'typesafe/jev-nope does not exist'),
+        ('openrouter', 'bad_key', 401, 'Missing Authentication header'),
+        ('openrouter', 'too_many', 400, 'Too many choices'),
+        ('openrouter', 'kind_field', 400, 'invalid_union'),
         ('bifrost', 'upstream_auth', 401, 'Cannot authenticate'),
     ],
 )

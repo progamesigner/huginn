@@ -28,6 +28,8 @@ class NativeResponse(WirePayload):
     model: Annotated[str, Field()]
     answers: Annotated[dict[str, NativeAnswer], Field()]
     usage: Annotated[NativeUsage | None, Field()] = None
+    # NOTE: OpenRouter names the provider it routed to; TypeSafe itself does not
+    provider: Annotated[str | None, Field()] = None
 
 
 def encode_native(request: DecisionRequest) -> dict[str, JsonValue]:
@@ -65,6 +67,7 @@ def decode_native(payload: JsonValue) -> DecisionResult:
                 output_tokens=response.usage.output_tokens,
             )
         ),
+        upstream=response.provider,
     )
 
 
