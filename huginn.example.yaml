@@ -158,3 +158,13 @@ channels:
 #         env: BIFROST_API_KEY
 #     models: [typesafe/jev-1.13.0]
 #     timeout: 3.0
+# On a channel or API key router, opt in with:
+# router:
+#   engine: decision           # default: llm
+#   provider: jev
+#   model: typesafe/jev-1.13.0  # required; never inherits defaults.model
+#   allowed: [assistant, coder]
+#   fallback: assistant
+#   history_turns: 6           # decision default: 6; llm default: 0
+# Conversation excerpts and attachment hints go to the configured gateway and
+# TypeSafe. Media bytes, document bodies, tool calls and results are excluded.

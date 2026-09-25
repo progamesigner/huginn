@@ -6,6 +6,7 @@ from app.core.providers.decision import DecisionProvider
 from app.core.providers.llm import LLMProvider
 from app.core.providers.temporal import ClockProvider
 from lib.container import ContainerContract, ProviderContract
+from lib.decision import DecisionContract
 from lib.llm import LLMContract
 from lib.temporal import ClockContract
 
@@ -31,6 +32,7 @@ def _router(container: ContainerContract) -> Router:
         container.resolve(LLMContract),
         defaults,
         defaults.router_prompt,
+        decisions=container.resolve(DecisionContract),
     )
 
 
