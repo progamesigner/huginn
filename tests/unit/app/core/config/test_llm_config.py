@@ -5,7 +5,8 @@ from app.core.config.exceptions import (
     UnknownCacheControlModelError,
     UnknownCapabilityModelError,
 )
-from app.core.config.llm import PROVIDERS, ProviderConfig, ProviderConfigList
+from app.core.config.llm import ProviderConfig
+from app.core.config.providers import PROVIDERS, ProviderConfigList
 from app.core.config.registry import HuginnConfig
 
 

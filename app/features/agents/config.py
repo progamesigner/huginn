@@ -5,7 +5,7 @@ from typing import Annotated, Literal, Self
 
 from pydantic import BaseModel, Field, JsonValue, RootModel, model_validator
 
-from app.core.config.llm import PROVIDERS
+from app.core.config.providers import llm_providers
 from app.core.config.registry import HuginnConfig, SectionSpec
 from app.core.config.schema import ConfigValue
 from lib.llm import ModelRef
@@ -128,7 +128,7 @@ def resolve_selection(
 
 
 def validate_selection(config: HuginnConfig, base: str, ref: ModelRef) -> None:
-    providers = config.section(PROVIDERS).root
+    providers = llm_providers(config)
     if ref.provider is not None:
         if (provider := providers.get(ref.provider)) is None:
             raise UnknownProviderReferenceError(

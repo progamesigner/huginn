@@ -2,6 +2,7 @@ from pathlib import Path
 from typing import override
 
 from app.core.config.loader import load_config
+from app.core.config.providers import PROVIDERS
 from app.core.config.registry import HuginnConfig, SectionRegistry
 from app.core.settings import HuginnSettings
 from lib.command import CommandContract
@@ -27,6 +28,14 @@ class ConfigProvider(ProviderContract):
     def build_config(self, container: ContainerContract) -> HuginnConfig:
         path = self.path or container.resolve(HuginnSettings).config_file
         return load_config(path, container.resolve(SectionRegistry))
+
+
+class ProvidersConfigProvider(ProviderContract):
+    dependencies = (ConfigProvider,)
+
+    @override
+    def __call__(self, container: ContainerContract) -> None:
+        container.resolve(SectionRegistry).register(PROVIDERS)
 
 
 class ConfigCommandProvider(ProviderContract):

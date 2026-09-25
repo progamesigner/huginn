@@ -1,18 +1,21 @@
 from typing import override
 
-from app.core.config.llm import PROVIDERS, ProviderConfigList
-from app.core.config.registry import HuginnConfig, SectionRegistry
+from app.core.config.llm import ProviderConfig
+from app.core.config.providers import llm_providers
+from app.core.config.registry import HuginnConfig
 from lib.container import ContainerContract, ProviderContract
 from lib.http import HTTPClientContract
 from lib.llm import LLMContract, LLMManager
 from lib.llm import ProviderConfig as LLMProviderConfig
 
-from .config import ConfigProvider
+from .config import ProvidersConfigProvider
 from .http import HTTPClientProvider
 from .settings import SettingsProvider
 
 
-def _build_providers(providers: ProviderConfigList) -> tuple[LLMProviderConfig, ...]:
+def _build_providers(
+    providers: dict[str, ProviderConfig],
+) -> tuple[LLMProviderConfig, ...]:
     return tuple(
         LLMProviderConfig(
             name=name,
@@ -24,16 +27,15 @@ def _build_providers(providers: ProviderConfigList) -> tuple[LLMProviderConfig, 
             vision=provider.vision,
             documents=provider.documents,
         )
-        for name, provider in providers.root.items()
+        for name, provider in providers.items()
     )
 
 
 class LLMProvider(ProviderContract):
-    dependencies = (SettingsProvider, HTTPClientProvider, ConfigProvider)
+    dependencies = (SettingsProvider, HTTPClientProvider, ProvidersConfigProvider)
 
     @override
     def __call__(self, container: ContainerContract) -> None:
-        container.resolve(SectionRegistry).register(PROVIDERS)
         container.bind(
             LLMContract,
             factory=self._build,
@@ -43,6 +45,6 @@ class LLMProvider(ProviderContract):
     def _build(self, container: ContainerContract) -> LLMManager:
         config = container.resolve(HuginnConfig)
         return LLMManager(
-            _build_providers(config.section(PROVIDERS)),
+            _build_providers(llm_providers(config)),
             container.resolve(HTTPClientContract),
         )

@@ -12,13 +12,14 @@ from app.core.config.exceptions import (
     MissingSectionError,
     UnknownSectionError,
 )
-from app.core.config.llm import PROVIDERS, ProviderConfig, ProviderConfigList
+from app.core.config.llm import ProviderConfig
 from app.core.config.loader import (
     _interpolate,
     _resolve_references,
     _resolve_value_from,
     load_config,
 )
+from app.core.config.providers import PROVIDERS, ProviderConfigList
 from app.core.config.registry import HuginnConfig, SectionRegistry, SectionSpec
 from app.features.agents.config import (
     AGENTS,

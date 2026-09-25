@@ -141,3 +141,20 @@ channels:
       allowed:
       - scout
       - concierge
+
+# A decision provider answers agent routing with a structured judgement instead of
+# generated text. It sits in providers with type: decision; entries without a type
+# are llm providers as above. The typesafe adapter speaks TypeSafe's own format and
+# defaults to its public endpoint; point url elsewhere for a service speaking the
+# same format, such as OpenRouter at https://openrouter.ai/api/alpha/decisions.
+# The bifrost adapter speaks Bifrost's decisions api and always needs its url.
+# providers:
+#   jev:
+#     type: decision
+#     adapter: bifrost  # bifrost | typesafe
+#     url: http://bifrost.default.svc.cluster.local:8080/v1/decisions
+#     api_key:
+#       value_from:
+#         env: BIFROST_API_KEY
+#     models: [typesafe/jev-1.13.0]
+#     timeout: 3.0

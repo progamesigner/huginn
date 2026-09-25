@@ -3,7 +3,8 @@ import re
 import pytest
 from pydantic import SecretStr, ValidationError
 
-from app.core.config.llm import PROVIDERS, ProviderConfig, ProviderConfigList
+from app.core.config.llm import ProviderConfig
+from app.core.config.providers import PROVIDERS, ProviderConfigList
 from app.core.config.registry import HuginnConfig
 from app.features.agents.config import (
     AGENTS,

@@ -2,6 +2,7 @@ from typing import override
 
 from app.core.config.registry import HuginnConfig, SectionRegistry
 from app.core.providers.config import ConfigProvider
+from app.core.providers.decision import DecisionProvider
 from app.core.providers.llm import LLMProvider
 from app.core.providers.temporal import ClockProvider
 from lib.container import ContainerContract, ProviderContract
@@ -47,7 +48,7 @@ def _turns(container: ContainerContract) -> TurnHandler:
 
 
 class AgentProvider(ProviderContract):
-    dependencies = (ClockProvider, ConfigProvider, LLMProvider)
+    dependencies = (ClockProvider, ConfigProvider, LLMProvider, DecisionProvider)
 
     @override
     def __call__(self, container: ContainerContract) -> None:
