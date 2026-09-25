@@ -265,3 +265,23 @@ class ToolSet:
             )
 
         return ToolResultSegment(tool_call_id=call.id, content=output, error=False)
+
+
+@dataclass(frozen=True)
+class RoutingHistory:
+    id: str
+    historical_agent: str
+    context: RoutingContext
+    created_at: datetime | None = None
+    previous_at: datetime | None = None
+
+
+@dataclass(frozen=True)
+class RoutingTarget:
+    channel: str
+    policy: RoutingPolicy
+
+
+@dataclass(frozen=True)
+class RoutingTargets:
+    entries: Mapping[str, RoutingTarget]

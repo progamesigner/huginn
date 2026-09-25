@@ -1,6 +1,7 @@
 import logging
 from collections.abc import AsyncIterator, Sequence
 from contextlib import asynccontextmanager
+from datetime import datetime
 from typing import override
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -13,7 +14,13 @@ from app.features.agents.config import (
     resolve_selection,
 )
 from app.features.agents.contracts import TranscriptStoreContract
-from app.features.agents.types import PromptAttachment, RoutingTurn, TurnPrompt
+from app.features.agents.types import (
+    PromptAttachment,
+    RoutingContext,
+    RoutingHistory,
+    RoutingTurn,
+    TurnPrompt,
+)
 from app.features.blobs.config import BLOBS, RetentionConfig
 from app.features.blobs.contracts import BlobStoreContract, BlobStoreFactoryContract
 from lib.database import DatabaseContract
@@ -245,6 +252,46 @@ class ConversationTranscriptStore(TranscriptStoreContract):
     ) -> tuple[Message, ...]:
         async with self._open(channel, chat) as transcript:
             return await transcript.history()
+
+    @override
+    async def routing_samples(
+        self,
+        channel: str,
+        since: datetime,
+        history_turns: int,
+    ) -> AsyncIterator[RoutingHistory]:
+        async with self.database.session() as session:
+            repository = self._repository(session)
+            async for turn, preceding in repository.routing_samples(
+                channel,
+                since,
+                history_turns,
+            ):
+                current = routing_turn(turn)
+                prompts = tuple(
+                    TurnPrompt(text=text, actor='') for text in current.user
+                )
+                if current.attachments:
+                    prompts += (
+                        TurnPrompt(
+                            text='[attachments: '
+                            + '; '.join(current.attachments)
+                            + ']',
+                            actor='',
+                        ),
+                    )
+                # NOTE: a summary is rewritten in place, so today's says nothing about
+                # what the router saw back then
+                yield RoutingHistory(
+                    str(turn.id),
+                    turn.agent,
+                    RoutingContext(
+                        prompts,
+                        tuple(routing_turn(prior) for prior in preceding),
+                    ),
+                    turn.created_at,
+                    preceding[-1].created_at if preceding else None,
+                )
 
     @override
     async def recent_turns(

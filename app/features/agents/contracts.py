@@ -1,13 +1,14 @@
 from abc import ABC, abstractmethod
-from collections.abc import Callable, Sequence
+from collections.abc import AsyncIterator, Callable, Sequence
 from dataclasses import dataclass
+from datetime import datetime
 from typing import Protocol
 
 from app.contracts.channels import ChannelReplyContract, ToolPhase
 from lib.llm import Message, ModelRef
 
 from .config import AgentConfig
-from .types import RoutingTurn, Tool, TurnPrompt, TurnRequest, TurnScope
+from .types import RoutingHistory, RoutingTurn, Tool, TurnPrompt, TurnRequest, TurnScope
 
 type NamedTool = tuple[str, Tool]
 type ToolSourceFactory = Callable[[], ToolSource]
@@ -33,6 +34,14 @@ class ToolSource(ABC):
 
 
 class TranscriptStoreContract(ABC):
+    def routing_samples(
+        self,
+        channel: str,
+        since: datetime,
+        history_turns: int,
+    ) -> AsyncIterator[RoutingHistory]:
+        raise NotImplementedError('this transcript store cannot export routing samples')
+
     async def recent_turns(
         self,
         channel: str,

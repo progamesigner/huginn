@@ -1,3 +1,4 @@
+from datetime import UTC, datetime
 from uuid import uuid4
 
 import pytest
@@ -254,6 +255,49 @@ async def test_document_blob_ids_span_the_whole_conversation(
     )
 
     assert await repository.load_document_blob_ids(compacted) == {first, second}
+
+
+async def test_routing_samples_never_include_target_or_future_turns(
+    session: AsyncSession,
+) -> None:
+    repository = _repository(session)
+    conversation = await repository.get_or_create('routing-export', '1')
+    turns = []
+    for index in range(3):
+        turns.append(
+            await repository.append_turn(
+                conversation,
+                'scout',
+                [Part('user', 'text', {'text': str(index)})],
+            ),
+        )
+    await repository.append_turn(
+        conversation,
+        'scout',
+        [Part('assistant', 'summary', {'summary': 'future summary'})],
+    )
+    other = await repository.get_or_create('different', '1')
+    await repository.append_turn(
+        other,
+        'scout',
+        [Part('user', 'text', {'text': 'not in channel'})],
+    )
+    samples = [
+        sample
+        async for sample in repository.routing_samples(
+            'routing-export',
+            datetime(2000, 1, 1, tzinfo=UTC),
+            2,
+        )
+    ]
+    assert [turn.id for turn, _ in samples] == [turn.id for turn in turns]
+    assert [tuple(turn.id for turn in prior) for _, prior in samples] == [
+        (),
+        (turns[0].id,),
+        (turns[0].id, turns[1].id),
+    ]
+    recent = await repository.load_routing_turns(conversation, 2)
+    assert [turn.id for turn in recent] == [turns[1].id, turns[2].id]
 
 
 async def test_a_reset_hides_the_documents_shared_before_it(

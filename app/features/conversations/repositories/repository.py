@@ -1,9 +1,10 @@
-from collections.abc import Collection, Mapping, Sequence
+from collections.abc import AsyncIterator, Collection, Mapping, Sequence
+from datetime import datetime
 from typing import cast, override
 from uuid import UUID
 
 from pydantic import JsonValue
-from sqlalchemy import or_, select, update
+from sqlalchemy import or_, select, tuple_, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -157,6 +158,62 @@ class ConversationRepository(BlobReferenceContract):
         records = (await self.session.execute(query)).scalars().all()
 
         return tuple(_to_turn(record) for record in reversed(records))
+
+    async def routing_samples(
+        self,
+        channel: str,
+        since: datetime,
+        history_turns: int,
+    ) -> AsyncIterator[tuple[Turn, tuple[Turn, ...]]]:
+        query = (
+            select(TurnRecord)
+            .join(
+                ConversationRecord,
+                ConversationRecord.id == TurnRecord.conversation_id,
+            )
+            .where(
+                ConversationRecord.channel == channel,
+                TurnRecord.created_at >= since,
+                TurnRecord.parts.any(PartRecord.role == 'user'),
+            )
+            .order_by(TurnRecord.created_at, TurnRecord.id)
+            .options(selectinload(TurnRecord.parts))
+        )
+        # NOTE: keyset pages, so the archive is never loaded whole and no server cursor
+        # stays open while a second query rebuilds each sample's prior context
+        cursor = None
+        while True:
+            page = (
+                query
+                if cursor is None
+                else query.where(tuple_(TurnRecord.created_at, TurnRecord.id) > cursor)
+            )
+            records = (await self.session.execute(page.limit(100))).scalars().all()
+            if not records:
+                break
+            for record in records:
+                prior_query = (
+                    select(TurnRecord)
+                    .where(
+                        TurnRecord.conversation_id == record.conversation_id,
+                        tuple_(TurnRecord.created_at, TurnRecord.id)
+                        < (record.created_at, record.id),
+                        TurnRecord.parts.any(PartRecord.role == 'user'),
+                    )
+                    .order_by(TurnRecord.created_at.desc(), TurnRecord.id.desc())
+                    .limit(history_turns)
+                    .options(selectinload(TurnRecord.parts))
+                )
+                prior = (
+                    (await self.session.execute(prior_query)).scalars().all()
+                    if history_turns
+                    else []
+                )
+                yield (
+                    _to_turn(record),
+                    tuple(_to_turn(item) for item in reversed(prior)),
+                )
+            cursor = (records[-1].created_at, records[-1].id)
 
     async def load_routing_turns(
         self,

@@ -10,3 +10,6 @@ __pycache__/
 .pytest_cache/
 .ruff_cache/
 .venv/
+
+# Private router replay datasets and reviews
+.scratch/
