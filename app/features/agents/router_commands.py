@@ -228,6 +228,8 @@ def review(
         Option('--out', help='Labels JSON, without conversation text.'),
     ],
 ) -> None:
+    if source.resolve() == out.resolve():
+        raise ValueError('review and labels must use different files')
     items = [
         ReviewItem.model_validate_json(line)
         for line in source.read_text().splitlines()

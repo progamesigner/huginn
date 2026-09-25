@@ -2,6 +2,7 @@ import json
 import os
 from datetime import timedelta
 from pathlib import Path
+from tempfile import NamedTemporaryFile
 from typing import Annotated
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -111,10 +112,21 @@ def read_samples(path: Path) -> tuple[DatasetSample, ...]:
 
 def write_private(path: Path, content: str, *, overwrite: bool = False) -> None:
     # NOTE: review files come from the same conversations, so every file is private
-    flags = os.O_WRONLY | os.O_CREAT | (os.O_TRUNC if overwrite else os.O_EXCL)
-    descriptor = os.open(path, flags, 0o600)
-    with os.fdopen(descriptor, 'w') as handle:
-        handle.write(content)
+    if not overwrite:
+        descriptor = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        with os.fdopen(descriptor, 'w') as handle:
+            handle.write(content)
+        return
+
+    with NamedTemporaryFile(mode='w', dir=path.parent, delete=False) as handle:
+        temporary = Path(handle.name)
+        try:
+            handle.write(content)
+            handle.flush()
+            os.fsync(handle.fileno())
+            os.replace(temporary, path)
+        finally:
+            temporary.unlink(missing_ok=True)
 
 
 def json_text(value: object) -> str:

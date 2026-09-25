@@ -1,4 +1,5 @@
 import json
+import os
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from unittest.mock import AsyncMock
@@ -140,3 +141,20 @@ async def test_incomplete_comparison_never_infers_labels() -> None:
         {'decision': SelectionPolicy('a', engine='decision')},
     )
     assert review_items(samples, results)[0].label_source == 'unlabeled'
+
+
+def test_review_checkpoint_is_atomic(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    target = tmp_path / 'labels.json'
+    write_private(target, 'original')
+
+    def interrupted(*args) -> None:
+        raise OSError('interrupted replacement')
+
+    monkeypatch.setattr(os, 'replace', interrupted)
+    with pytest.raises(OSError, match='interrupted'):
+        write_private(target, 'replacement', overwrite=True)
+    assert target.read_text() == 'original'
+    assert list(tmp_path.iterdir()) == [target]
