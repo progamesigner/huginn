@@ -8,6 +8,7 @@ from typing import override
 
 from pydantic import BaseModel, ConfigDict, JsonValue, ValidationError
 
+from app.contracts.auth import RouterEngine
 from app.contracts.channels import AttachmentKind, TurnEnding
 from lib.llm import Message, ModelCapabilities, ToolCallSegment, ToolResultSegment
 
@@ -28,10 +29,17 @@ type ToolOutput = str
 @dataclass(frozen=True)
 class SelectionPolicy:
     fallback: str
+    engine: RouterEngine = 'llm'
     history_turns: int | None = None
     model: str | None = None
     provider: str | None = None
     allowed: frozenset[str] = field(default_factory=frozenset)
+
+    @property
+    def history_limit(self) -> int:
+        if self.history_turns is not None:
+            return self.history_turns
+        return 6 if self.engine == 'decision' else 0
 
 
 @dataclass(frozen=True)

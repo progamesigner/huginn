@@ -43,3 +43,11 @@ class ProviderModelMismatchError(ConfigError):
 
 class AmbiguousModelError(ConfigError):
     pass
+
+
+class ReservedAgentNameError(ConfigError):
+    pass
+
+
+class TooManyRouterCandidatesError(ConfigError):
+    pass

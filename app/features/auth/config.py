@@ -3,16 +3,14 @@ from typing import Annotated
 
 from pydantic import BaseModel, Field, RootModel, SecretStr
 
+from app.contracts.auth import RouterEngine
 from app.core.config.registry import HuginnConfig, SectionSpec
 from app.core.config.schema import ConfigValue
 from app.features.agents.config import (
     AGENTS,
-    DEFAULTS,
-    resolve_selection,
-    validate_selection,
+    validate_router_selection,
 )
 from app.features.agents.exceptions import (
-    MissingModelError,
     UnknownAgentReferenceError,
 )
 
@@ -27,6 +25,7 @@ from .exceptions import (
 
 
 class ApiKeyRouterConfig(ConfigValue):
+    engine: Annotated[RouterEngine, Field()] = 'llm'
     history_turns: Annotated[int | None, Field(ge=0)] = None
     fallback: Annotated[str, Field()]
     allowed: Annotated[tuple[str, ...], Field()] = ()
@@ -128,16 +127,14 @@ def _validate_api_keys(config: HuginnConfig) -> None:
                 raise UnknownAgentReferenceError(
                     f'{router}.fallback: {key.router.fallback!r} is not in {router}.allowed',
                 )
-            try:
-                ref = resolve_selection(
-                    key.router.provider,
-                    key.router.model,
-                    config.section(DEFAULTS),
-                )
-            except MissingModelError as error:
-                raise MissingModelError(f'{router}.model: {error}') from error
-
-            validate_selection(config, router, ref)
+            validate_router_selection(
+                config,
+                router,
+                engine=key.router.engine,
+                provider=key.router.provider,
+                model=key.router.model,
+                allowed=key.router.allowed,
+            )
 
 
 def _validate_allowed(

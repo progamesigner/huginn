@@ -22,6 +22,7 @@ def _client(name: str, key: ApiKeyConfig) -> ApiClient:
             if key.router is None
             else ApiRouting(
                 fallback=key.router.fallback,
+                engine=key.router.engine,
                 history_turns=key.router.history_turns,
                 model=key.router.model,
                 provider=key.router.provider,

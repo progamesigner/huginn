@@ -1,10 +1,14 @@
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
+from typing import Literal
+
+type RouterEngine = Literal['llm', 'decision']
 
 
 @dataclass(frozen=True)
 class ApiRouting:
     fallback: str
+    engine: RouterEngine = 'llm'
     history_turns: int | None = None
     model: str | None = None
     provider: str | None = None

@@ -429,12 +429,12 @@ class TurnHandler(TurnHandlerContract):
         if (
             request.policy.agent is None
             and selection is not None
-            and selection.history_turns
+            and selection.history_limit
         ):
             turns, summary = await self.store.recent_turns(
                 request.channel,
                 request.chat,
-                selection.history_turns,
+                selection.history_limit,
             )
             context = RoutingContext(request.prompts, turns, summary)
 

@@ -15,16 +15,14 @@ from pydantic import (
     create_model,
 )
 
+from app.contracts.auth import RouterEngine
 from app.core.config.registry import HuginnConfig, SectionSpec
 from app.core.config.schema import ConfigValue
 from app.features.agents.config import (
     AGENTS,
-    DEFAULTS,
-    resolve_selection,
-    validate_selection,
+    validate_router_selection,
 )
 from app.features.agents.exceptions import (
-    MissingModelError,
     UnknownAgentReferenceError,
 )
 from app.features.agents.types import RoutingPolicy, SelectionPolicy
@@ -43,6 +41,7 @@ type TranscriptionKind = Literal['openai']
 
 
 class ChannelRouterConfig(ConfigValue):
+    engine: Annotated[RouterEngine, Field()] = 'llm'
     history_turns: Annotated[int | None, Field(ge=0)] = None
     fallback: Annotated[str, Field()]
     allowed: Annotated[tuple[str, ...], Field()] = ()
@@ -141,6 +140,7 @@ def routing_policy(channel: ChannelConfig) -> RoutingPolicy:
             if channel.router is None
             else SelectionPolicy(
                 fallback=channel.router.fallback,
+                engine=channel.router.engine,
                 history_turns=channel.router.history_turns,
                 model=channel.router.model,
                 provider=channel.router.provider,
@@ -243,16 +243,14 @@ def _validate_channels(config: HuginnConfig, registry: ChannelRegistry) -> None:
                 raise UnknownAgentReferenceError(
                     f'{router}.fallback: {channel.router.fallback!r} is not in {router}.allowed',
                 )
-            try:
-                ref = resolve_selection(
-                    channel.router.provider,
-                    channel.router.model,
-                    config.section(DEFAULTS),
-                )
-            except MissingModelError as error:
-                raise MissingModelError(f'{router}.model: {error}') from error
-
-            validate_selection(config, router, ref)
+            validate_router_selection(
+                config,
+                router,
+                engine=channel.router.engine,
+                provider=channel.router.provider,
+                model=channel.router.model,
+                allowed=channel.router.allowed,
+            )
 
 
 def build_sections(registry: ChannelRegistry) -> Iterator[SectionSpec[BaseModel]]:

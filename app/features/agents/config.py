@@ -5,9 +5,11 @@ from typing import Annotated, Literal, Self
 
 from pydantic import BaseModel, Field, JsonValue, RootModel, model_validator
 
-from app.core.config.providers import llm_providers
+from app.contracts.auth import RouterEngine
+from app.core.config.providers import decision_providers, llm_providers
 from app.core.config.registry import HuginnConfig, SectionSpec
 from app.core.config.schema import ConfigValue
+from lib.decision import MAX_CHOICES
 from lib.llm import ModelRef
 
 from .exceptions import (
@@ -16,14 +18,22 @@ from .exceptions import (
     AmbiguousModelError,
     MissingModelError,
     ProviderModelMismatchError,
+    ReservedAgentNameError,
+    TooManyRouterCandidatesError,
     UnknownProviderReferenceError,
 )
+
+# NOTE: the answer that means no agent fits; it takes one of the choices a decision
+# offers, so one fewer is left for agents
+NO_AGENT = '__none__'
+MAX_ROUTED_AGENTS = MAX_CHOICES - 1
 
 
 class DefaultsConfig(ConfigValue):
     model: Annotated[str | None, Field()] = None
     provider: Annotated[str | None, Field()] = None
     router_prompt: Annotated[str | None, Field()] = None
+    router_instructions: Annotated[str | None, Field(min_length=1)] = None
     max_completion_tokens: Annotated[int | None, Field(gt=0)] = None
 
 
@@ -150,6 +160,52 @@ def validate_selection(config: HuginnConfig, base: str, ref: ModelRef) -> None:
             f'{base}.model: {ref.model!r} is offered by {", ".join(owners)};'
             f' name one in {base}.provider',
         )
+
+
+def validate_router_selection(
+    config: HuginnConfig,
+    base: str,
+    *,
+    engine: RouterEngine,
+    provider: str | None,
+    model: str | None,
+    allowed: tuple[str, ...],
+) -> None:
+    if engine == 'llm':
+        try:
+            ref = resolve_selection(provider, model, config.section(DEFAULTS))
+        except MissingModelError as error:
+            raise MissingModelError(f'{base}.model: {error}') from error
+        validate_selection(config, base, ref)
+        return
+    if not model:
+        raise MissingModelError(f'{base}.model: decision routing requires a model')
+    if len(allowed) > MAX_ROUTED_AGENTS:
+        raise TooManyRouterCandidatesError(
+            f'{base}.allowed: decision routing takes at most {MAX_ROUTED_AGENTS} agents',
+        )
+    if NO_AGENT in config.section(AGENTS).root:
+        raise ReservedAgentNameError(
+            f'agents.{NO_AGENT}: the name is reserved for "no agent fits"',
+        )
+    providers = decision_providers(config)
+    if provider is not None:
+        if provider not in providers:
+            raise UnknownProviderReferenceError(
+                f'{base}.provider: unknown decision provider {provider!r}',
+            )
+        if model not in providers[provider].models:
+            raise ProviderModelMismatchError(
+                f'{base}.model: not offered by decision provider {provider!r}',
+            )
+        return
+    owners = [name for name, entry in providers.items() if model in entry.models]
+    if not owners:
+        raise ProviderModelMismatchError(
+            f'{base}.model: no decision provider offers {model!r}',
+        )
+    if len(owners) > 1:
+        raise AmbiguousModelError(f'{base}.provider: name one of {", ".join(owners)}')
 
 
 def load_instructions(agent: AgentConfig) -> str:
