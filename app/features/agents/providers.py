@@ -1,10 +1,12 @@
 from typing import override
 
 from app.core.config.registry import HuginnConfig, SectionRegistry
+from app.core.providers.command import CommandProvider
 from app.core.providers.config import ConfigProvider
 from app.core.providers.decision import DecisionProvider
 from app.core.providers.llm import LLMProvider
 from app.core.providers.temporal import ClockProvider
+from lib.command import CommandContract
 from lib.container import ContainerContract, ProviderContract
 from lib.decision import DecisionContract
 from lib.llm import LLMContract
@@ -68,3 +70,13 @@ class TurnProvider(ProviderContract):
     @override
     def __call__(self, container: ContainerContract) -> None:
         container.bind(TurnHandlerContract, factory=_turns)
+
+
+class RouterCommandProvider(ProviderContract):
+    dependencies = (AgentProvider, CommandProvider)
+
+    @override
+    def __call__(self, container: ContainerContract) -> None:
+        from .router_commands import cli
+
+        container.resolve(CommandContract).mount('router', cli)

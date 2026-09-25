@@ -7,6 +7,8 @@ from app.features.channels.telegram.providers import TelegramCommandProvider
 from app.features.identities.providers import IdentityCommandProvider
 from lib.container import ContainerContract, ProviderContract
 
+from .routing import RoutingCommandProvider
+
 
 class HuginnCommandProvider(ProviderContract):
     dependencies = (
@@ -14,6 +16,7 @@ class HuginnCommandProvider(ProviderContract):
         BlobCommandProvider,
         ConfigCommandProvider,
         IdentityCommandProvider,
+        RoutingCommandProvider,
         TelegramCommandProvider,
     )
 
