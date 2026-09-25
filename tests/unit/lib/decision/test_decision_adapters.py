@@ -1,3 +1,4 @@
+import asyncio
 import json
 from collections.abc import AsyncIterator, Callable, Mapping
 from contextlib import asynccontextmanager
@@ -341,3 +342,28 @@ async def test_adapter_turns_a_connection_failure_into_a_decision_error() -> Non
 
     with pytest.raises(DecisionTransportError, match='ConnectError'):
         await client.decide(_request())
+
+
+async def test_timeout_bounds_the_entire_gateway_call() -> None:
+    class SlowHTTP(MockHTTP):
+        @asynccontextmanager
+        @override
+        async def connect(
+            self,
+            base_url: httpx.URL | str = '',
+            headers: Mapping[str, str] | None = None,
+        ) -> AsyncIterator[httpx.AsyncClient]:
+            await asyncio.Event().wait()
+            async with super().connect(base_url, headers) as client:
+                yield client
+
+    provider = DecisionProviderConfig(
+        name='slow',
+        adapter='typesafe',
+        api_key=SecretStr('test'),
+        models=('jev',),
+        timeout=0.01,
+    )
+    adapter = TypeSafeAdapter(provider, SlowHTTP(lambda request: httpx.Response(200)))
+    with pytest.raises(DecisionTimeoutError):
+        await asyncio.wait_for(adapter.decide(_request()), timeout=1)

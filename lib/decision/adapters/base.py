@@ -1,3 +1,4 @@
+import asyncio
 from abc import ABC, abstractmethod
 from urllib.parse import urlsplit
 
@@ -42,16 +43,19 @@ class HTTPDecisionAdapter(ABC):
         # rather than posted to as a whole
         endpoint = urlsplit(self.provider.endpoint)
         try:
-            async with self.http.connect(
-                f'{endpoint.scheme}://{endpoint.netloc}',
-                headers,
-            ) as client:
+            async with (
+                asyncio.timeout(self.provider.timeout),
+                self.http.connect(
+                    f'{endpoint.scheme}://{endpoint.netloc}',
+                    headers,
+                ) as client,
+            ):
                 response = await client.post(
                     endpoint.path or '/',
                     json=self.encode(request),
                     timeout=self.provider.timeout,
                 )
-        except TimeoutException as error:
+        except (TimeoutException, TimeoutError) as error:
             raise DecisionTimeoutError(
                 f'{self.provider.name} did not answer within {self.provider.timeout}s',
             ) from error
