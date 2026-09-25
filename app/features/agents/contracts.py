@@ -7,7 +7,7 @@ from app.contracts.channels import ChannelReplyContract, ToolPhase
 from lib.llm import Message, ModelRef
 
 from .config import AgentConfig
-from .types import Tool, TurnPrompt, TurnRequest, TurnScope
+from .types import RoutingTurn, Tool, TurnPrompt, TurnRequest, TurnScope
 
 type NamedTool = tuple[str, Tool]
 type ToolSourceFactory = Callable[[], ToolSource]
@@ -33,6 +33,14 @@ class ToolSource(ABC):
 
 
 class TranscriptStoreContract(ABC):
+    async def recent_turns(
+        self,
+        channel: str,
+        chat: str,
+        limit: int,
+    ) -> tuple[tuple[RoutingTurn, ...], str | None]:
+        return (), None
+
     @abstractmethod
     async def history(
         self,

@@ -5,6 +5,7 @@ from dataclasses import dataclass, field
 @dataclass(frozen=True)
 class ApiRouting:
     fallback: str
+    history_turns: int | None = None
     model: str | None = None
     provider: str | None = None
     allowed: frozenset[str] = field(default_factory=frozenset)

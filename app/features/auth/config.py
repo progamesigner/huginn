@@ -27,6 +27,7 @@ from .exceptions import (
 
 
 class ApiKeyRouterConfig(ConfigValue):
+    history_turns: Annotated[int | None, Field(ge=0)] = None
     fallback: Annotated[str, Field()]
     allowed: Annotated[tuple[str, ...], Field()] = ()
     model: Annotated[str | None, Field()] = None

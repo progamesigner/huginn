@@ -43,6 +43,7 @@ type TranscriptionKind = Literal['openai']
 
 
 class ChannelRouterConfig(ConfigValue):
+    history_turns: Annotated[int | None, Field(ge=0)] = None
     fallback: Annotated[str, Field()]
     allowed: Annotated[tuple[str, ...], Field()] = ()
     model: Annotated[str | None, Field()] = None
@@ -140,6 +141,7 @@ def routing_policy(channel: ChannelConfig) -> RoutingPolicy:
             if channel.router is None
             else SelectionPolicy(
                 fallback=channel.router.fallback,
+                history_turns=channel.router.history_turns,
                 model=channel.router.model,
                 provider=channel.router.provider,
                 allowed=frozenset(channel.router.allowed),

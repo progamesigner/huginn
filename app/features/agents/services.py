@@ -46,6 +46,7 @@ from .exceptions import MalformedToolCallError, UnservableModelError
 from .router import Router
 from .types import (
     RoutedAgent,
+    RoutingContext,
     Step,
     ToolExecution,
     ToolSet,
@@ -423,10 +424,24 @@ class TurnHandler(TurnHandlerContract):
             logger.info('Nothing to answer for chat %s', request.chat)
             return
 
+        context = RoutingContext(current=request.prompts)
+        selection = request.policy.selection
+        if (
+            request.policy.agent is None
+            and selection is not None
+            and selection.history_turns
+        ):
+            turns, summary = await self.store.recent_turns(
+                request.channel,
+                request.chat,
+                selection.history_turns,
+            )
+            context = RoutingContext(request.prompts, turns, summary)
+
         agent = await self.router.resolve(
             request.policy,
             request.chat,
-            request.prompts[-1].text,
+            context,
         )
         await reply.on_routed(agent.name)
         ref = resolve_selection(

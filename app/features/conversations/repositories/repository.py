@@ -158,6 +158,26 @@ class ConversationRepository(BlobReferenceContract):
 
         return tuple(_to_turn(record) for record in reversed(records))
 
+    async def load_routing_turns(
+        self,
+        conversation: Conversation,
+        limit: int,
+    ) -> tuple[Turn, ...]:
+        if limit <= 0:
+            return ()
+        query = (
+            select(TurnRecord)
+            .where(
+                TurnRecord.conversation_id == conversation.id,
+                TurnRecord.parts.any(PartRecord.role == 'user'),
+            )
+            .order_by(TurnRecord.created_at.desc(), TurnRecord.id.desc())
+            .limit(limit)
+            .options(selectinload(TurnRecord.parts))
+        )
+        records = (await self.session.execute(query)).scalars().all()
+        return tuple(_to_turn(record) for record in reversed(records))
+
     async def load_turns_since_summary(
         self,
         conversation: Conversation,

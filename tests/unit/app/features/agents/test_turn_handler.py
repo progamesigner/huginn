@@ -2,6 +2,7 @@ from collections.abc import Sequence
 from dataclasses import replace
 from datetime import UTC, datetime
 from typing import override
+from unittest.mock import AsyncMock
 
 import pytest
 
@@ -20,7 +21,10 @@ from app.features.agents.exceptions import (
 from app.features.agents.router import Router
 from app.features.agents.services import TurnHandler, _turn_scope
 from app.features.agents.types import (
+    RoutingContext,
     RoutingPolicy,
+    RoutingTurn,
+    SelectionPolicy,
     Tool,
     TurnBudget,
     TurnPrompt,
@@ -864,3 +868,44 @@ async def test_every_user_message_of_the_round_carries_the_same_header() -> None
         '[2026-03-04T12:30:00+00:00] (support_bot) user:1:\n\n',
         '[2026-03-04T12:30:00+00:00] (support_bot) user:1:\n\n',
     ]
+
+
+@pytest.mark.parametrize(
+    ('fixed', 'limit', 'expected_calls'),
+    [(True, 6, 0), (False, 0, 0), (False, 2, 1)],
+)
+async def test_routing_context_loads_history_only_when_needed(
+    fixed: bool,
+    limit: int,
+    expected_calls: int,
+) -> None:
+    store = FakeStore()
+    store.recent_turns = AsyncMock(
+        return_value=((RoutingTurn('a', ('before',), 'answer'),), 'summary'),
+    )
+    router = Router({}, FakeModels(None))
+    router.resolve = AsyncMock(side_effect=RuntimeError('stop after routing'))
+    handler = TurnHandler(
+        FakeModels(None),
+        router,
+        ToolSourceRegistry(),
+        store,
+        ClockManager(),
+    )
+    prompts = (TurnPrompt('one', 'u'), TurnPrompt('two', 'u'))
+    request = TurnRequest(
+        'test',
+        'chat',
+        RoutingPolicy(
+            agent='a' if fixed else None,
+            selection=SelectionPolicy(fallback='a', history_turns=limit),
+        ),
+        prompts,
+    )
+    with pytest.raises(RuntimeError, match='stop after routing'):
+        await handler.handle(request, RecordingReply())
+    assert store.recent_turns.await_count == expected_calls
+    context = router.resolve.call_args.args[2]
+    assert isinstance(context, RoutingContext)
+    assert context.current == prompts
+    assert bool(context.turns) == bool(expected_calls)

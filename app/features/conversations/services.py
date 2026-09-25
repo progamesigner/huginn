@@ -13,7 +13,7 @@ from app.features.agents.config import (
     resolve_selection,
 )
 from app.features.agents.contracts import TranscriptStoreContract
-from app.features.agents.types import PromptAttachment, TurnPrompt
+from app.features.agents.types import PromptAttachment, RoutingTurn, TurnPrompt
 from app.features.blobs.config import BLOBS, RetentionConfig
 from app.features.blobs.contracts import BlobStoreContract, BlobStoreFactoryContract
 from lib.database import DatabaseContract
@@ -30,7 +30,24 @@ from .compaction import (
 from .config import COMPACTION
 from .contracts import ConversationControlContract
 from .repositories import ConversationRepository
-from .types import Conversation, Part
+from .types import Conversation, Part, Turn
+
+
+def routing_turn(turn: Turn) -> RoutingTurn:
+    user = []
+    answer = []
+    attachments = []
+    for part in turn.parts:
+        text = part.payload.get('text')
+        if part.role == 'user':
+            if part.kind in ('text', 'audio') and isinstance(text, str):
+                user.append(text)
+            if part.kind in ('audio', 'document', 'image', 'video'):
+                attachments.append(part.kind)
+        elif part.role == 'assistant' and part.kind == 'text' and isinstance(text, str):
+            answer.append(text)
+    return RoutingTurn(turn.agent, tuple(user), '\n'.join(answer), tuple(attachments))
+
 
 _TEXT = 'text'
 
@@ -228,6 +245,27 @@ class ConversationTranscriptStore(TranscriptStoreContract):
     ) -> tuple[Message, ...]:
         async with self._open(channel, chat) as transcript:
             return await transcript.history()
+
+    @override
+    async def recent_turns(
+        self,
+        channel: str,
+        chat: str,
+        limit: int,
+    ) -> tuple[tuple[RoutingTurn, ...], str | None]:
+        if limit <= 0:
+            return (), None
+        async with self.database.session() as session:
+            repository = self._repository(session)
+            conversation = await repository.find_by_chat(channel, chat)
+            if conversation is None:
+                return (), None
+            turns = await repository.load_routing_turns(conversation, limit)
+            payload = await repository.load_current_summary(conversation)
+            summary = payload.get('summary') if payload else None
+        return tuple(routing_turn(turn) for turn in turns), (
+            summary if isinstance(summary, str) else None
+        )
 
     @override
     async def document_blobs(self, channel: str, chat: str) -> frozenset[str]:

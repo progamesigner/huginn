@@ -13,7 +13,14 @@ from lib.llm import (
 
 from .config import AgentConfig, DefaultsConfig, resolve_selection
 from .exceptions import UnroutableError
-from .types import RoutedAgent, RoutingPolicy, SelectionPolicy
+from .routing_context import render_routing_state
+from .types import (
+    RoutedAgent,
+    RoutingContext,
+    RoutingPolicy,
+    SelectionPolicy,
+    TurnPrompt,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -72,8 +79,10 @@ class Router:
         self,
         policy: RoutingPolicy,
         chat_id: str,
-        message: str,
+        message: str | RoutingContext,
     ) -> RoutedAgent:
+        if isinstance(message, str):
+            message = RoutingContext(current=(TurnPrompt(text=message, actor=''),))
         routable = self._routable(policy)
         if policy.agent is not None:
             logger.info(
@@ -89,7 +98,12 @@ class Router:
             )
 
         return self._routed(
-            await self._select(selection, chat_id, message, routable),
+            await self._select(
+                selection,
+                chat_id,
+                render_routing_state(message),
+                routable,
+            ),
             routable,
         )
 
