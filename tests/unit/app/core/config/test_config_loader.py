@@ -28,6 +28,7 @@ from app.features.agents.config import (
     AgentConfigList,
     DefaultsConfig,
     MCPRef,
+    RouterConfig,
     ToolRef,
     _validate_agents,
     resolve_selection,
@@ -45,7 +46,6 @@ from app.features.agents.types import ToolOutput, ToolParams, TypedTool
 from app.features.channels.config import (
     CHANNELS,
     ChannelConfigList,
-    ChannelRouterConfig,
     _validate_channels,
 )
 from app.features.channels.config import build_sections as build_channel_sections
@@ -557,7 +557,7 @@ def test_validators_accept_a_fully_consistent_config() -> None:
         channels=ChannelConfigList(
             {
                 'support_bot': telegram_channel(
-                    router=ChannelRouterConfig(fallback='scout', allowed=('scout',)),
+                    router=RouterConfig(fallback='scout', allowed=('scout',)),
                 ),
             },
         ),
@@ -751,7 +751,7 @@ def test_validate_channels_requires_an_effective_router_model() -> None:
         channels=ChannelConfigList(
             {
                 'support_bot': telegram_channel(
-                    router=ChannelRouterConfig(fallback='scout', allowed=('scout',)),
+                    router=RouterConfig(fallback='scout', allowed=('scout',)),
                 ),
             },
         ),
@@ -779,7 +779,7 @@ def test_validate_channels_rejects_conflicting_routes() -> None:
             {
                 'support_bot': telegram_channel(
                     agent='scout',
-                    router=ChannelRouterConfig(fallback='scout', allowed=('scout',)),
+                    router=RouterConfig(fallback='scout', allowed=('scout',)),
                 ),
             },
         ),
@@ -807,7 +807,7 @@ def test_validate_channels_requires_router_candidates() -> None:
         channels=ChannelConfigList(
             {
                 'support_bot': telegram_channel(
-                    router=ChannelRouterConfig(fallback='scout'),
+                    router=RouterConfig(fallback='scout'),
                 ),
             },
         ),
@@ -823,7 +823,7 @@ def test_validate_channels_rejects_duplicate_router_candidates() -> None:
         channels=ChannelConfigList(
             {
                 'support_bot': telegram_channel(
-                    router=ChannelRouterConfig(
+                    router=RouterConfig(
                         fallback='scout',
                         allowed=('scout', 'scout'),
                     ),
@@ -873,7 +873,7 @@ def test_validate_channels_rejects_router_candidates_outside_allowlist() -> None
             {
                 'support_bot': telegram_channel(
                     agents=('scout',),
-                    router=ChannelRouterConfig(
+                    router=RouterConfig(
                         fallback='concierge',
                         allowed=('scout', 'concierge'),
                         model='model',
@@ -894,7 +894,7 @@ def test_validate_channels_rejects_router_fallback_outside_allowlist() -> None:
             {
                 'support_bot': telegram_channel(
                     agents=('scout',),
-                    router=ChannelRouterConfig(
+                    router=RouterConfig(
                         fallback='concierge',
                         allowed=('scout',),
                         model='model',
@@ -917,7 +917,7 @@ def test_validate_channels_rejects_unknown_router_fallback() -> None:
         channels=ChannelConfigList(
             {
                 'support_bot': telegram_channel(
-                    router=ChannelRouterConfig(fallback='ghost', allowed=('scout',)),
+                    router=RouterConfig(fallback='ghost', allowed=('scout',)),
                 ),
             },
         ),
@@ -952,7 +952,7 @@ def test_validate_channels_accepts_a_router_without_any_provider_configured() ->
         channels=ChannelConfigList(
             {
                 'support_bot': telegram_channel(
-                    router=ChannelRouterConfig(
+                    router=RouterConfig(
                         fallback='scout',
                         allowed=('scout',),
                         model='gpt-5-mini',

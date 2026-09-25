@@ -3,11 +3,11 @@ from typing import Annotated
 
 from pydantic import BaseModel, Field, RootModel, SecretStr
 
-from app.contracts.auth import RouterEngine
 from app.core.config.registry import HuginnConfig, SectionSpec
 from app.core.config.schema import ConfigValue
 from app.features.agents.config import (
     AGENTS,
+    RouterConfig,
     validate_router_selection,
 )
 from app.features.agents.exceptions import (
@@ -24,15 +24,6 @@ from .exceptions import (
 )
 
 
-class ApiKeyRouterConfig(ConfigValue):
-    engine: Annotated[RouterEngine, Field()] = 'llm'
-    history_turns: Annotated[int | None, Field(ge=0)] = None
-    fallback: Annotated[str, Field()]
-    allowed: Annotated[tuple[str, ...], Field()] = ()
-    model: Annotated[str | None, Field()] = None
-    provider: Annotated[str | None, Field()] = None
-
-
 class ApiKeyToolsConfig(ConfigValue):
     deny: Annotated[tuple[str, ...], Field()] = ()
 
@@ -41,7 +32,7 @@ class ApiKeyConfig(ConfigValue):
     token: Annotated[SecretStr, Field()]
     agents: Annotated[tuple[str, ...], Field()] = ()
     agent: Annotated[str | None, Field()] = None
-    router: Annotated[ApiKeyRouterConfig | None, Field()] = None
+    router: Annotated[RouterConfig | None, Field()] = None
     tools: Annotated[ApiKeyToolsConfig | None, Field()] = None
 
 

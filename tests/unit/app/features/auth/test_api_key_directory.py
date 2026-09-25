@@ -2,11 +2,11 @@ from pydantic import SecretStr
 
 from app.contracts.auth import ApiRouting
 from app.core.config.registry import HuginnConfig
+from app.features.agents.config import RouterConfig
 from app.features.auth.config import (
     API_KEYS,
     ApiKeyConfig,
     ApiKeyConfigList,
-    ApiKeyRouterConfig,
     ApiKeyToolsConfig,
 )
 from app.features.auth.services import ApiKeyDirectory
@@ -24,7 +24,7 @@ def test_a_known_token_resolves_to_the_client_that_carries_it() -> None:
             token=SecretStr('web-token'),
             agents=('scout', 'concierge'),
             agent='scout',
-            router=ApiKeyRouterConfig(
+            router=RouterConfig(
                 fallback='concierge',
                 allowed=('scout', 'concierge'),
                 model='gpt-5-mini',

@@ -15,17 +15,17 @@ from pydantic import (
     create_model,
 )
 
-from app.contracts.auth import RouterEngine
 from app.core.config.registry import HuginnConfig, SectionSpec
 from app.core.config.schema import ConfigValue
 from app.features.agents.config import (
     AGENTS,
+    RouterConfig,
     validate_router_selection,
 )
 from app.features.agents.exceptions import (
     UnknownAgentReferenceError,
 )
-from app.features.agents.types import RoutingPolicy, SelectionPolicy
+from app.features.agents.types import RoutingPolicy, selection_policy
 
 from .exceptions import (
     ConflictingChannelAgentError,
@@ -40,15 +40,6 @@ from .registry import ChannelRegistry
 type TranscriptionKind = Literal['openai']
 
 
-class ChannelRouterConfig(ConfigValue):
-    engine: Annotated[RouterEngine, Field()] = 'llm'
-    history_turns: Annotated[int | None, Field(ge=0)] = None
-    fallback: Annotated[str, Field()]
-    allowed: Annotated[tuple[str, ...], Field()] = ()
-    model: Annotated[str | None, Field()] = None
-    provider: Annotated[str | None, Field()] = None
-
-
 class TranscriptionConfig(ConfigValue):
     kind: Annotated[TranscriptionKind | None, Field()] = None
     model: Annotated[str | None, Field()] = None
@@ -60,7 +51,7 @@ class ChannelConfig(ConfigValue):
     kind: Annotated[str, Field()]
     agent: Annotated[str | None, Field()] = None
     agents: Annotated[tuple[str, ...], Field()] = ()
-    router: Annotated[ChannelRouterConfig | None, Field()] = None
+    router: Annotated[RouterConfig | None, Field()] = None
 
 
 class ChannelConfigList(RootModel[dict[str, ChannelConfig]]):
@@ -135,18 +126,7 @@ def _validate_transcription(config: HuginnConfig) -> None:
 def routing_policy(channel: ChannelConfig) -> RoutingPolicy:
     return RoutingPolicy(
         agent=channel.agent,
-        selection=(
-            None
-            if channel.router is None
-            else SelectionPolicy(
-                fallback=channel.router.fallback,
-                engine=channel.router.engine,
-                history_turns=channel.router.history_turns,
-                model=channel.router.model,
-                provider=channel.router.provider,
-                allowed=frozenset(channel.router.allowed),
-            )
-        ),
+        selection=None if channel.router is None else selection_policy(channel.router),
         allowed=frozenset(channel.agents),
     )
 

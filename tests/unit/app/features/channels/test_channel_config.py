@@ -2,11 +2,11 @@ import pytest
 from pydantic import SecretStr, ValidationError
 
 from app.core.config.registry import HuginnConfig
+from app.features.agents.config import RouterConfig
 from app.features.channels.config import (
     TRANSCRIPTION,
     ChannelConfig,
     ChannelConfigList,
-    ChannelRouterConfig,
     TranscriptionConfig,
     _describe_channels,
 )
@@ -134,7 +134,7 @@ def test_channel_summary_describes_pinned_and_router_channels() -> None:
                         token=SecretStr('research-token'),
                         secret_token=SecretStr('research-secret'),
                         agents=('scout', 'concierge'),
-                        router=ChannelRouterConfig(
+                        router=RouterConfig(
                             fallback='concierge',
                             allowed=('scout', 'concierge'),
                         ),

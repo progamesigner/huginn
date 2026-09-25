@@ -61,6 +61,15 @@ class MCPRef(InjectionConfig):
     allow: Annotated[tuple[str, ...], Field()] = ()
 
 
+class RouterConfig(ConfigValue):
+    engine: Annotated[RouterEngine, Field()] = 'llm'
+    history_turns: Annotated[int | None, Field(ge=0)] = None
+    fallback: Annotated[str, Field()]
+    allowed: Annotated[tuple[str, ...], Field()] = ()
+    model: Annotated[str | None, Field()] = None
+    provider: Annotated[str | None, Field()] = None
+
+
 class SkillsConfig(ConfigValue):
     enabled: Annotated[bool, Field()] = False
     allow: Annotated[tuple[str, ...], Field()] = ()

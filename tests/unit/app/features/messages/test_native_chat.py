@@ -17,6 +17,7 @@ from app.features.agents.config import (
     AgentConfig,
     AgentConfigList,
     DefaultsConfig,
+    RouterConfig,
 )
 from app.features.agents.contracts import TurnHandlerContract
 from app.features.agents.types import TurnRequest
@@ -24,7 +25,6 @@ from app.features.auth.config import (
     API_KEYS,
     ApiKeyConfig,
     ApiKeyConfigList,
-    ApiKeyRouterConfig,
     ApiKeyToolsConfig,
 )
 from bin.server import build
@@ -92,7 +92,7 @@ def api_key(
     *,
     agents: tuple[str, ...] = ('scout', 'concierge'),
     agent: str | None = None,
-    router: ApiKeyRouterConfig | None = None,
+    router: RouterConfig | None = None,
     tools: ApiKeyToolsConfig | None = None,
 ) -> ApiKeyConfig:
     return ApiKeyConfig(
@@ -373,7 +373,7 @@ async def test_a_key_that_pins_no_agent_and_cannot_route_is_a_bad_request() -> N
 async def test_a_key_with_a_router_leaves_the_agent_to_the_router() -> None:
     turns = StreamingTurns()
     key = api_key(
-        router=ApiKeyRouterConfig(
+        router=RouterConfig(
             fallback='concierge',
             allowed=('scout', 'concierge'),
         ),

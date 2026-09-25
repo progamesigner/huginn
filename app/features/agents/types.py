@@ -12,7 +12,7 @@ from app.contracts.auth import RouterEngine
 from app.contracts.channels import AttachmentKind, TurnEnding
 from lib.llm import Message, ModelCapabilities, ToolCallSegment, ToolResultSegment
 
-from .config import AgentConfig, BindingSource
+from .config import AgentConfig, BindingSource, RouterConfig
 from .exceptions import DuplicateToolNameError
 
 logger = logging.getLogger(__name__)
@@ -40,6 +40,17 @@ class SelectionPolicy:
         if self.history_turns is not None:
             return self.history_turns
         return 6 if self.engine == 'decision' else 0
+
+
+def selection_policy(router: RouterConfig) -> SelectionPolicy:
+    return SelectionPolicy(
+        fallback=router.fallback,
+        engine=router.engine,
+        history_turns=router.history_turns,
+        model=router.model,
+        provider=router.provider,
+        allowed=frozenset(router.allowed),
+    )
 
 
 @dataclass(frozen=True)

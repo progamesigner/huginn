@@ -1,10 +1,9 @@
 from typing import cast
 
-from app.features.agents.config import AgentConfig
+from app.features.agents.config import AgentConfig, RouterConfig
 from app.features.agents.router import Router
 from app.features.channels.config import (
     ChannelConfig,
-    ChannelRouterConfig,
     routing_policy,
 )
 from lib.llm import LLMContract
@@ -45,7 +44,7 @@ def test_routing_policy_carries_authorization_and_pinned_agent() -> None:
 def testrouting_policy_maps_the_channel_router_onto_a_selection() -> None:
     channel = ChannelConfig(
         kind='telegram',
-        router=ChannelRouterConfig(
+        router=RouterConfig(
             fallback='concierge',
             allowed=('scout', 'concierge'),
             model='gpt-5-mini',
