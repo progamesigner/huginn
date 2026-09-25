@@ -28,6 +28,7 @@ type ToolOutput = str
 @dataclass(frozen=True)
 class SelectionPolicy:
     fallback: str
+    history_turns: int | None = None
     model: str | None = None
     provider: str | None = None
     allowed: frozenset[str] = field(default_factory=frozenset)
@@ -66,6 +67,21 @@ class TurnPrompt:
     attachments: tuple[PromptAttachment, ...] = ()
     account: str | None = None
     handle: str | None = None
+
+
+@dataclass(frozen=True)
+class RoutingTurn:
+    agent: str
+    user: tuple[str, ...]
+    answer: str
+    attachments: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
+class RoutingContext:
+    current: tuple[TurnPrompt, ...]
+    turns: tuple[RoutingTurn, ...] = ()
+    summary: str | None = None
 
 
 @dataclass(frozen=True)
