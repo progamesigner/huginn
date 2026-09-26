@@ -52,6 +52,8 @@ def _policy(agent: str | None, client: ApiClient) -> RoutingPolicy:
                 model=client.routing.model,
                 provider=client.routing.provider,
                 allowed=client.routing.allowed,
+                min_confidence=client.routing.min_confidence,
+                min_margin=client.routing.min_margin,
             )
         ),
         allowed=client.agents,

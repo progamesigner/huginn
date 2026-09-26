@@ -34,6 +34,8 @@ class SelectionPolicy:
     model: str | None = None
     provider: str | None = None
     allowed: frozenset[str] = field(default_factory=frozenset)
+    min_confidence: float | None = None
+    min_margin: float | None = None
 
     @property
     def history_limit(self) -> int:
@@ -50,6 +52,8 @@ def selection_policy(router: RouterConfig) -> SelectionPolicy:
         model=router.model,
         provider=router.provider,
         allowed=frozenset(router.allowed),
+        min_confidence=router.min_confidence,
+        min_margin=router.min_margin,
     )
 
 

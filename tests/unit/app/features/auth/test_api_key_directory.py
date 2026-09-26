@@ -28,6 +28,8 @@ def test_a_known_token_resolves_to_the_client_that_carries_it() -> None:
                 fallback='concierge',
                 allowed=('scout', 'concierge'),
                 model='gpt-5-mini',
+                min_confidence=0.5,
+                min_margin=0.25,
             ),
             tools=ApiKeyToolsConfig(deny=('dangerous-tool',)),
         ),
@@ -41,6 +43,8 @@ def test_a_known_token_resolves_to_the_client_that_carries_it() -> None:
         fallback='concierge',
         model='gpt-5-mini',
         allowed=frozenset({'scout', 'concierge'}),
+        min_confidence=0.5,
+        min_margin=0.25,
     )
     assert resolved.denied_tools == frozenset({'dangerous-tool'})
 

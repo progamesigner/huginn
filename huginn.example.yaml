@@ -166,5 +166,7 @@ channels:
 #   allowed: [assistant, coder]
 #   fallback: assistant
 #   history_turns: 6           # decision default: 6; llm default: 0
+#   min_confidence: 0.6        # optional; below it the fallback answers
+#   min_margin: 0.2            # optional; top-two probability gap, same rule
 # Conversation excerpts and attachment hints go to the configured gateway and
 # TypeSafe. Media bytes, document bodies, tool calls and results are excluded.

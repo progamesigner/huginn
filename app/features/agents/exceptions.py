@@ -51,3 +51,7 @@ class ReservedAgentNameError(ConfigError):
 
 class TooManyRouterCandidatesError(ConfigError):
     pass
+
+
+class RouterThresholdError(ConfigError):
+    pass

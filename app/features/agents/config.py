@@ -19,6 +19,7 @@ from .exceptions import (
     MissingModelError,
     ProviderModelMismatchError,
     ReservedAgentNameError,
+    RouterThresholdError,
     TooManyRouterCandidatesError,
     UnknownProviderReferenceError,
 )
@@ -68,6 +69,12 @@ class RouterConfig(ConfigValue):
     allowed: Annotated[tuple[str, ...], Field()] = ()
     model: Annotated[str | None, Field()] = None
     provider: Annotated[str | None, Field()] = None
+    min_confidence: Annotated[float | None, Field(ge=0, le=1)] = None
+    min_margin: Annotated[float | None, Field(ge=0, le=1)] = None
+
+    @property
+    def has_thresholds(self) -> bool:
+        return self.min_confidence is not None or self.min_margin is not None
 
 
 class SkillsConfig(ConfigValue):
@@ -179,7 +186,12 @@ def validate_router_selection(
     provider: str | None,
     model: str | None,
     allowed: tuple[str, ...],
+    thresholds: bool,
 ) -> None:
+    if thresholds and engine != 'decision':
+        raise RouterThresholdError(
+            f'{base}: min_confidence and min_margin need engine: decision',
+        )
     if engine == 'llm':
         try:
             ref = resolve_selection(provider, model, config.section(DEFAULTS))

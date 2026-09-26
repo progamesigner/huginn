@@ -119,3 +119,57 @@ async def test_zero_one_and_missing_client() -> None:
     ).fallback_reason == 'missing_client'
     assert selection.history_limit == 6
     assert replace(selection, history_turns=0).history_limit == 0
+
+
+def _answering(answer: ChoiceAnswer) -> Mock:
+    decisions = Mock(spec=DecisionContract)
+    decisions.client_for.return_value.decide = AsyncMock(
+        return_value=DecisionResult(model='jev', answers={'agent': answer}),
+    )
+    return decisions
+
+
+@pytest.mark.parametrize(
+    ('min_confidence', 'min_margin', 'answer', 'reason'),
+    [
+        (None, None, ChoiceAnswer(choice='a', confidence=0.1), None),
+        (0.5, None, ChoiceAnswer(choice='a', confidence=0.5), None),
+        (0.5, None, ChoiceAnswer(choice='a', confidence=0.25), 'low_confidence'),
+        (0.5, None, ChoiceAnswer(choice='a'), 'low_confidence'),
+        (
+            None,
+            0.5,
+            ChoiceAnswer(choice='a', probabilities={'a': 0.75, 'b': 0.25}),
+            None,
+        ),
+        (
+            None,
+            0.75,
+            ChoiceAnswer(choice='a', probabilities={'a': 0.75, 'b': 0.25}),
+            'low_margin',
+        ),
+    ],
+)
+async def test_a_decision_below_its_threshold_falls_back(
+    min_confidence: float | None,
+    min_margin: float | None,
+    answer: ChoiceAnswer,
+    reason: str | None,
+) -> None:
+    agents = {name: AgentConfig(description=name) for name in ('a', 'b')}
+    router = Router(agents, FakeLLM(), decisions=_answering(answer))
+    selection = SelectionPolicy(
+        'b',
+        engine='decision',
+        model='jev',
+        min_confidence=min_confidence,
+        min_margin=min_margin,
+    )
+
+    decision = await router.decide(
+        selection,
+        RoutingContext((TurnPrompt('hi', 'u'),)),
+        agents,
+    )
+
+    assert decision.fallback_reason == reason

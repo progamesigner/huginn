@@ -189,6 +189,7 @@ def run_eval(
             provider=choice.provider,
             model=choice.model,
             allowed=tuple(selection.allowed),
+            thresholds=False,
         )
     price_map = (
         {

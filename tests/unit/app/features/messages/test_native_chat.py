@@ -9,6 +9,7 @@ import httpx
 from fastapi import FastAPI
 from pydantic import SecretStr
 
+from app.contracts.auth import ApiClient, ApiRouting
 from app.contracts.channels import ChannelReplyContract, TurnEnding
 from app.core.config.registry import HuginnConfig
 from app.features.agents.config import (
@@ -27,6 +28,7 @@ from app.features.auth.config import (
     ApiKeyConfigList,
     ApiKeyToolsConfig,
 )
+from app.features.messages.services import _policy
 from bin.server import build
 from lib.mcp import MCPClientContract
 from lib.redis import RedisContract
@@ -540,3 +542,22 @@ async def test_an_unknown_field_in_the_request_is_ignored() -> None:
         )
 
     assert response.status_code == 200
+
+
+def test_a_key_router_carries_its_decision_thresholds_to_the_turn() -> None:
+    client = ApiClient(
+        key='web',
+        agents=frozenset({'scout'}),
+        routing=ApiRouting(
+            fallback='scout',
+            engine='decision',
+            model='jev',
+            min_confidence=0.5,
+            min_margin=0.25,
+        ),
+    )
+
+    selection = _policy(None, client).selection
+
+    assert selection is not None
+    assert (selection.min_confidence, selection.min_margin) == (0.5, 0.25)

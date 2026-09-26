@@ -125,6 +125,7 @@ def _validate_api_keys(config: HuginnConfig) -> None:
                 provider=key.router.provider,
                 model=key.router.model,
                 allowed=key.router.allowed,
+                thresholds=key.router.has_thresholds,
             )
 
 

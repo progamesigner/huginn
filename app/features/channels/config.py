@@ -230,6 +230,7 @@ def _validate_channels(config: HuginnConfig, registry: ChannelRegistry) -> None:
                 provider=channel.router.provider,
                 model=channel.router.model,
                 allowed=channel.router.allowed,
+                thresholds=channel.router.has_thresholds,
             )
 
 

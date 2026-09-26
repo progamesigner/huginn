@@ -1,6 +1,7 @@
 from pathlib import Path
 
 import pytest
+from pydantic import ValidationError
 
 from app.core.application import App
 from app.core.config.registry import HuginnConfig
@@ -10,6 +11,7 @@ from app.features.agents.exceptions import (
     MissingModelError,
     ProviderModelMismatchError,
     ReservedAgentNameError,
+    RouterThresholdError,
     TooManyRouterCandidatesError,
     UnknownProviderReferenceError,
 )
@@ -129,4 +131,33 @@ def test_decision_routing_reserves_the_no_agent_name(tmp_path: Path) -> None:
     )
 
     with pytest.raises(ReservedAgentNameError, match=NO_AGENT):
+        _resolve(tmp_path, config)
+
+
+def test_thresholds_are_kept_for_decision_routing(tmp_path: Path) -> None:
+    config = _CONFIG.replace(
+        '      provider: jev\n',
+        '      provider: jev\n      min_confidence: 0.6\n      min_margin: 0.1\n',
+    )
+
+    _resolve(tmp_path, config)
+
+
+def test_thresholds_need_decision_routing(tmp_path: Path) -> None:
+    config = _CONFIG.replace(
+        '      engine: decision\n',
+        '      min_confidence: 0.6\n',
+    ).replace('      model: jev\n      provider: jev\n', '')
+
+    with pytest.raises(RouterThresholdError, match='engine: decision'):
+        _resolve(tmp_path, config)
+
+
+def test_a_threshold_is_a_probability(tmp_path: Path) -> None:
+    config = _CONFIG.replace(
+        '      provider: jev\n',
+        '      provider: jev\n      min_confidence: 1.5\n',
+    )
+
+    with pytest.raises(ValidationError, match='min_confidence'):
         _resolve(tmp_path, config)

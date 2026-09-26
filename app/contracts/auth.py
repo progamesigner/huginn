@@ -13,6 +13,8 @@ class ApiRouting:
     model: str | None = None
     provider: str | None = None
     allowed: frozenset[str] = field(default_factory=frozenset)
+    min_confidence: float | None = None
+    min_margin: float | None = None
 
 
 @dataclass(frozen=True)
