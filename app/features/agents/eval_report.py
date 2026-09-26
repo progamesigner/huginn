@@ -95,9 +95,9 @@ def labels_from_review(items: tuple[ReviewItem, ...]) -> tuple[Label, ...]:
     )
 
 
-def _percentile(values: list[float], percentile: float) -> float | None:
+def percentile(values: list[float], fraction: float) -> float | None:
     return (
-        sorted(values)[max(0, math.ceil(len(values) * percentile) - 1)]
+        sorted(values)[max(0, math.ceil(len(values) * fraction) - 1)]
         if values
         else None
     )
@@ -189,8 +189,8 @@ def report(
                 ),
             ),
             'latency_ms': {
-                'p50': _percentile([result.elapsed_ms for result in group], 0.5),
-                'p95': _percentile([result.elapsed_ms for result in group], 0.95),
+                'p50': percentile([result.elapsed_ms for result in group], 0.5),
+                'p95': percentile([result.elapsed_ms for result in group], 0.95),
             },
             'estimated_cost_usd': sum(costs) if costs else None,
             'cost_coverage': len(costs) / len(group),

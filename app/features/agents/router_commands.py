@@ -1,5 +1,6 @@
 import asyncio
 import json
+import sys
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Annotated, Literal
@@ -22,6 +23,7 @@ from .eval_report import (
 )
 from .evaluation import EvaluationResult, TokenPrices, Variant, evaluate
 from .router import Router
+from .shadow_report import shadow_records, shadow_report
 from .types import RoutingTarget, RoutingTargets, SelectionPolicy
 
 cli = Typer(no_args_is_help=True, help='Export and evaluate agent routing decisions.')
@@ -29,6 +31,8 @@ dataset_cli = Typer(no_args_is_help=True)
 eval_cli = Typer(invoke_without_command=True)
 cli.add_typer(dataset_cli, name='dataset')
 cli.add_typer(eval_cli, name='eval')
+shadow_cli = Typer(no_args_is_help=True)
+cli.add_typer(shadow_cli, name='shadow')
 
 
 def _target(name: str) -> RoutingTarget:
@@ -300,3 +304,14 @@ def evaluation_report(
     )
     write_private(out, json_text(summary))
     echo(f'Report written to {out}')
+
+
+@shadow_cli.command('report')
+def shadow_log_report(
+    log: Annotated[
+        Path,
+        Option('--log', help='Log file to read, or - for standard input.'),
+    ],
+) -> None:
+    lines = sys.stdin if str(log) == '-' else log.read_text().splitlines()
+    echo(json_text(shadow_report(shadow_records(lines))), nl=False)

@@ -5,6 +5,7 @@ import pytest
 
 from app.features.agents.config import AgentConfig
 from app.features.agents.router import Router
+from app.features.agents.shadow_report import shadow_records
 from app.features.agents.types import (
     RoutingContext,
     RoutingPolicy,
@@ -97,6 +98,10 @@ async def test_a_disagreeing_shadow_is_logged_against_the_live_choice(
 
     assert routed.name == 'a'
     assert 'choice=b primary=a agree=False' in caplog.text
+    assert [
+        (record.primary, record.choice, record.confidence, record.reason)
+        for record in shadow_records(caplog.messages)
+    ] == [('a', 'b', 0.75, None)]
 
 
 async def test_a_failing_shadow_leaves_the_live_route_alone(
