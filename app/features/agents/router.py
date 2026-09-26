@@ -4,6 +4,7 @@ from collections.abc import AsyncIterator, Mapping
 from dataclasses import dataclass, replace
 from time import perf_counter
 
+from lib.concurrency import TaskSupervisorContract
 from lib.decision import (
     ChoiceAnswer,
     ChoiceQuestion,
@@ -29,6 +30,7 @@ from .types import (
     RoutingContext,
     RoutingPolicy,
     SelectionPolicy,
+    ShadowPolicy,
     TurnPrompt,
 )
 
@@ -120,12 +122,18 @@ class Router:
         defaults: DefaultsConfig | None = None,
         prompt: str | None = None,
         decisions: DecisionContract | None = None,
+        shadows: TaskSupervisorContract | None = None,
     ) -> None:
         self.agents = agents
         self.llm = llm
         self.defaults = defaults or DefaultsConfig()
         self.prompt = prompt
         self.decisions = decisions
+        self.shadows = shadows
+
+    async def dispose(self) -> None:
+        if self.shadows is not None:
+            await self.shadows.dispose()
 
     async def resolve(
         self,
@@ -192,11 +200,8 @@ class Router:
         context: RoutingContext,
         routable: Mapping[str, AgentConfig],
     ) -> str:
-        decision = await self.decide(
-            selection,
-            context,
-            self._candidates(selection, routable),
-        )
+        candidates = self._candidates(selection, routable)
+        decision = await self.decide(selection, context, candidates)
         logger.info(
             'Router engine=%s choice=%s confidence=%s margin=%s elapsed_ms=%.1f '
             'model=%s upstream=%s fallback=%s reason=%s chat=%s',
@@ -211,10 +216,62 @@ class Router:
             decision.fallback_reason,
             chat_id,
         )
-        return (
+        chosen = (
             decision.choice
             if decision.fallback_reason is None and decision.choice
             else selection.fallback
+        )
+        if selection.shadow is not None and self.shadows is not None:
+            self.shadows.spawn(
+                self._shadow(
+                    selection,
+                    selection.shadow,
+                    chat_id,
+                    context,
+                    candidates,
+                    chosen,
+                ),
+            )
+        return chosen
+
+    async def _shadow(
+        self,
+        selection: SelectionPolicy,
+        shadow: ShadowPolicy,
+        chat_id: str,
+        context: RoutingContext,
+        candidates: Mapping[str, AgentConfig],
+        primary: str,
+    ) -> None:
+        # NOTE: the answer never reaches the user; it is logged against the choice the
+        # live router made so the two engines can be compared on real traffic
+        decision = await self.decide(
+            replace(
+                selection,
+                engine='decision',
+                model=shadow.model,
+                provider=shadow.provider,
+                min_confidence=None,
+                min_margin=None,
+                shadow=None,
+            ),
+            context,
+            candidates,
+        )
+        logger.info(
+            'Router shadow engine=decision choice=%s primary=%s agree=%s '
+            'confidence=%s margin=%s elapsed_ms=%.1f model=%s upstream=%s reason=%s '
+            'chat=%s',
+            decision.choice,
+            primary,
+            decision.choice == primary,
+            decision.confidence,
+            decision.margin,
+            decision.elapsed_ms,
+            decision.model,
+            decision.upstream,
+            decision.fallback_reason,
+            chat_id,
         )
 
     async def decide(

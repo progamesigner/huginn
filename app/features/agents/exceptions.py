@@ -53,5 +53,9 @@ class TooManyRouterCandidatesError(ConfigError):
     pass
 
 
+class RouterShadowError(ConfigError):
+    pass
+
+
 class RouterThresholdError(ConfigError):
     pass

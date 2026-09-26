@@ -168,5 +168,13 @@ channels:
 #   history_turns: 6           # decision default: 6; llm default: 0
 #   min_confidence: 0.6        # optional; below it the fallback answers
 #   min_margin: 0.2            # optional; top-two probability gap, same rule
+# To compare engines on live traffic first, keep engine: llm and add a shadow; the
+# LLM still answers, and each turn also asks the decision model in the background,
+# logging whether the two agreed:
+# router:
+#   model: gpt-5-mini
+#   shadow:
+#     provider: jev
+#     model: typesafe/jev-1.13.0
 # Conversation excerpts and attachment hints go to the configured gateway and
 # TypeSafe. Media bytes, document bodies, tool calls and results are excluded.

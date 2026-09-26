@@ -21,7 +21,7 @@ from app.features.agents.config import (
     RouterConfig,
 )
 from app.features.agents.contracts import TurnHandlerContract
-from app.features.agents.types import TurnRequest
+from app.features.agents.types import ShadowPolicy, TurnRequest
 from app.features.auth.config import (
     API_KEYS,
     ApiKeyConfig,
@@ -561,3 +561,21 @@ def test_a_key_router_carries_its_decision_thresholds_to_the_turn() -> None:
 
     assert selection is not None
     assert (selection.min_confidence, selection.min_margin) == (0.5, 0.25)
+
+
+def test_a_key_router_carries_its_shadow_to_the_turn() -> None:
+    client = ApiClient(
+        key='web',
+        agents=frozenset({'scout'}),
+        routing=ApiRouting(
+            fallback='scout',
+            model='chat',
+            shadow_model='jev',
+            shadow_provider='gateway',
+        ),
+    )
+
+    selection = _policy(None, client).selection
+
+    assert selection is not None
+    assert selection.shadow == ShadowPolicy('jev', 'gateway')

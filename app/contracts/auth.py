@@ -15,6 +15,8 @@ class ApiRouting:
     allowed: frozenset[str] = field(default_factory=frozenset)
     min_confidence: float | None = None
     min_margin: float | None = None
+    shadow_model: str | None = None
+    shadow_provider: str | None = None
 
 
 @dataclass(frozen=True)

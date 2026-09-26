@@ -11,6 +11,7 @@ from app.features.agents.exceptions import (
     MissingModelError,
     ProviderModelMismatchError,
     ReservedAgentNameError,
+    RouterShadowError,
     RouterThresholdError,
     TooManyRouterCandidatesError,
     UnknownProviderReferenceError,
@@ -160,4 +161,30 @@ def test_a_threshold_is_a_probability(tmp_path: Path) -> None:
     )
 
     with pytest.raises(ValidationError, match='min_confidence'):
+        _resolve(tmp_path, config)
+
+
+def _shadowed(shadow: str) -> str:
+    return _CONFIG.replace('      engine: decision\n', '').replace(
+        '      model: jev\n      provider: jev\n',
+        f'      model: chat\n      shadow:\n{shadow}',
+    )
+
+
+def test_an_llm_router_can_be_shadowed_by_a_decision_model(tmp_path: Path) -> None:
+    _resolve(tmp_path, _shadowed('        model: jev\n        provider: jev\n'))
+
+
+def test_the_shadow_model_must_resolve(tmp_path: Path) -> None:
+    with pytest.raises(ProviderModelMismatchError, match=r'router\.shadow\.model'):
+        _resolve(tmp_path, _shadowed('        model: missing\n'))
+
+
+def test_a_decision_router_is_not_shadowed(tmp_path: Path) -> None:
+    config = _CONFIG.replace(
+        '      provider: jev\n',
+        '      provider: jev\n      shadow:\n        model: jev\n',
+    )
+
+    with pytest.raises(RouterShadowError, match='only an llm router'):
         _resolve(tmp_path, config)

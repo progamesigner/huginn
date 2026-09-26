@@ -17,6 +17,7 @@ from app.features.tools.providers import (
 )
 from app.features.tools.registry import ToolRegistry
 from app.features.tools.websearch.repositories import WebSearchRepository
+from lib.concurrency import TaskSupervisor
 
 _VALID_OVERLAY = """
 defaults:
@@ -152,3 +153,17 @@ def test_agent_provider_leaves_the_router_prompt_unset_without_configuration(
     router = app.resolve(Router)
 
     assert router.prompt is None
+
+
+async def test_one_router_keeps_the_shadows_and_drains_them_on_dispose(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / 'huginn.yaml'
+    path.write_text(_VALID_OVERLAY)
+    app = App().build(ConfigProvider(path), ToolProvider(), AgentProvider())
+
+    router = app.resolve(Router)
+
+    assert app.resolve(Router) is router
+    assert isinstance(router.shadows, TaskSupervisor)
+    await app.dispose()

@@ -19,6 +19,7 @@ from .exceptions import (
     MissingModelError,
     ProviderModelMismatchError,
     ReservedAgentNameError,
+    RouterShadowError,
     RouterThresholdError,
     TooManyRouterCandidatesError,
     UnknownProviderReferenceError,
@@ -62,6 +63,11 @@ class MCPRef(InjectionConfig):
     allow: Annotated[tuple[str, ...], Field()] = ()
 
 
+class RouterShadowConfig(ConfigValue):
+    model: Annotated[str, Field()]
+    provider: Annotated[str | None, Field()] = None
+
+
 class RouterConfig(ConfigValue):
     engine: Annotated[RouterEngine, Field()] = 'llm'
     history_turns: Annotated[int | None, Field(ge=0)] = None
@@ -71,6 +77,7 @@ class RouterConfig(ConfigValue):
     provider: Annotated[str | None, Field()] = None
     min_confidence: Annotated[float | None, Field(ge=0, le=1)] = None
     min_margin: Annotated[float | None, Field(ge=0, le=1)] = None
+    shadow: Annotated[RouterShadowConfig | None, Field()] = None
 
     @property
     def has_thresholds(self) -> bool:
@@ -187,10 +194,21 @@ def validate_router_selection(
     model: str | None,
     allowed: tuple[str, ...],
     thresholds: bool,
+    shadow: RouterShadowConfig | None,
 ) -> None:
     if thresholds and engine != 'decision':
         raise RouterThresholdError(
             f'{base}: min_confidence and min_margin need engine: decision',
+        )
+    if shadow is not None:
+        if engine != 'llm':
+            raise RouterShadowError(f'{base}.shadow: only an llm router is shadowed')
+        _validate_decision_candidates(config, base, allowed)
+        _validate_decision_model(
+            config,
+            f'{base}.shadow',
+            shadow.provider,
+            shadow.model,
         )
     if engine == 'llm':
         try:
@@ -201,6 +219,15 @@ def validate_router_selection(
         return
     if not model:
         raise MissingModelError(f'{base}.model: decision routing requires a model')
+    _validate_decision_candidates(config, base, allowed)
+    _validate_decision_model(config, base, provider, model)
+
+
+def _validate_decision_candidates(
+    config: HuginnConfig,
+    base: str,
+    allowed: tuple[str, ...],
+) -> None:
     if len(allowed) > MAX_ROUTED_AGENTS:
         raise TooManyRouterCandidatesError(
             f'{base}.allowed: decision routing takes at most {MAX_ROUTED_AGENTS} agents',
@@ -209,6 +236,14 @@ def validate_router_selection(
         raise ReservedAgentNameError(
             f'agents.{NO_AGENT}: the name is reserved for "no agent fits"',
         )
+
+
+def _validate_decision_model(
+    config: HuginnConfig,
+    base: str,
+    provider: str | None,
+    model: str,
+) -> None:
     providers = decision_providers(config)
     if provider is not None:
         if provider not in providers:

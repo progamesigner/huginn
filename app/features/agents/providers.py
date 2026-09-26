@@ -1,3 +1,4 @@
+from datetime import timedelta
 from typing import override
 
 from app.core.config.registry import HuginnConfig, SectionRegistry
@@ -7,6 +8,7 @@ from app.core.providers.decision import DecisionProvider
 from app.core.providers.llm import LLMProvider
 from app.core.providers.temporal import ClockProvider
 from lib.command import CommandContract
+from lib.concurrency import TaskSupervisor
 from lib.container import ContainerContract, ProviderContract
 from lib.decision import DecisionContract
 from lib.llm import LLMContract
@@ -20,6 +22,11 @@ from .contracts import (
 )
 from .router import Router
 from .services import TurnHandler
+
+# NOTE: a shadow decision is advisory, so only a few run at once against a slow
+# gateway and shutdown does not wait long for the rest
+_SHADOW_LIMIT = 8
+_SHADOW_GRACE = timedelta(seconds=5)
 
 
 def _defaults(container: ContainerContract) -> DefaultsConfig:
@@ -35,6 +42,7 @@ def _router(container: ContainerContract) -> Router:
         defaults,
         defaults.router_prompt,
         decisions=container.resolve(DecisionContract),
+        shadows=TaskSupervisor(limit=_SHADOW_LIMIT, grace=_SHADOW_GRACE),
     )
 
 
@@ -57,7 +65,7 @@ class AgentProvider(ProviderContract):
     @override
     def __call__(self, container: ContainerContract) -> None:
         container.bind(ToolSourceRegistry, instance=ToolSourceRegistry())
-        container.bind(Router, factory=_router)
+        container.bind(Router, factory=_router, shared=True)
 
         sections = container.resolve(SectionRegistry)
         for spec in build_sections():

@@ -27,6 +27,12 @@ type ToolOutput = str
 
 
 @dataclass(frozen=True)
+class ShadowPolicy:
+    model: str
+    provider: str | None = None
+
+
+@dataclass(frozen=True)
 class SelectionPolicy:
     fallback: str
     engine: RouterEngine = 'llm'
@@ -36,6 +42,7 @@ class SelectionPolicy:
     allowed: frozenset[str] = field(default_factory=frozenset)
     min_confidence: float | None = None
     min_margin: float | None = None
+    shadow: ShadowPolicy | None = None
 
     @property
     def history_limit(self) -> int:
@@ -54,6 +61,11 @@ def selection_policy(router: RouterConfig) -> SelectionPolicy:
         allowed=frozenset(router.allowed),
         min_confidence=router.min_confidence,
         min_margin=router.min_margin,
+        shadow=(
+            None
+            if router.shadow is None
+            else ShadowPolicy(router.shadow.model, router.shadow.provider)
+        ),
     )
 
 

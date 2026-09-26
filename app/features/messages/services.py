@@ -9,6 +9,7 @@ from app.features.agents.contracts import TurnHandlerContract
 from app.features.agents.types import (
     RoutingPolicy,
     SelectionPolicy,
+    ShadowPolicy,
     TurnPrompt,
     TurnRequest,
 )
@@ -54,6 +55,14 @@ def _policy(agent: str | None, client: ApiClient) -> RoutingPolicy:
                 allowed=client.routing.allowed,
                 min_confidence=client.routing.min_confidence,
                 min_margin=client.routing.min_margin,
+                shadow=(
+                    None
+                    if client.routing.shadow_model is None
+                    else ShadowPolicy(
+                        client.routing.shadow_model,
+                        client.routing.shadow_provider,
+                    )
+                ),
             )
         ),
         allowed=client.agents,

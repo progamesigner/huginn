@@ -29,6 +29,12 @@ def _client(name: str, key: ApiKeyConfig) -> ApiClient:
                 allowed=frozenset(key.router.allowed),
                 min_confidence=key.router.min_confidence,
                 min_margin=key.router.min_margin,
+                shadow_model=None
+                if key.router.shadow is None
+                else key.router.shadow.model,
+                shadow_provider=(
+                    None if key.router.shadow is None else key.router.shadow.provider
+                ),
             )
         ),
         denied_tools=frozenset(() if key.tools is None else key.tools.deny),
