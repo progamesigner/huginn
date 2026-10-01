@@ -16,7 +16,7 @@ async def test_manager_builds_and_disposes_client() -> None:
     assert manager.clients == {}
 
 
-async def test_named_instance_uses_an_independent_client() -> None:
+async def test_named_alias_uses_an_independent_client() -> None:
     manager = RedisManager(
         {
             None: 'redis://cache/0',
@@ -33,7 +33,7 @@ async def test_named_instance_uses_an_independent_client() -> None:
     assert manager.clients == {}
 
 
-async def test_unknown_instance_raises_redis_error() -> None:
+async def test_unknown_alias_raises_redis_error() -> None:
     manager = RedisManager({None: 'redis://cache/0'})
 
     with pytest.raises(RedisError, match='queue'):

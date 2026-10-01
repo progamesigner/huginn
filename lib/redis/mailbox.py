@@ -14,7 +14,7 @@ class RedisMailbox[T = bytes]:
         self.queue = queue
 
     async def claim(self, message: T) -> bool:
-        async with self.lock.redis.connect(self.lock.instance) as client:
+        async with self.lock.redis.connect(self.lock.alias) as client:
             script = client.register_script(CLAIM)
             claimed = await script(
                 keys=[self.lock.key, self.queue],
@@ -24,7 +24,7 @@ class RedisMailbox[T = bytes]:
 
     async def drain(self) -> tuple[T, ...]:
         # NOTE: an empty batch means the lock is gone
-        async with self.lock.redis.connect(self.lock.instance) as client:
+        async with self.lock.redis.connect(self.lock.alias) as client:
             script = client.register_script(DRAIN)
             backlog = await script(
                 keys=[self.lock.key, self.queue],

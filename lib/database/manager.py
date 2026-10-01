@@ -28,14 +28,14 @@ class DatabaseManager(DatabaseContract):
         self.urls = dict(urls)
 
     @override
-    def scoped(self, instance: str | None = None) -> ScopedSession:
+    def scoped(self, alias: str | None = None) -> ScopedSession:
         # NOTE: the caller owns the session lifetime
-        return ScopedSession(self._async_session(instance)())
+        return ScopedSession(self._async_session(alias)())
 
     @asynccontextmanager
     @override
-    async def session(self, instance: str | None = None) -> AsyncIterator[AsyncSession]:
-        async with self._async_session(instance)() as session:
+    async def session(self, alias: str | None = None) -> AsyncIterator[AsyncSession]:
+        async with self._async_session(alias)() as session:
             yield session
 
     async def dispose(self) -> None:
@@ -45,19 +45,19 @@ class DatabaseManager(DatabaseContract):
         self.session_makers.clear()
 
     @override
-    def url(self, instance: str | None = None) -> str:
-        if instance not in self.urls:
-            raise DatabaseError(f'database instance {instance!r} is not configured')
+    def url(self, alias: str | None = None) -> str:
+        if alias not in self.urls:
+            raise DatabaseError(f'database alias {alias!r} is not configured')
 
-        return self.urls[instance]
+        return self.urls[alias]
 
-    def _async_session(self, instance: str | None) -> async_sessionmaker[AsyncSession]:
-        if instance not in self.session_makers:
-            engine = create_async_engine(self.url(instance))
-            self.engines[instance] = engine
-            self.session_makers[instance] = async_sessionmaker(
+    def _async_session(self, alias: str | None) -> async_sessionmaker[AsyncSession]:
+        if alias not in self.session_makers:
+            engine = create_async_engine(self.url(alias))
+            self.engines[alias] = engine
+            self.session_makers[alias] = async_sessionmaker(
                 engine,
                 expire_on_commit=False,
             )
 
-        return self.session_makers[instance]
+        return self.session_makers[alias]

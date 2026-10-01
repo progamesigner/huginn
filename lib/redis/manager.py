@@ -21,19 +21,19 @@ class RedisManager(RedisContract):
 
     @asynccontextmanager
     @override
-    async def connect(self, instance: str | None = None) -> AsyncIterator[Redis[bytes]]:
-        if instance not in self.clients:
-            self.clients[instance] = Redis.from_url(self.url(instance))
+    async def connect(self, alias: str | None = None) -> AsyncIterator[Redis[bytes]]:
+        if alias not in self.clients:
+            self.clients[alias] = Redis.from_url(self.url(alias))
 
-        yield self.clients[instance]
+        yield self.clients[alias]
 
     async def dispose(self) -> None:
         for client in self.clients.values():
             await client.aclose()
         self.clients.clear()
 
-    def url(self, instance: str | None = None) -> str:
-        if instance not in self.urls:
-            raise RedisError(f'redis instance {instance!r} is not configured')
+    def url(self, alias: str | None = None) -> str:
+        if alias not in self.urls:
+            raise RedisError(f'redis alias {alias!r} is not configured')
 
-        return self.urls[instance]
+        return self.urls[alias]

@@ -76,9 +76,9 @@ async def test_both_scripts_carry_the_same_owner_token() -> None:
     assert claimed[2][0] == drained[2][0] == mailbox.lock.token
 
 
-async def test_the_mailbox_follows_the_lock_to_its_instance() -> None:
+async def test_the_mailbox_follows_the_lock_to_its_alias() -> None:
     redis = make_redis(FakeClient(outcomes=[1]))
-    lock = RedisLock(redis, _KEYS[0], ttl=_TTL, instance='queue')
+    lock = RedisLock(redis, _KEYS[0], ttl=_TTL, alias='queue')
 
     await RedisMailbox(lock, _KEYS[1]).claim(_MESSAGE)
 

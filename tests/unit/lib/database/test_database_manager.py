@@ -40,7 +40,7 @@ async def test_manager_reuses_engine_and_sessionmaker() -> None:
     await manager.dispose()
 
 
-async def test_named_instance_uses_an_independent_engine() -> None:
+async def test_named_alias_uses_an_independent_engine() -> None:
     manager = DatabaseManager(
         {
             None: _URL,
@@ -57,7 +57,7 @@ async def test_named_instance_uses_an_independent_engine() -> None:
     assert manager.session_makers == {}
 
 
-def test_unknown_instance_raises_database_error() -> None:
+def test_unknown_alias_raises_database_error() -> None:
     manager = DatabaseManager({None: _URL})
 
     with pytest.raises(DatabaseError, match='analytics'):

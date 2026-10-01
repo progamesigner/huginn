@@ -15,7 +15,7 @@ _RENEWALS_PER_LEASE = 3
 
 
 class RedisLock:
-    instance: str | None
+    alias: str | None
     key: str
     redis: RedisContract
     token: bytes
@@ -27,24 +27,24 @@ class RedisLock:
         key: str,
         *,
         ttl: timedelta,
-        instance: str | None = None,
+        alias: str | None = None,
     ) -> None:
         if ttl <= timedelta(0):
             raise RedisError('lock ttl must be positive')
 
-        self.instance = instance
+        self.alias = alias
         self.key = key
         self.redis = redis
         self.token = secrets.token_bytes(16)
         self.ttl = ttl
 
     async def acquire(self) -> bool:
-        async with self.redis.connect(self.instance) as client:
+        async with self.redis.connect(self.alias) as client:
             held = await client.set(self.key, self.token, nx=True, px=self.lease())
             return bool(held)
 
     async def extend(self) -> bool:
-        async with self.redis.connect(self.instance) as client:
+        async with self.redis.connect(self.alias) as client:
             script = client.register_script(EXTEND)
             extended = await script(keys=[self.key], args=[self.token, self.lease()])
             return bool(extended)
@@ -62,7 +62,7 @@ class RedisLock:
             await asyncio.gather(watcher, return_exceptions=True)
 
     async def release(self) -> bool:
-        async with self.redis.connect(self.instance) as client:
+        async with self.redis.connect(self.alias) as client:
             script = client.register_script(RELEASE)
             released = await script(keys=[self.key], args=[self.token])
             return bool(released)

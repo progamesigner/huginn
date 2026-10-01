@@ -8,5 +8,5 @@ class RedisContract(ABC):
     @abstractmethod
     def connect(
         self,
-        instance: str | None = None,
+        alias: str | None = None,
     ) -> AbstractAsyncContextManager[Redis[bytes]]: ...

@@ -88,9 +88,9 @@ async def test_watchdog_stops_once_the_lease_is_lost() -> None:
     assert len(client.evaluated) == 1
 
 
-async def test_operations_target_the_configured_instance() -> None:
+async def test_operations_target_the_configured_alias() -> None:
     redis = make_redis(FakeClient())
-    lock = RedisLock(redis, 'chat:7', ttl=_TTL, instance='queue')
+    lock = RedisLock(redis, 'chat:7', ttl=_TTL, alias='queue')
 
     await lock.acquire()
 

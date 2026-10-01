@@ -8,13 +8,13 @@ from .session import ScopedSession
 
 class DatabaseContract(ABC):
     @abstractmethod
-    def scoped(self, instance: str | None = None) -> ScopedSession: ...
+    def scoped(self, alias: str | None = None) -> ScopedSession: ...
 
     @abstractmethod
     def session(
         self,
-        instance: str | None = None,
+        alias: str | None = None,
     ) -> AbstractAsyncContextManager[AsyncSession]: ...
 
     @abstractmethod
-    def url(self, instance: str | None = None) -> str: ...
+    def url(self, alias: str | None = None) -> str: ...
