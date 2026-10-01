@@ -86,6 +86,27 @@ type = "forbidden"
 source_modules = ["lib"]
 forbidden_modules = ["app", "bin"]
 
+[[tool.importlinter.contracts]]
+name = "lib packages stay independent"
+type = "independence"
+modules = [
+    "lib.command",
+    "lib.concurrency",
+    "lib.container",
+    "lib.database",
+    "lib.decision",
+    "lib.documents",
+    "lib.guid",
+    "lib.http",
+    "lib.llm",
+    "lib.mcp",
+    "lib.observability",
+    "lib.redis",
+    "lib.result",
+    "lib.router",
+    "lib.temporal",
+]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = ["--import-mode=importlib"]
