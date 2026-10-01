@@ -8,10 +8,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from .entities import Blob, BlobKind
 
 
-class BlobStoreContract(ABC):
+class BlobServiceContract(ABC):
+    # NOTE: a write joins the caller's transaction, so a blob lands with what names it
     @abstractmethod
     async def store(
         self,
+        transaction: AsyncSession,
         mime: str,
         data: bytes,
         *,
@@ -27,12 +29,7 @@ class BlobStoreContract(ABC):
     async def head(self, id: UUID) -> Blob | None: ...
 
 
-class BlobStoreFactoryContract(ABC):
-    @abstractmethod
-    def for_session(self, session: AsyncSession) -> BlobStoreContract: ...
-
-
-class BlobReferenceContract(ABC):
+class BlobReferenceSource(ABC):
     @abstractmethod
     async def referenced(
         self,
@@ -42,7 +39,7 @@ class BlobReferenceContract(ABC):
 
 
 class BlobReferenceRegistry:
-    references: tuple[BlobReferenceContract, ...]
+    references: tuple[BlobReferenceSource, ...]
 
-    def __init__(self, references: Iterable[BlobReferenceContract] = ()) -> None:
+    def __init__(self, references: Iterable[BlobReferenceSource] = ()) -> None:
         self.references = tuple(references)

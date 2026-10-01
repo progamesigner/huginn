@@ -11,7 +11,7 @@ from app.features.agents.providers import AgentProvider
 from app.features.auth.config import build_sections as auth_sections
 from app.features.auth.providers import AuthProvider
 from app.features.blobs.config import BLOBS
-from app.features.blobs.contracts import BlobReferenceContract, BlobStoreContract
+from app.features.blobs.contracts import BlobReferenceSource, BlobServiceContract
 from app.features.blobs.providers import BlobProvider
 from app.features.channels.config import build_sections as channel_sections
 from app.features.channels.handlers import CommandHandlers
@@ -24,12 +24,12 @@ from app.features.channels.registry import (
 )
 from app.features.channels.telegram.config import TelegramChannelConfig
 from app.features.conversations.config import COMPACTION
-from app.features.conversations.contracts import ConversationControlContract
+from app.features.conversations.contracts import ConversationServiceContract
 from app.features.conversations.providers import ConversationProvider
 from app.features.conversations.services import ConversationBlobReferences
 from app.features.identities.contracts import (
-    IdentityLinkingContract,
-    IdentityResolverContract,
+    IdentityLinkingServiceContract,
+    IdentityResolutionServiceContract,
 )
 from app.features.identities.providers import IdentityProvider
 from app.features.mcp.config import MCP_SERVERS
@@ -111,9 +111,9 @@ class ChannelContributions(ProviderContract):
             _section(container, spec)
 
         handlers = CommandHandlers(
-            lambda: container.resolve(IdentityResolverContract),
-            lambda: container.resolve(IdentityLinkingContract),
-            lambda: container.resolve(ConversationControlContract),
+            lambda: container.resolve(IdentityResolutionServiceContract),
+            lambda: container.resolve(IdentityLinkingServiceContract),
+            lambda: container.resolve(ConversationServiceContract),
             lambda: container.resolve(CommandRegistry),
         )
         for command in handlers.commands():
@@ -127,7 +127,7 @@ class ConversationContributions(ProviderContract):
     def __call__(self, container: ContainerContract) -> None:
         _section(container, COMPACTION)
         container.contribute(
-            BlobReferenceContract,
+            BlobReferenceSource,
             lambda c: ConversationBlobReferences(
                 c.resolve(GUIDContract),
                 c.resolve(ClockContract),
@@ -187,7 +187,7 @@ class ToolContributions(ProviderContract):
                 ReadDocumentTool,
                 DocumentToolConfig,
                 builder=lambda config, scope: build_read_document(
-                    c.resolve(BlobStoreContract),
+                    c.resolve(BlobServiceContract),
                     config,
                     scope,
                 ),

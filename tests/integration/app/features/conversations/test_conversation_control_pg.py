@@ -6,7 +6,7 @@ import pytest
 from app.core.config.registry import HuginnConfig
 from app.features.agents.config import AgentConfig, AgentConfigList, DefaultsConfig
 from app.features.blobs.config import RetentionConfig
-from app.features.blobs.repositories import BlobRepository
+from app.features.blobs.services import BlobService
 from app.features.conversations.config import CompactionConfig
 from app.features.conversations.entities import Part
 from app.features.conversations.repositories import ConversationRepository
@@ -109,12 +109,13 @@ async def _said(database: DatabaseContract, chat: str, agent: str) -> None:
 
 
 async def _history(database: DatabaseContract, chat: str, agent: str) -> list[str]:
-    async with database.session() as session, session.begin():
+    async with database.transaction() as session:
         repository = ConversationRepository(session, GUIDManager(), ClockManager())
         conversation = await repository.get_or_create('support_bot', chat)
         transcript = ConversationTranscript(
+            session,
             repository,
-            BlobRepository(session, GUIDManager(), ClockManager()),
+            BlobService(database, GUIDManager(), ClockManager()),
             conversation,
             RetentionConfig(),
         )

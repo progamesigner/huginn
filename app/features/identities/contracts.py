@@ -3,7 +3,7 @@ from abc import ABC, abstractmethod
 from .entities import LinkedPrincipal, Principal
 
 
-class IdentityLinkingContract(ABC):
+class IdentityLinkingServiceContract(ABC):
     @abstractmethod
     async def link(
         self,
@@ -14,7 +14,7 @@ class IdentityLinkingContract(ABC):
     ) -> LinkedPrincipal: ...
 
 
-class IdentityResolverContract(ABC):
+class IdentityResolutionServiceContract(ABC):
     @abstractmethod
     async def resolve(
         self,

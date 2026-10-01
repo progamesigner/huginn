@@ -5,7 +5,7 @@ from pydantic import BaseModel, Field
 
 from app.features.agents.contracts import ToolOutput, ToolParams, TypedTool
 from app.features.agents.entities import TurnScope
-from app.features.blobs.contracts import BlobStoreContract
+from app.features.blobs.contracts import BlobServiceContract
 from app.features.tools.exceptions import ToolError
 
 from .config import DocumentToolConfig
@@ -31,7 +31,7 @@ class ReadDocumentTool(TypedTool[ReadDocumentParams]):
 
     def __init__(
         self,
-        blobs: BlobStoreContract,
+        blobs: BlobServiceContract,
         allowed: frozenset[str],
         max_chars: int,
     ) -> None:
@@ -60,7 +60,7 @@ class ReadDocumentTool(TypedTool[ReadDocumentParams]):
 
 
 def build_read_document(
-    blobs: BlobStoreContract,
+    blobs: BlobServiceContract,
     config: BaseModel,
     scope: TurnScope,
 ) -> ReadDocumentTool:

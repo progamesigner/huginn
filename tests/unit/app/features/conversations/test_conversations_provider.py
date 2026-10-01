@@ -1,7 +1,7 @@
 from pathlib import Path
 
 from app.core.config.registry import HuginnConfig
-from app.features.blobs.contracts import BlobReferenceRegistry, BlobStoreContract
+from app.features.blobs.contracts import BlobReferenceRegistry, BlobServiceContract
 from app.features.blobs.services import BlobService
 from app.features.conversations.config import COMPACTION
 from app.features.conversations.providers import ConversationProvider
@@ -42,9 +42,9 @@ async def test_the_blob_store_resolves_without_a_transaction() -> None:
     container = app_with(settings).build(ConversationProvider())
 
     # NOTE: a turn's tools resolve this from the root, so it opens its own session
-    store = container.resolve(BlobStoreContract)
+    store = container.resolve(BlobServiceContract)
     assert isinstance(store, BlobService)
-    assert container.resolve(BlobStoreContract) is store
+    assert container.resolve(BlobServiceContract) is store
 
     await container.dispose()
 

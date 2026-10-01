@@ -10,7 +10,7 @@ from lib.database import DatabaseContract
 from lib.guid import GUIDContract
 from lib.temporal import ClockContract
 
-from .contracts import IdentityLinkingContract, IdentityResolverContract
+from .contracts import IdentityLinkingServiceContract, IdentityResolutionServiceContract
 from .entities import (
     AnonymousPrincipal,
     ExternalIdentity,
@@ -172,7 +172,7 @@ class IdentityLinkingService:
         return None
 
 
-class PrincipalLinker(IdentityLinkingContract):
+class PrincipalLinker(IdentityLinkingServiceContract):
     clock: ClockContract
     database: DatabaseContract
     guid: GUIDContract
@@ -199,7 +199,7 @@ class PrincipalLinker(IdentityLinkingContract):
         external_user_id: str,
     ) -> LinkedPrincipal:
         try:
-            async with self.database.session() as session, session.begin():
+            async with self.database.transaction() as session:
                 repository = IdentityRepository(session, self.guid, self.clock)
                 await IdentityLinkingService(
                     repository,
@@ -227,7 +227,7 @@ class PrincipalLinker(IdentityLinkingContract):
         external_user_id: str,
         reason: str,
     ) -> None:
-        async with self.database.session() as session, session.begin():
+        async with self.database.transaction() as session:
             await IdentityRepository(session, self.guid, self.clock).record_audit(
                 'link_failed',
                 provider,
@@ -236,7 +236,7 @@ class PrincipalLinker(IdentityLinkingContract):
             )
 
 
-class PrincipalResolver(IdentityResolverContract):
+class PrincipalResolver(IdentityResolutionServiceContract):
     clock: ClockContract
     database: DatabaseContract
     guid: GUIDContract

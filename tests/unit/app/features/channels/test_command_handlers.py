@@ -4,10 +4,10 @@ from uuid import UUID
 from app.contracts.channels import InboundCommand, InboundMessage
 from app.features.channels.handlers import CommandHandlers
 from app.features.channels.registry import CommandRegistry
-from app.features.conversations.contracts import ConversationControlContract
+from app.features.conversations.contracts import ConversationServiceContract
 from app.features.identities.contracts import (
-    IdentityLinkingContract,
-    IdentityResolverContract,
+    IdentityLinkingServiceContract,
+    IdentityResolutionServiceContract,
 )
 from app.features.identities.entities import (
     AnonymousPrincipal,
@@ -20,7 +20,7 @@ _LINKED = UUID('00000000-0000-7000-8000-000000000001')
 _IDENTITY = UUID('00000000-0000-7000-8000-000000000002')
 
 
-class FakeIdentities(IdentityResolverContract):
+class FakeIdentities(IdentityResolutionServiceContract):
     calls: list[tuple[str, str, str]]
     linked: frozenset[str]
 
@@ -50,7 +50,7 @@ class FakeIdentities(IdentityResolverContract):
         )
 
 
-class FakeControl(ConversationControlContract):
+class FakeControl(ConversationServiceContract):
     cleared: bool
     compactions: list[tuple[str, str]]
     folded: bool
@@ -75,7 +75,7 @@ class FakeControl(ConversationControlContract):
         return self.cleared
 
 
-class FakeLinking(IdentityLinkingContract):
+class FakeLinking(IdentityLinkingServiceContract):
     calls: list[tuple[str, str, str, str]]
     invalid: bool
 

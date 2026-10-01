@@ -14,11 +14,11 @@ from pydantic import SecretStr
 from app.contracts.channels import ChannelReplyContract
 from app.core.config.registry import HuginnConfig
 from app.features.agents.config import AgentConfig, AgentConfigList
-from app.features.agents.contracts import TurnHandlerContract
+from app.features.agents.contracts import TurnServiceContract
 from app.features.agents.entities import TurnRequest
 from app.features.channels.config import ChannelConfigList, TranscriptionConfig
 from app.features.channels.telegram.config import TelegramChannelConfig
-from app.features.identities.contracts import IdentityResolverContract
+from app.features.identities.contracts import IdentityResolutionServiceContract
 from app.features.identities.entities import AnonymousPrincipal, Principal
 from bin.server import build
 from lib.mcp import MCPClientContract
@@ -42,7 +42,7 @@ _MILESTONES = (
 )
 
 
-class StreamingTurns(TurnHandlerContract):
+class StreamingTurns(TurnServiceContract):
     done: asyncio.Event
     requests: list[TurnRequest]
 
@@ -71,7 +71,7 @@ class StreamingTurns(TurnHandlerContract):
             self.done.set()
 
 
-class FakeIdentities(IdentityResolverContract):
+class FakeIdentities(IdentityResolutionServiceContract):
     @override
     async def resolve(
         self,
@@ -191,14 +191,14 @@ def message(message_id: int) -> httpx.Response:
 
 
 @asynccontextmanager
-async def pipeline(turns: TurnHandlerContract) -> AsyncIterator[httpx.AsyncClient]:
+async def pipeline(turns: TurnServiceContract) -> AsyncIterator[httpx.AsyncClient]:
     application = build()
     with (
         application.use(HuginnConfig, make_config()),
         application.use(MCPClientContract, MagicMock(spec=MCPClientContract)),
         application.use(RedisContract, make_redis()),
-        application.use(TurnHandlerContract, turns),
-        application.use(IdentityResolverContract, FakeIdentities()),
+        application.use(TurnServiceContract, turns),
+        application.use(IdentityResolutionServiceContract, FakeIdentities()),
     ):
         app = application.resolve(RouterContract).app
         assert isinstance(app, FastAPI)

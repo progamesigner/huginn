@@ -38,8 +38,8 @@ from .config import (
 from .contracts import (
     ToolSource,
     ToolSourceRegistry,
-    TranscriptStoreContract,
-    TurnHandlerContract,
+    TranscriptServiceContract,
+    TurnServiceContract,
     TurnStream,
 )
 from .entities import (
@@ -391,12 +391,12 @@ class AgentRunner:
         return TurnOutput(text=text, ending='exhausted', steps=tuple(steps))
 
 
-class TurnHandler(TurnHandlerContract):
+class TurnHandler(TurnServiceContract):
     clock: ClockContract
     llm: LLMContract
     router: Router
     sources: ToolSourceRegistry
-    store: TranscriptStoreContract
+    store: TranscriptServiceContract
     defaults: DefaultsConfig
     default_max_completion_tokens: int | None
 
@@ -405,7 +405,7 @@ class TurnHandler(TurnHandlerContract):
         llm: LLMContract,
         router: Router,
         sources: ToolSourceRegistry,
-        store: TranscriptStoreContract,
+        store: TranscriptServiceContract,
         clock: ClockContract,
         defaults: DefaultsConfig | None = None,
         default_max_completion_tokens: int | None = None,

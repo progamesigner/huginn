@@ -11,7 +11,7 @@ from app.core.config.registry import HuginnConfig
 from lib.command import Exit, Option, Typer, echo, resolve
 
 from .config import AGENTS, NO_AGENT, validate_router_selection
-from .contracts import TranscriptStoreContract
+from .contracts import TranscriptServiceContract
 from .entities import RoutingTarget, RoutingTargets, SelectionPolicy
 from .eval_dataset import json_text, make_sample, read_samples, write_private
 from .eval_report import (
@@ -89,7 +89,7 @@ def export(
         # NOTE: exclusive creation, so a slip of the path cannot overwrite private data
         write_private(out, '')
         try:
-            store = resolve(TranscriptStoreContract)
+            store = resolve(TranscriptServiceContract)
             with out.open('a') as handle:
                 async for history in store.routing_samples(
                     target.channel,

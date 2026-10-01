@@ -11,10 +11,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config.registry import HuginnConfig
 from app.features.agents.entities import PromptAttachment, TurnPrompt
 from app.features.blobs.config import BlobsConfig, RetentionConfig
-from app.features.blobs.contracts import BlobStoreContract, BlobStoreFactoryContract
+from app.features.blobs.contracts import BlobServiceContract
 from app.features.blobs.entities import Blob, BlobKind
-from app.features.blobs.providers import BlobStoreFactory
 from app.features.blobs.repositories import BlobRepository
+from app.features.blobs.services import BlobService
 from app.features.blobs.sources.sqlalchemy import BlobRecord
 from app.features.conversations.config import CompactionConfig
 from app.features.conversations.entities import Conversation, Part
@@ -52,17 +52,51 @@ class NoModels(LLMContract):
         return None
 
 
-class FlakyBlobs(BlobStoreContract):
-    blobs: BlobRepository
+class SessionBlobs(BlobServiceContract):
+    reads: BlobRepository
+
+    # NOTE: reads go through the test's own session, which sees its uncommitted rows
+    def __init__(self, session: AsyncSession) -> None:
+        self.reads = BlobRepository(session, GUIDManager(), ClockManager())
+
+    @override
+    async def store(
+        self,
+        transaction: AsyncSession,
+        mime: str,
+        data: bytes,
+        *,
+        kind: BlobKind,
+        filename: str | None = None,
+        ttl: timedelta | None = None,
+    ) -> Blob:
+        return await BlobRepository(transaction, GUIDManager(), ClockManager()).store(
+            mime,
+            data,
+            kind=kind,
+            filename=filename,
+            ttl=ttl,
+        )
+
+    @override
+    async def load(self, id: UUID) -> Blob | None:
+        return await self.reads.load(id)
+
+    @override
+    async def head(self, id: UUID) -> Blob | None:
+        return await self.reads.head(id)
+
+
+class FlakyBlobs(BlobServiceContract):
     stored: int
 
-    def __init__(self, session: AsyncSession) -> None:
-        self.blobs = BlobRepository(session, GUIDManager(), ClockManager())
+    def __init__(self) -> None:
         self.stored = 0
 
     @override
     async def store(
         self,
+        transaction: AsyncSession,
         mime: str,
         data: bytes,
         *,
@@ -74,7 +108,7 @@ class FlakyBlobs(BlobStoreContract):
         if self.stored > 1:
             raise RuntimeError('blob store is down')
 
-        return await self.blobs.store(
+        return await BlobRepository(transaction, GUIDManager(), ClockManager()).store(
             mime,
             data,
             kind=kind,
@@ -84,17 +118,11 @@ class FlakyBlobs(BlobStoreContract):
 
     @override
     async def load(self, id: UUID) -> Blob | None:
-        return await self.blobs.load(id)
+        raise NotImplementedError
 
     @override
     async def head(self, id: UUID) -> Blob | None:
-        return await self.blobs.head(id)
-
-
-class FlakyBlobsFactory(BlobStoreFactoryContract):
-    @override
-    def for_session(self, session: AsyncSession) -> BlobStoreContract:
-        return FlakyBlobs(session)
+        raise NotImplementedError
 
 
 async def _blob(session: AsyncSession, id_: str) -> bytes:
@@ -103,8 +131,8 @@ async def _blob(session: AsyncSession, id_: str) -> bytes:
     return (await session.execute(query)).scalar_one().data
 
 
-def _blobs(session: AsyncSession) -> BlobRepository:
-    return BlobRepository(session, GUIDManager(), ClockManager())
+def _blobs(session: AsyncSession) -> SessionBlobs:
+    return SessionBlobs(session)
 
 
 def _repository(session: AsyncSession) -> ConversationRepository:
@@ -120,7 +148,7 @@ def _store(database: DatabaseContract) -> ConversationTranscriptStore:
         HuginnConfig(
             sections={'blobs': BlobsConfig(), 'compaction': CompactionConfig()},
         ),
-        BlobStoreFactory(GUIDManager(), ClockManager()),
+        BlobService(database, GUIDManager(), ClockManager()),
     )
 
 
@@ -129,6 +157,7 @@ def _transcript(
     conversation: Conversation,
 ) -> ConversationTranscript:
     return ConversationTranscript(
+        session,
         _repository(session),
         _blobs(session),
         conversation,
@@ -280,6 +309,7 @@ async def test_an_inbound_blob_expires_after_the_configured_retention(
     repository = _repository(session)
     conversation = await repository.get_or_create('support_bot', '6')
     transcript = ConversationTranscript(
+        session,
         repository,
         _blobs(session),
         conversation,
@@ -470,7 +500,7 @@ async def test_a_record_that_raises_partway_commits_nothing(database_url: str) -
         HuginnConfig(
             sections={'blobs': BlobsConfig(), 'compaction': CompactionConfig()},
         ),
-        FlakyBlobsFactory(),
+        FlakyBlobs(),
     )
     prompt = TurnPrompt(
         text='look',

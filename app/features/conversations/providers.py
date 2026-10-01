@@ -6,9 +6,9 @@ from app.core.providers.database import DatabaseProvider
 from app.core.providers.guid import GUIDProvider
 from app.core.providers.llm import LLMProvider
 from app.core.providers.temporal import ClockProvider
-from app.features.agents.contracts import TranscriptStoreContract
+from app.features.agents.contracts import TranscriptServiceContract
 from app.features.agents.providers import AgentProvider
-from app.features.blobs.contracts import BlobStoreFactoryContract
+from app.features.blobs.contracts import BlobServiceContract
 from app.features.blobs.providers import BlobProvider
 from lib.container import ContainerContract, ProviderContract
 from lib.database import DatabaseContract
@@ -16,7 +16,7 @@ from lib.guid import GUIDContract
 from lib.llm import LLMContract
 from lib.temporal import ClockContract
 
-from .contracts import ConversationControlContract
+from .contracts import ConversationServiceContract
 from .services import ConversationControl, ConversationTranscriptStore
 
 
@@ -37,8 +37,7 @@ def _store(container: ContainerContract) -> ConversationTranscriptStore:
         container.resolve(ClockContract),
         container.resolve(LLMContract),
         container.resolve(HuginnConfig),
-        # NOTE: the transcript owns the turn's session, blobs not reusing it
-        container.resolve(BlobStoreFactoryContract),
+        container.resolve(BlobServiceContract),
     )
 
 
@@ -56,8 +55,8 @@ class ConversationProvider(ProviderContract):
     @override
     def __call__(self, container: ContainerContract) -> None:
         container.bind(
-            ConversationControlContract,
+            ConversationServiceContract,
             factory=_control,
             shared=True,
         )
-        container.bind(TranscriptStoreContract, factory=_store, shared=True)
+        container.bind(TranscriptServiceContract, factory=_store, shared=True)

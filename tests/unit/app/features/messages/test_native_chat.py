@@ -20,7 +20,7 @@ from app.features.agents.config import (
     DefaultsConfig,
     RouterConfig,
 )
-from app.features.agents.contracts import TurnHandlerContract
+from app.features.agents.contracts import TurnServiceContract
 from app.features.agents.entities import ShadowPolicy, TurnRequest
 from app.features.auth.config import (
     API_KEYS,
@@ -39,7 +39,7 @@ _PATH = '/v1/chat'
 _CREDENTIAL = 'web-key'
 
 
-class StreamingTurns(TurnHandlerContract):
+class StreamingTurns(TurnServiceContract):
     requests: list[TurnRequest]
     answer: tuple[str, ...]
     fail: bool
@@ -124,7 +124,7 @@ def make_config(key: ApiKeyConfig) -> HuginnConfig:
 @asynccontextmanager
 async def chat_client(
     config: HuginnConfig,
-    turns: TurnHandlerContract,
+    turns: TurnServiceContract,
     redis: MagicMock | None = None,
 ) -> AsyncIterator[httpx.AsyncClient]:
     application = build()
@@ -132,7 +132,7 @@ async def chat_client(
         application.use(HuginnConfig, config),
         application.use(MCPClientContract, MagicMock(spec=MCPClientContract)),
         application.use(RedisContract, redis or make_redis(FakeClient())),
-        application.use(TurnHandlerContract, turns),
+        application.use(TurnServiceContract, turns),
     ):
         app = application.resolve(RouterContract).app
         assert isinstance(app, FastAPI)
@@ -148,14 +148,14 @@ async def chat_client(
 @asynccontextmanager
 async def asgi_app(
     config: HuginnConfig,
-    turns: TurnHandlerContract,
+    turns: TurnServiceContract,
 ) -> AsyncIterator[FastAPI]:
     application = build()
     with (
         application.use(HuginnConfig, config),
         application.use(MCPClientContract, MagicMock(spec=MCPClientContract)),
         application.use(RedisContract, make_redis(FakeClient())),
-        application.use(TurnHandlerContract, turns),
+        application.use(TurnServiceContract, turns),
     ):
         app = application.resolve(RouterContract).app
         assert isinstance(app, FastAPI)
@@ -472,7 +472,7 @@ async def test_a_client_that_hangs_up_takes_the_turn_with_it() -> None:
     cancelled = asyncio.Event()
     delivered = asyncio.Event()
 
-    class HangingTurns(TurnHandlerContract):
+    class HangingTurns(TurnServiceContract):
         @override
         async def handle(
             self,

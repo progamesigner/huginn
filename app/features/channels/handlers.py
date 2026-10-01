@@ -1,20 +1,20 @@
 from collections.abc import Callable, Iterator
 
 from app.contracts.channels import InboundCommand, InboundMessage
-from app.features.conversations.contracts import ConversationControlContract
+from app.features.conversations.contracts import ConversationServiceContract
 from app.features.identities.contracts import (
-    IdentityLinkingContract,
-    IdentityResolverContract,
+    IdentityLinkingServiceContract,
+    IdentityResolutionServiceContract,
 )
 from app.features.identities.entities import AnonymousPrincipal, LinkedPrincipal
 from app.features.identities.exceptions import InvalidIdentityLinkError
 
 from .registry import Command, CommandRegistry
 
-type ControlFactory = Callable[[], ConversationControlContract]
-type LinkerFactory = Callable[[], IdentityLinkingContract]
+type ControlFactory = Callable[[], ConversationServiceContract]
+type LinkerFactory = Callable[[], IdentityLinkingServiceContract]
 type RegistryFactory = Callable[[], CommandRegistry]
-type ResolverFactory = Callable[[], IdentityResolverContract]
+type ResolverFactory = Callable[[], IdentityResolutionServiceContract]
 
 _LINK_PREFIX = 'link_'
 

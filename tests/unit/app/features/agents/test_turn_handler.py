@@ -12,7 +12,7 @@ from app.features.agents.contracts import (
     ToolHarvest,
     ToolSource,
     ToolSourceRegistry,
-    TranscriptStoreContract,
+    TranscriptServiceContract,
 )
 from app.features.agents.entities import (
     RoutingContext,
@@ -79,7 +79,7 @@ class FakeTranscript:
         self.recorded = []
 
 
-class FakeStore(TranscriptStoreContract):
+class FakeStore(TranscriptServiceContract):
     maintain_error: Exception | None
     maintained: list[tuple[str, str, str, ModelRef]]
     opened: list[tuple[str, str]]

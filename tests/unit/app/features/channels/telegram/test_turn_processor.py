@@ -11,14 +11,14 @@ from app.contracts.channels import (
     InboundCommand,
     InboundMessage,
 )
-from app.features.agents.contracts import TurnHandlerContract
+from app.features.agents.contracts import TurnServiceContract
 from app.features.agents.entities import TurnRequest
-from app.features.channels.contracts import TranscriptionContract
+from app.features.channels.contracts import TranscriptionServiceContract
 from app.features.channels.exceptions import TranscriptionUnavailableError
 from app.features.channels.registry import Command, CommandRegistry
 from app.features.channels.telegram.config import TelegramChannelConfig
 from app.features.channels.telegram.turns import TelegramTurnProcessor
-from app.features.identities.contracts import IdentityResolverContract
+from app.features.identities.contracts import IdentityResolutionServiceContract
 from app.features.identities.entities import (
     AnonymousPrincipal,
     LinkedPrincipal,
@@ -61,7 +61,7 @@ class FakeGateway(ChannelGatewayContract):
         return reply
 
 
-class FakeTranscription(TranscriptionContract):
+class FakeTranscription(TranscriptionServiceContract):
     error: Exception | None
     heard: list[tuple[str, bytes]]
     text: str
@@ -85,7 +85,7 @@ class FakeTranscription(TranscriptionContract):
         return self.text
 
 
-class FakeIdentities(IdentityResolverContract):
+class FakeIdentities(IdentityResolutionServiceContract):
     calls: list[tuple[str, str, str]]
     linked: frozenset[str]
 
@@ -115,7 +115,7 @@ class FakeIdentities(IdentityResolverContract):
         )
 
 
-class FakeTurns(TurnHandlerContract):
+class FakeTurns(TurnServiceContract):
     error: Exception | None
     requests: list[TurnRequest]
 

@@ -2,17 +2,18 @@ from datetime import timedelta
 from typing import override
 from uuid import UUID
 
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from lib.database import DatabaseContract
 from lib.guid import GUIDContract
 from lib.temporal import ClockContract
 
-from .contracts import BlobStoreContract
+from .contracts import BlobServiceContract
 from .entities import Blob, BlobKind
 from .repositories import BlobRepository
 
 
-# NOTE: each call runs in its own session, for a caller that holds no transaction
-class BlobService(BlobStoreContract):
+class BlobService(BlobServiceContract):
     def __init__(
         self,
         database: DatabaseContract,
@@ -26,6 +27,7 @@ class BlobService(BlobStoreContract):
     @override
     async def store(
         self,
+        transaction: AsyncSession,
         mime: str,
         data: bytes,
         *,
@@ -33,15 +35,15 @@ class BlobService(BlobStoreContract):
         filename: str | None = None,
         ttl: timedelta | None = None,
     ) -> Blob:
-        async with self.database.transaction() as transaction:
-            return await BlobRepository(transaction, self.guid, self.clock).store(
-                mime,
-                data,
-                kind=kind,
-                filename=filename,
-                ttl=ttl,
-            )
+        return await BlobRepository(transaction, self.guid, self.clock).store(
+            mime,
+            data,
+            kind=kind,
+            filename=filename,
+            ttl=ttl,
+        )
 
+    # NOTE: a read needs no transaction of the caller's, so it opens its own session
     @override
     async def load(self, id: UUID) -> Blob | None:
         async with self.database.session() as session:

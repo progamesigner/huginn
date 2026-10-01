@@ -10,7 +10,7 @@ from app.core.config.providers import ProviderConfigList
 from app.core.config.registry import HuginnConfig
 from app.core.providers.command import CommandProvider
 from app.features.agents.config import AgentConfigList, DefaultsConfig
-from app.features.agents.contracts import TranscriptStoreContract
+from app.features.agents.contracts import TranscriptServiceContract
 from app.features.agents.entities import (
     RoutingHistory,
     RoutingPolicy,
@@ -80,7 +80,7 @@ def test_export_evaluate_review_and_report(tmp_path: Path) -> None:
             },
         ),
     )
-    container.bind(TranscriptStoreContract, instance=DatasetStore())
+    container.bind(TranscriptServiceContract, instance=DatasetStore())
     router = Router({}, FakeLLM(), DefaultsConfig(model='chat'))
     router.decide = AsyncMock(return_value=RoutingDecision('a'))
     container.bind(Router, instance=router)

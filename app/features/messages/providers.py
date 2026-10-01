@@ -4,7 +4,7 @@ from app.core.providers.guid import GUIDProvider
 from app.core.providers.redis import RedisProvider
 from app.core.providers.router import RouterProvider
 from app.core.providers.temporal import ClockProvider
-from app.features.agents.contracts import TurnHandlerContract
+from app.features.agents.contracts import TurnServiceContract
 from app.features.agents.providers import TurnProvider
 from app.features.auth.providers import AuthProvider
 from lib.container import ContainerContract, ProviderContract
@@ -27,7 +27,7 @@ def _handlers(container: ContainerContract) -> ChatHandlers:
 
 def _service(container: ContainerContract) -> ChatService:
     return ChatService(
-        container.resolve(TurnHandlerContract),
+        container.resolve(TurnServiceContract),
         container.resolve(RedisContract),
         container.resolve(GUIDContract),
     )

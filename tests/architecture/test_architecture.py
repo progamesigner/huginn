@@ -599,6 +599,22 @@ def test_feature_entities_build_on_the_app_bases() -> None:
     )
 
 
+def test_feature_contracts_name_the_service_behind_them() -> None:
+    # NOTE: a feature's contract fronts one of its services, never a repository;
+    # extension points such as ToolSource carry no Contract suffix at all
+    root = _features_dir()
+    names = [
+        f'{path.relative_to(root)}: {node.name}'
+        for path in sorted(root.rglob('contracts.py'))
+        for node in ast.parse(path.read_text()).body
+        if isinstance(node, ast.ClassDef)
+        and node.name.endswith('Contract')
+        and not node.name.endswith('ServiceContract')
+    ]
+
+    assert not names, 'feature contracts must be *ServiceContract:\n' + '\n'.join(names)
+
+
 def test_every_package_carries_an_init_module() -> None:
     # NOTE: grimp does not walk namespace packages, so a directory without an
     # __init__.py silently shrinks what the layers contract checks rather than

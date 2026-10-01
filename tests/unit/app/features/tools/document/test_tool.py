@@ -3,10 +3,11 @@ from typing import override
 from uuid import UUID, uuid4
 
 import pytest
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.features.agents.entities import TurnScope
 from app.features.agents.tooling import ToolSet
-from app.features.blobs.contracts import BlobStoreContract
+from app.features.blobs.contracts import BlobServiceContract
 from app.features.blobs.entities import Blob, BlobKind
 from app.features.tools.document.config import DocumentToolConfig
 from app.features.tools.document.tool import ReadDocumentTool, build_read_document
@@ -17,7 +18,7 @@ from lib.llm import ToolCallSegment
 _SCOPE = TurnScope(actor='user:1', agent='scout', channel='support_bot', chat='1')
 
 
-class Blobs(BlobStoreContract):
+class Blobs(BlobServiceContract):
     def __init__(self, blob: Blob | None) -> None:
         self.blob = blob
 
@@ -28,6 +29,7 @@ class Blobs(BlobStoreContract):
     @override
     async def store(
         self,
+        transaction: AsyncSession,
         mime: str,
         data: bytes,
         *,

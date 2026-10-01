@@ -66,7 +66,7 @@ class ToolSource(ABC):
     async def collect(self, agent: AgentConfig, scope: TurnScope) -> ToolHarvest: ...
 
 
-class TranscriptStoreContract(ABC):
+class TranscriptServiceContract(ABC):
     def routing_samples(
         self,
         channel: str,
@@ -113,7 +113,7 @@ class TranscriptStoreContract(ABC):
     ) -> None: ...
 
 
-class TurnHandlerContract(ABC):
+class TurnServiceContract(ABC):
     @abstractmethod
     async def handle(
         self,

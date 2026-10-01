@@ -8,7 +8,7 @@ from app.core.settings import HuginnSettings
 from lib.command import CommandContract
 from lib.container import ContainerContract, ProviderContract
 
-from .contracts import IdentityLinkingContract, IdentityResolverContract
+from .contracts import IdentityLinkingServiceContract, IdentityResolutionServiceContract
 from .exceptions import IdentityLinkSecretError
 from .services import PrincipalLinker, PrincipalResolver
 from .tokens import IdentityTokenCodec
@@ -28,12 +28,12 @@ class IdentityProvider(ProviderContract):
     def __call__(self, container: ContainerContract) -> None:
         container.bind(IdentityTokenCodec, factory=_token_codec, shared=True)
         container.bind(
-            IdentityLinkingContract,
+            IdentityLinkingServiceContract,
             constructor=PrincipalLinker,
             shared=True,
         )
         container.bind(
-            IdentityResolverContract,
+            IdentityResolutionServiceContract,
             constructor=PrincipalResolver,
             shared=True,
         )

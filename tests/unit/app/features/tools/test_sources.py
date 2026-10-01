@@ -4,12 +4,13 @@ from typing import Annotated, override
 from uuid import UUID, uuid4
 
 from pydantic import Field
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config.registry import HuginnConfig
 from app.features.agents.config import AgentConfig, ToolRef
 from app.features.agents.contracts import ToolOutput, ToolParams, TypedTool
 from app.features.agents.entities import TurnScope
-from app.features.blobs.contracts import BlobStoreContract
+from app.features.blobs.contracts import BlobServiceContract
 from app.features.blobs.entities import Blob, BlobKind
 from app.features.tools.config import ToolConfig, ToolConfigList
 from app.features.tools.document.config import DocumentToolConfig
@@ -88,7 +89,7 @@ async def test_configured_tool_source_omits_ref_with_missing_binding() -> None:
     assert harvest.tools == ()
 
 
-class DocumentBlobs(BlobStoreContract):
+class DocumentBlobs(BlobServiceContract):
     def __init__(self, blob: Blob) -> None:
         self.blob = blob
 
@@ -103,6 +104,7 @@ class DocumentBlobs(BlobStoreContract):
     @override
     async def store(
         self,
+        transaction: AsyncSession,
         mime: str,
         data: bytes,
         *,

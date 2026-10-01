@@ -1,7 +1,7 @@
 from collections.abc import Sequence
 from datetime import datetime, timedelta
 from hashlib import sha256
-from typing import cast, override
+from typing import cast
 from uuid import UUID
 
 from sqlalchemy import case, delete, func, select
@@ -9,7 +9,7 @@ from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import defer
 
-from app.features.blobs.contracts import BlobReferenceContract, BlobStoreContract
+from app.features.blobs.contracts import BlobReferenceSource
 from app.features.blobs.entities import Blob, BlobKind
 from app.features.blobs.exceptions import BlobError
 from app.features.blobs.sources.sqlalchemy import BlobRecord
@@ -30,7 +30,7 @@ def _to_blob(record: BlobRecord, *, data: bytes | None = None) -> Blob:
     )
 
 
-class BlobRepository(BlobStoreContract):
+class BlobRepository:
     def __init__(
         self,
         session: AsyncSession,
@@ -41,7 +41,6 @@ class BlobRepository(BlobStoreContract):
         self.guid = guid
         self.clock = clock
 
-    @override
     async def store(
         self,
         mime: str,
@@ -85,14 +84,12 @@ class BlobRepository(BlobStoreContract):
         record = (await self.session.execute(inserted)).scalar_one()
         return _to_blob(record)
 
-    @override
     async def load(self, id: UUID) -> Blob | None:
         record = await self.session.scalar(
             select(BlobRecord).where(BlobRecord.id == id),
         )
         return None if record is None else _to_blob(record, data=record.data)
 
-    @override
     async def head(self, id: UUID) -> Blob | None:
         record = await self.session.scalar(
             select(BlobRecord)
@@ -104,7 +101,7 @@ class BlobRepository(BlobStoreContract):
     async def prune(
         self,
         before: datetime,
-        references: Sequence[BlobReferenceContract],
+        references: Sequence[BlobReferenceSource],
         *,
         dry_run: bool = False,
     ) -> int:

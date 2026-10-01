@@ -18,8 +18,8 @@ from .config import AGENTS, DEFAULTS, DefaultsConfig
 from .contracts import (
     ToolSource,
     ToolSourceRegistry,
-    TranscriptStoreContract,
-    TurnHandlerContract,
+    TranscriptServiceContract,
+    TurnServiceContract,
 )
 from .router import Router
 from .services import TurnHandler
@@ -53,7 +53,7 @@ def _turns(container: ContainerContract) -> TurnHandler:
         llm=container.resolve(LLMContract),
         router=container.resolve(Router),
         sources=container.resolve(ToolSourceRegistry),
-        store=container.resolve(TranscriptStoreContract),
+        store=container.resolve(TranscriptServiceContract),
         clock=container.resolve(ClockContract),
         defaults=defaults,
         default_max_completion_tokens=defaults.max_completion_tokens,
@@ -78,7 +78,7 @@ class TurnProvider(ProviderContract):
 
     @override
     def __call__(self, container: ContainerContract) -> None:
-        container.bind(TurnHandlerContract, factory=_turns)
+        container.bind(TurnServiceContract, factory=_turns)
 
 
 class RouterCommandProvider(ProviderContract):

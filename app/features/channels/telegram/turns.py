@@ -9,14 +9,14 @@ from app.contracts.channels import (
     InboundCommand,
     InboundMessage,
 )
-from app.features.agents.contracts import TurnHandlerContract
+from app.features.agents.contracts import TurnServiceContract
 from app.features.agents.entities import PromptAttachment, TurnPrompt, TurnRequest
 from app.features.channels.config import routing_policy
-from app.features.channels.contracts import TranscriptionContract
+from app.features.channels.contracts import TranscriptionServiceContract
 from app.features.channels.documents import read_document
 from app.features.channels.exceptions import TranscriptionUnavailableError
 from app.features.channels.registry import CommandRegistry
-from app.features.identities.contracts import IdentityResolverContract
+from app.features.identities.contracts import IdentityResolutionServiceContract
 from app.features.identities.entities import LinkedPrincipal, Principal
 from lib.documents import SUPPORTED_MIMES
 
@@ -88,16 +88,16 @@ def _hint(attachment: InboundAttachment) -> str:
 class TelegramTurnProcessor:
     commands: CommandRegistry
     gateway: GatewayFactory
-    identities: IdentityResolverContract
-    transcription: TranscriptionContract
-    turns: TurnHandlerContract
+    identities: IdentityResolutionServiceContract
+    transcription: TranscriptionServiceContract
+    turns: TurnServiceContract
 
     def __init__(
         self,
-        turns: TurnHandlerContract,
-        identities: IdentityResolverContract,
+        turns: TurnServiceContract,
+        identities: IdentityResolutionServiceContract,
         gateway: GatewayFactory,
-        transcription: TranscriptionContract,
+        transcription: TranscriptionServiceContract,
         commands: CommandRegistry,
     ) -> None:
         self.commands = commands

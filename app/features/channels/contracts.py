@@ -1,6 +1,6 @@
 from abc import ABC, abstractmethod
 
 
-class TranscriptionContract(ABC):
+class TranscriptionServiceContract(ABC):
     @abstractmethod
     async def transcribe(self, mime: str, data: bytes) -> str: ...

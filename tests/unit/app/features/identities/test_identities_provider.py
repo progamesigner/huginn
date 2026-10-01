@@ -1,6 +1,6 @@
 import pytest
 
-from app.features.identities.contracts import IdentityLinkingContract
+from app.features.identities.contracts import IdentityLinkingServiceContract
 from app.features.identities.exceptions import IdentityLinkSecretError
 from app.features.identities.providers import IdentityProvider
 from app.features.identities.repositories import IdentityRepository
@@ -29,9 +29,9 @@ async def test_the_linking_contract_resolves_without_a_scope() -> None:
     )
     container = app_with(settings).build(IdentityProvider())
 
-    linker = container.resolve(IdentityLinkingContract)
+    linker = container.resolve(IdentityLinkingServiceContract)
 
-    assert container.resolve(IdentityLinkingContract) is linker
+    assert container.resolve(IdentityLinkingServiceContract) is linker
 
     await container.dispose()
 

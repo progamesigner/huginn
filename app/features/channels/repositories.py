@@ -1,14 +1,11 @@
-from typing import override
-
 from app.exts.transcription.clients import TranscriptionClient
 from lib.http import HTTPClientContract
 
 from .config import TranscriptionConfig
-from .contracts import TranscriptionContract
 from .exceptions import TranscriptionUnavailableError
 
 
-class TranscriptionRepository(TranscriptionContract):
+class TranscriptionRepository:
     config: TranscriptionConfig
     http: HTTPClientContract
 
@@ -20,7 +17,6 @@ class TranscriptionRepository(TranscriptionContract):
         self.config = config
         self.http = http
 
-    @override
     async def transcribe(self, mime: str, data: bytes) -> str:
         api_key, model = self.config.api_key, self.config.model
         if self.config.kind is None or api_key is None or model is None:

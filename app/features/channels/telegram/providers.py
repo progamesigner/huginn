@@ -11,12 +11,12 @@ from app.core.providers.config import ConfigProvider
 from app.core.providers.http import HTTPClientProvider
 from app.core.providers.redis import RedisProvider
 from app.core.providers.temporal import ClockProvider
-from app.features.agents.contracts import TurnHandlerContract
+from app.features.agents.contracts import TurnServiceContract
 from app.features.agents.providers import TurnProvider
-from app.features.channels.contracts import TranscriptionContract
+from app.features.channels.contracts import TranscriptionServiceContract
 from app.features.channels.registry import CommandRegistry
 from app.features.conversations.providers import ConversationProvider
-from app.features.identities.contracts import IdentityResolverContract
+from app.features.identities.contracts import IdentityResolutionServiceContract
 from app.features.identities.providers import IdentityProvider
 from lib.command import CommandContract
 from lib.concurrency import TaskSupervisor, TaskSupervisorContract
@@ -42,11 +42,11 @@ def _actor(container: ContainerContract) -> TelegramChatActor:
 def _turns(container: ContainerContract) -> TelegramTurnProcessor:
     gateways = container.resolve(ChannelGatewayFactoryContract)
     return TelegramTurnProcessor(
-        turns=container.resolve(TurnHandlerContract),
+        turns=container.resolve(TurnServiceContract),
         commands=container.resolve(CommandRegistry),
-        identities=container.resolve(IdentityResolverContract),
+        identities=container.resolve(IdentityResolutionServiceContract),
         gateway=lambda channel: gateways.gateway(channel.token),
-        transcription=container.resolve(TranscriptionContract),
+        transcription=container.resolve(TranscriptionServiceContract),
     )
 
 

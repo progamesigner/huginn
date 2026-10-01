@@ -14,7 +14,7 @@ from app.features.agents.config import (
     load_instructions,
     resolve_selection,
 )
-from app.features.agents.contracts import TranscriptStoreContract
+from app.features.agents.contracts import TranscriptServiceContract
 from app.features.agents.entities import (
     PromptAttachment,
     RoutingContext,
@@ -23,11 +23,7 @@ from app.features.agents.entities import (
     TurnPrompt,
 )
 from app.features.blobs.config import BLOBS, RetentionConfig
-from app.features.blobs.contracts import (
-    BlobReferenceContract,
-    BlobStoreContract,
-    BlobStoreFactoryContract,
-)
+from app.features.blobs.contracts import BlobReferenceSource, BlobServiceContract
 from lib.database import DatabaseContract
 from lib.guid import GUIDContract
 from lib.llm import LLMContract, Message, ModelRef
@@ -40,7 +36,7 @@ from .compaction import (
     summary_message,
 )
 from .config import COMPACTION
-from .contracts import ConversationControlContract
+from .contracts import ConversationServiceContract
 from .entities import Conversation, Part, Turn
 from .repositories import ConversationRepository
 
@@ -72,15 +68,17 @@ logger = logging.getLogger(__name__)
 
 
 class ConversationTranscript:
-    blobs: BlobStoreContract
+    blobs: BlobServiceContract
     conversation: Conversation
     repository: ConversationRepository
     retention: RetentionConfig
+    transaction: AsyncSession
 
     def __init__(
         self,
+        transaction: AsyncSession,
         repository: ConversationRepository,
-        blobs: BlobStoreContract,
+        blobs: BlobServiceContract,
         conversation: Conversation,
         retention: RetentionConfig,
     ) -> None:
@@ -88,6 +86,7 @@ class ConversationTranscript:
         self.conversation = conversation
         self.repository = repository
         self.retention = retention
+        self.transaction = transaction
 
     async def history(self) -> tuple[Message, ...]:
         payload = await self.repository.load_current_summary(self.conversation)
@@ -129,6 +128,7 @@ class ConversationTranscript:
 
     async def _media(self, attachment: PromptAttachment, actor: str) -> Part:
         blob = await self.blobs.store(
+            self.transaction,
             attachment.mime,
             attachment.data,
             kind=attachment.kind,
@@ -138,6 +138,7 @@ class ConversationTranscript:
         extracted_blob = None
         if attachment.document_text is not None:
             extracted = await self.blobs.store(
+                self.transaction,
                 'text/markdown',
                 attachment.document_text.encode(),
                 kind='document',
@@ -163,7 +164,7 @@ class ConversationTranscript:
         )
 
 
-class ConversationControl(ConversationControlContract):
+class ConversationControl(ConversationServiceContract):
     clock: ClockContract
     config: HuginnConfig
     database: DatabaseContract
@@ -186,7 +187,7 @@ class ConversationControl(ConversationControlContract):
 
     @override
     async def compact(self, channel: str, chat: str) -> bool:
-        async with self.database.session() as session, session.begin():
+        async with self.database.transaction() as session:
             repository = ConversationRepository(session, self.guid, self.clock)
             conversation = await repository.find_by_chat(channel, chat)
             if conversation is None:
@@ -220,7 +221,7 @@ class ConversationControl(ConversationControlContract):
 
     @override
     async def reset(self, channel: str, chat: str) -> bool:
-        async with self.database.session() as session, session.begin():
+        async with self.database.transaction() as session:
             repository = ConversationRepository(session, self.guid, self.clock)
             conversation = await repository.find_by_chat(channel, chat)
             if conversation is None:
@@ -230,8 +231,8 @@ class ConversationControl(ConversationControlContract):
         return reset is not None
 
 
-class ConversationTranscriptStore(TranscriptStoreContract):
-    blobs: BlobStoreFactoryContract
+class ConversationTranscriptStore(TranscriptServiceContract):
+    blobs: BlobServiceContract
     clock: ClockContract
     config: HuginnConfig
     database: DatabaseContract
@@ -245,7 +246,7 @@ class ConversationTranscriptStore(TranscriptStoreContract):
         clock: ClockContract,
         llm: LLMContract,
         config: HuginnConfig,
-        blobs: BlobStoreFactoryContract,
+        blobs: BlobServiceContract,
     ) -> None:
         self.blobs = blobs
         self.clock = clock
@@ -326,7 +327,7 @@ class ConversationTranscriptStore(TranscriptStoreContract):
 
     @override
     async def document_blobs(self, channel: str, chat: str) -> frozenset[str]:
-        async with self.database.session() as session, session.begin():
+        async with self.database.transaction() as session:
             repository = self._repository(session)
             conversation = await repository.find_by_chat(channel, chat)
             if conversation is None:
@@ -353,7 +354,7 @@ class ConversationTranscriptStore(TranscriptStoreContract):
         agent: str,
         ref: ModelRef,
     ) -> None:
-        async with self.database.session() as session, session.begin():
+        async with self.database.transaction() as session:
             repository = self._repository(session)
             conversation = await repository.get_or_create(channel, chat)
             configured = self.config.section(AGENTS).root[agent]
@@ -374,12 +375,13 @@ class ConversationTranscriptStore(TranscriptStoreContract):
         channel: str,
         chat: str,
     ) -> AsyncIterator[ConversationTranscript]:
-        async with self.database.session() as session, session.begin():
-            repository = self._repository(session)
+        async with self.database.transaction() as transaction:
+            repository = self._repository(transaction)
             conversation = await repository.get_or_create(channel, chat)
             yield ConversationTranscript(
+                transaction,
                 repository,
-                self.blobs.for_session(session),
+                self.blobs,
                 conversation,
                 self.config.section(BLOBS).retention,
             )
@@ -388,7 +390,7 @@ class ConversationTranscriptStore(TranscriptStoreContract):
         return ConversationRepository(session, self.guid, self.clock)
 
 
-class ConversationBlobReferences(BlobReferenceContract):
+class ConversationBlobReferences(BlobReferenceSource):
     clock: ClockContract
     guid: GUIDContract
 

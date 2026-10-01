@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from datetime import timedelta
 
 from app.contracts.auth import ApiClient
-from app.features.agents.contracts import TurnHandlerContract
+from app.features.agents.contracts import TurnServiceContract
 from app.features.agents.entities import (
     RoutingPolicy,
     SelectionPolicy,
@@ -72,12 +72,12 @@ def _policy(agent: str | None, client: ApiClient) -> RoutingPolicy:
 class ChatService:
     guid: GUIDContract
     redis: RedisContract
-    turns: TurnHandlerContract
+    turns: TurnServiceContract
     ttl: timedelta
 
     def __init__(
         self,
-        turns: TurnHandlerContract,
+        turns: TurnServiceContract,
         redis: RedisContract,
         guid: GUIDContract,
         *,

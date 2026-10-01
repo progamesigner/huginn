@@ -1,7 +1,7 @@
 from abc import ABC, abstractmethod
 
 
-class ConversationControlContract(ABC):
+class ConversationServiceContract(ABC):
     @abstractmethod
     async def compact(self, channel: str, chat: str) -> bool: ...
 
