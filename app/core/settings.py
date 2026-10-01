@@ -31,6 +31,10 @@ class HuginnSettings(BaseSettings):
     redis_database: Annotated[int, Field()] = 0
     http_keepalive_expiry: Annotated[float, Field()] = 300.0
     identity_link_secret: Annotated[SecretStr | None, Field()] = None
+    # NOTE: health probes carry no request id, so their lines do not bury real traffic
+    untraced_paths: Annotated[frozenset[str], Field()] = frozenset(
+        {'/healthz', '/readyz'},
+    )
 
     @computed_field
     @property

@@ -105,26 +105,6 @@ def test_build_prefers_explicit_instance_over_auto_include() -> None:
     assert seen == [explicit]
 
 
-def test_build_reports_dependency_needing_construction_arguments() -> None:
-    class NeedsArgs(ProviderContract):
-        def __init__(self, value: str) -> None:
-            self.value = value
-
-        @override
-        def __call__(self, container: ContainerContract) -> None:
-            pass
-
-    class Dependent(ProviderContract):
-        dependencies = (NeedsArgs,)
-
-        @override
-        def __call__(self, container: ContainerContract) -> None:
-            pass
-
-    with pytest.raises(BuildError, match='NeedsArgs'):
-        App().build(Dependent())
-
-
 def test_build_rejects_dependency_cycle() -> None:
     class First(ProviderContract):
         @override

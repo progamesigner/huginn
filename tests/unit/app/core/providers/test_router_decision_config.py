@@ -3,9 +3,7 @@ from pathlib import Path
 import pytest
 from pydantic import ValidationError
 
-from app.core.application import App
 from app.core.config.registry import HuginnConfig
-from app.core.providers.config import ConfigProvider
 from app.features.agents.config import MAX_ROUTED_AGENTS, NO_AGENT
 from app.features.agents.exceptions import (
     MissingModelError,
@@ -17,6 +15,7 @@ from app.features.agents.exceptions import (
     UnknownProviderReferenceError,
 )
 from app.providers import HuginnProvider
+from tests.helpers.settings import app_with, make_settings
 
 _CONFIG = """
 providers:
@@ -64,7 +63,7 @@ def test_decision_model_must_resolve(
 ) -> None:
     path = tmp_path / 'config.yaml'
     path.write_text(_CONFIG.replace(old, new))
-    container = App().build(ConfigProvider(path=path), HuginnProvider())
+    container = app_with(make_settings(config_file=path)).build(HuginnProvider())
     with pytest.raises(error):
         container.resolve(HuginnConfig)
 
@@ -72,7 +71,7 @@ def test_decision_model_must_resolve(
 def test_valid_decision_model(tmp_path: Path) -> None:
     path = tmp_path / 'config.yaml'
     path.write_text(_CONFIG)
-    container = App().build(ConfigProvider(path=path), HuginnProvider())
+    container = app_with(make_settings(config_file=path)).build(HuginnProvider())
     container.resolve(HuginnConfig)
 
 
@@ -92,7 +91,7 @@ def test_channel_decision_config_uses_same_validation(tmp_path: Path) -> None:
       allowed: [a]
 """,
     )
-    container = App().build(ConfigProvider(path=path), HuginnProvider())
+    container = app_with(make_settings(config_file=path)).build(HuginnProvider())
     with pytest.raises(MissingModelError, match=r'channels.test.router.model'):
         container.resolve(HuginnConfig)
 
@@ -100,7 +99,9 @@ def test_channel_decision_config_uses_same_validation(tmp_path: Path) -> None:
 def _resolve(tmp_path: Path, config: str) -> None:
     path = tmp_path / 'config.yaml'
     path.write_text(config)
-    App().build(ConfigProvider(path=path), HuginnProvider()).resolve(HuginnConfig)
+    app_with(make_settings(config_file=path)).build(HuginnProvider()).resolve(
+        HuginnConfig,
+    )
 
 
 @pytest.mark.parametrize('extra', [0, 1])

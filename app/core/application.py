@@ -33,15 +33,7 @@ def _include_transitive_dependencies(
             if dependency in items:
                 continue
 
-            try:
-                instance = dependency()
-            except TypeError as error:
-                raise BuildError(
-                    f'provider {type(provider).__name__} depends on'
-                    f' {dependency.__name__}, which needs explicit construction'
-                    f' arguments and must be listed',
-                ) from error
-
+            instance = dependency()
             items[dependency] = instance
             pending.append(instance)
 

@@ -2,6 +2,7 @@ import asyncio
 import logging
 from collections.abc import AsyncIterator, Callable, Mapping, Sequence
 from contextlib import AbstractAsyncContextManager, asynccontextmanager, suppress
+from dataclasses import dataclass
 from typing import override
 
 from mcp import ClientSession
@@ -19,6 +20,12 @@ type Connector = Callable[[MCPServer], AbstractAsyncContextManager[ClientSession
 
 _RECONNECT_COOLDOWN = 30.0
 _HEARTBEAT_INTERVAL = 30.0
+
+
+# NOTE: a bindable holder, since a bare callable type cannot key a container binding
+@dataclass(frozen=True)
+class MCPTransport:
+    connector: Connector
 
 
 def streamable_http_connector(http: HTTPConnector) -> Connector:

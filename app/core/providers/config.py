@@ -1,4 +1,3 @@
-from pathlib import Path
 from typing import override
 
 from app.core.config.loader import load_config
@@ -15,19 +14,16 @@ from .settings import SettingsProvider
 class ConfigProvider(ProviderContract):
     dependencies = (SettingsProvider,)
 
-    path: Path | None
-
-    def __init__(self, path: Path | None = None) -> None:
-        self.path = path
-
     @override
     def __call__(self, container: ContainerContract) -> None:
         container.bind(SectionRegistry, instance=SectionRegistry())
         container.bind(HuginnConfig, factory=self.build_config, shared=True)
 
     def build_config(self, container: ContainerContract) -> HuginnConfig:
-        path = self.path or container.resolve(HuginnSettings).config_file
-        return load_config(path, container.resolve(SectionRegistry))
+        return load_config(
+            container.resolve(HuginnSettings).config_file,
+            container.resolve(SectionRegistry),
+        )
 
 
 class ProvidersConfigProvider(ProviderContract):

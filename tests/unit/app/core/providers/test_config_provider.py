@@ -5,12 +5,10 @@ import pytest
 from app.core.application import App
 from app.core.config.exceptions import MissingConfigFileError
 from app.core.config.registry import HuginnConfig
-from app.core.providers.config import ConfigProvider
-from app.core.providers.settings import SettingsProvider
 from app.core.settings import HuginnSettings
 from app.features.agents.config import AGENTS
 from app.features.agents.providers import AgentProvider
-from tests.helpers.settings import make_settings
+from tests.helpers.settings import app_with, make_settings
 
 _MINIMAL = """
 defaults:
@@ -31,11 +29,10 @@ def build_app(
     path: Path | None = None,
     settings: HuginnSettings | None = None,
 ) -> App:
-    return App().build(
-        SettingsProvider(settings),
-        ConfigProvider(path),
-        AgentProvider(),
-    )
+    settings = settings or HuginnSettings()
+    if path is not None:
+        settings = settings.model_copy(update={'config_file': path})
+    return app_with(settings).build(AgentProvider())
 
 
 def test_provider_loads_config_from_explicit_path(tmp_path: Path) -> None:

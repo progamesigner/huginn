@@ -19,12 +19,10 @@ from .settings import SettingsProvider
 class RouterProvider(ProviderContract):
     dependencies = (SettingsProvider, LoggingProvider)
 
-    def __init__(self, *, excludes: frozenset[str] = frozenset()) -> None:
-        self.excludes = excludes
-
     @override
     def __call__(self, container: ContainerContract) -> None:
-        develop = container.resolve(HuginnSettings).running_in_mode('dev')
+        settings = container.resolve(HuginnSettings)
+        develop = settings.running_in_mode('dev')
 
         @asynccontextmanager
         async def lifespan(app: FastAPI) -> AsyncIterator[None]:
@@ -40,6 +38,8 @@ class RouterProvider(ProviderContract):
                 Exception: render_unexpected_error,
             },
             lifespan=lifespan,
-            middlewares=[Middleware(RequestContextMiddleware, excludes=self.excludes)],
+            middlewares=[
+                Middleware(RequestContextMiddleware, excludes=settings.untraced_paths),
+            ],
         )
         container.bind(RouterContract, instance=manager)

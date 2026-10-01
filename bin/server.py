@@ -7,7 +7,6 @@ from uvicorn import run
 
 from app.core.application import App
 from app.core.providers.bootstrap import BootstrapProvider
-from app.core.providers.router import RouterProvider
 from app.core.providers.settings import SettingsProvider
 from app.providers import HuginnEndpointProvider, HuginnProvider
 from lib.router import RouterContract
@@ -26,7 +25,6 @@ def build() -> App:
     return App().build(
         SettingsProvider(),
         BootstrapProvider(),
-        RouterProvider(excludes=frozenset({'/healthz', '/readyz'})),
         HuginnProvider(),
         HuginnEndpointProvider(),
     )

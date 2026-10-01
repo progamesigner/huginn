@@ -2,10 +2,9 @@ from pathlib import Path
 
 import pytest
 
-from app.core.application import App
-from app.core.providers.config import ConfigProvider
 from app.core.providers.llm import LLMProvider
 from lib.llm import LLMContract, LLMManager, ModelRef
+from tests.helpers.settings import app_with, make_settings
 
 _CONFIG = """
 providers:
@@ -31,7 +30,7 @@ def test_provider_builds_llm_manager_from_config(
     monkeypatch.setenv('OPENAI_API_KEY', 'sk-test')
 
     config = _write_config(tmp_path / 'huginn.yaml')
-    container = App().build(ConfigProvider(path=config), LLMProvider())
+    container = app_with(make_settings(config_file=config)).build(LLMProvider())
 
     manager = container.resolve(LLMContract)
 

@@ -3,13 +3,12 @@ from pathlib import Path
 import pytest
 from pydantic import ValidationError
 
-from app.core.application import App
 from app.core.config.decision import DecisionProviderConfig
 from app.core.config.llm import ProviderConfig
 from app.core.config.providers import ProviderConfigList
-from app.core.providers.config import ConfigProvider
 from app.core.providers.decision import DecisionProvider
 from lib.decision import DecisionContract, DecisionRef
+from tests.helpers.settings import app_with, make_settings
 
 
 @pytest.mark.parametrize('configured', [False, True])
@@ -26,7 +25,7 @@ def test_decision_container(tmp_path: Path, configured: bool) -> None:
         if configured
         else '{}',
     )
-    container = App().build(ConfigProvider(path=path), DecisionProvider())
+    container = app_with(make_settings(config_file=path)).build(DecisionProvider())
     manager = container.resolve(DecisionContract)
     provider = manager.provider_for(DecisionRef(model='jev'))
     assert (provider is not None) == configured

@@ -9,10 +9,10 @@ from mcp.server.fastmcp import FastMCP
 from mcp.shared.memory import create_connected_server_and_client_session
 
 from app.core.application import App
-from app.core.providers.config import ConfigProvider
 from app.features.mcp.config import MCPServerConfigList
 from app.features.mcp.providers import MCPProvider, _build_servers
-from lib.mcp import MCPClientContract, MCPServer, UnknownMCPServerError
+from lib.mcp import MCPClientContract, MCPServer, MCPTransport, UnknownMCPServerError
+from tests.helpers.settings import app_with, make_settings
 
 _CONFIG = """
 defaults:
@@ -48,6 +48,11 @@ async def _memory_connector(_: MCPServer) -> AsyncIterator[ClientSession]:
         yield session
 
 
+def _with_memory(app: App) -> App:
+    app.bind(MCPTransport, instance=MCPTransport(_memory_connector))
+    return app
+
+
 def test_build_servers_maps_auth_to_bearer_header() -> None:
     config = MCPServerConfigList.model_validate_json(
         json.dumps(
@@ -73,9 +78,8 @@ async def test_provider_connects_configured_servers(tmp_path: Path) -> None:
     config = tmp_path / 'huginn.yaml'
     config.write_text(_CONFIG)
 
-    container = App().build(
-        ConfigProvider(path=config),
-        MCPProvider(connector=_memory_connector),
+    container = _with_memory(app_with(make_settings(config_file=config))).build(
+        MCPProvider(),
     )
 
     async with container:
@@ -86,9 +90,9 @@ async def test_provider_connects_configured_servers(tmp_path: Path) -> None:
 
 
 async def test_provider_serves_no_servers_without_a_config_file(tmp_path: Path) -> None:
-    container = App().build(
-        ConfigProvider(path=tmp_path / 'does-not-exist.yaml'),
-        MCPProvider(connector=_memory_connector),
+    settings = make_settings(config_file=tmp_path / 'does-not-exist.yaml')
+    container = _with_memory(app_with(settings)).build(
+        MCPProvider(),
     )
 
     async with container:

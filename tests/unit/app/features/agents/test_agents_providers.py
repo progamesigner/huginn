@@ -4,7 +4,6 @@ import pytest
 
 from app.core.application import App
 from app.core.config.registry import HuginnConfig, SectionRegistry
-from app.core.providers.config import ConfigProvider
 from app.features.agents.config import AGENTS
 from app.features.agents.providers import AgentProvider
 from app.features.agents.router import Router
@@ -18,6 +17,7 @@ from app.features.tools.providers import (
 from app.features.tools.registry import ToolRegistry
 from app.features.tools.websearch.repositories import WebSearchRepository
 from lib.concurrency import TaskSupervisor
+from tests.helpers.settings import app_with, make_settings
 
 _VALID_OVERLAY = """
 defaults:
@@ -115,7 +115,10 @@ def test_agent_provider_contributes_only_its_own_sections() -> None:
 def test_agents_config_provider_accepts_valid_tool_overlay(tmp_path: Path) -> None:
     path = tmp_path / 'huginn.yaml'
     path.write_text(_VALID_OVERLAY)
-    app = App().build(ConfigProvider(path), ToolProvider(), AgentProvider())
+    app = app_with(make_settings(config_file=path)).build(
+        ToolProvider(),
+        AgentProvider(),
+    )
 
     config = app.resolve(HuginnConfig)
 
@@ -125,7 +128,10 @@ def test_agents_config_provider_accepts_valid_tool_overlay(tmp_path: Path) -> No
 def test_agents_config_provider_rejects_invalid_tool_overlay(tmp_path: Path) -> None:
     path = tmp_path / 'huginn.yaml'
     path.write_text(_INVALID_OVERLAY)
-    app = App().build(ConfigProvider(path), ToolProvider(), AgentProvider())
+    app = app_with(make_settings(config_file=path)).build(
+        ToolProvider(),
+        AgentProvider(),
+    )
 
     with pytest.raises(InvalidToolOverlayError):
         app.resolve(HuginnConfig)
@@ -136,7 +142,7 @@ def test_agent_provider_threads_a_configured_router_prompt_into_the_router(
 ) -> None:
     path = tmp_path / 'huginn.yaml'
     path.write_text(_ROUTER_PROMPT_OVERLAY)
-    app = App().build(ConfigProvider(path), AgentProvider())
+    app = app_with(make_settings(config_file=path)).build(AgentProvider())
 
     router = app.resolve(Router)
 
@@ -148,7 +154,10 @@ def test_agent_provider_leaves_the_router_prompt_unset_without_configuration(
 ) -> None:
     path = tmp_path / 'huginn.yaml'
     path.write_text(_VALID_OVERLAY)
-    app = App().build(ConfigProvider(path), ToolProvider(), AgentProvider())
+    app = app_with(make_settings(config_file=path)).build(
+        ToolProvider(),
+        AgentProvider(),
+    )
 
     router = app.resolve(Router)
 
@@ -160,7 +169,10 @@ async def test_one_router_keeps_the_shadows_and_drains_them_on_dispose(
 ) -> None:
     path = tmp_path / 'huginn.yaml'
     path.write_text(_VALID_OVERLAY)
-    app = App().build(ConfigProvider(path), ToolProvider(), AgentProvider())
+    app = app_with(make_settings(config_file=path)).build(
+        ToolProvider(),
+        AgentProvider(),
+    )
 
     router = app.resolve(Router)
 

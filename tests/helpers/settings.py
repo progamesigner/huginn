@@ -1,3 +1,4 @@
+from app.core.application import App
 from app.core.settings import HuginnSettings
 
 
@@ -14,3 +15,10 @@ def make_settings(
         values['redis_url'] = redis_url
 
     return HuginnSettings.model_validate(values)
+
+
+# NOTE: settings bound before build win over the environment, so a test pins its own
+def app_with(settings: HuginnSettings) -> App:
+    app = App()
+    app.bind(HuginnSettings, instance=settings)
+    return app

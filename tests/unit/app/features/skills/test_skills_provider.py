@@ -3,7 +3,6 @@ from pathlib import Path
 import pytest
 
 from app.core.application import App
-from app.core.providers.config import ConfigProvider
 from app.core.providers.temporal import ClockProvider
 from app.features.agents.contracts import ToolSourceRegistry
 from app.features.agents.providers import AgentProvider
@@ -11,6 +10,7 @@ from app.features.skills.exceptions import SkillsNotConfiguredError
 from app.features.skills.providers import SkillsProvider
 from app.features.skills.repositories import SkillRepository
 from app.features.skills.tools import SkillToolSource
+from tests.helpers.settings import app_with, make_settings
 
 _CONFIGURED = """
 defaults:
@@ -44,9 +44,8 @@ agents:
 
 
 def build(path: Path) -> App:
-    return App().build(
+    return app_with(make_settings(config_file=path)).build(
         AgentProvider(),
-        ConfigProvider(path=path),
         ClockProvider(),
         SkillsProvider(),
     )

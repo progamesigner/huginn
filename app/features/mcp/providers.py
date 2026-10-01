@@ -9,10 +9,10 @@ from app.features.agents.providers import AgentProvider
 from lib.container import ContainerContract, ProviderContract
 from lib.http import HTTPClientContract
 from lib.mcp import (
-    Connector,
     MCPClientContract,
     MCPManager,
     MCPServer,
+    MCPTransport,
     streamable_http_connector,
 )
 
@@ -34,6 +34,12 @@ def _headers(server: MCPServerConfig) -> dict[str, str]:
     return {'Authorization': f'Bearer {server.auth.get_secret_value()}'}
 
 
+def _transport(container: ContainerContract) -> MCPTransport:
+    return MCPTransport(
+        streamable_http_connector(container.resolve(HTTPClientContract)),
+    )
+
+
 class MCPConfigProvider(ProviderContract):
     dependencies = (AgentProvider, ConfigProvider)
 
@@ -45,13 +51,11 @@ class MCPConfigProvider(ProviderContract):
 class MCPProvider(ProviderContract):
     dependencies = (HTTPClientProvider, MCPConfigProvider)
 
-    connector: Connector | None
-
-    def __init__(self, connector: Connector | None = None) -> None:
-        self.connector = connector
-
     @override
     def __call__(self, container: ContainerContract) -> None:
+        # NOTE: a transport bound before build wins, which is how tests dial in memory
+        if not container.bound(MCPTransport):
+            container.bind(MCPTransport, factory=_transport, shared=True)
         container.bind(
             MCPClientContract,
             factory=self._build,
@@ -63,9 +67,7 @@ class MCPProvider(ProviderContract):
         )
 
     def _build(self, container: ContainerContract) -> MCPManager:
-        connector = self.connector or streamable_http_connector(
-            container.resolve(HTTPClientContract),
-        )
+        connector = container.resolve(MCPTransport).connector
 
         try:
             config = container.resolve(HuginnConfig)

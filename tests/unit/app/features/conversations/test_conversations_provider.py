@@ -1,16 +1,13 @@
 from pathlib import Path
 
-from app.core.application import App
 from app.core.config.registry import HuginnConfig
-from app.core.providers.config import ConfigProvider
-from app.core.providers.settings import SettingsProvider
 from app.features.blobs.contracts import BlobReferenceRegistry, BlobStoreContract
 from app.features.blobs.services import BlobService
 from app.features.conversations.config import COMPACTION
 from app.features.conversations.providers import ConversationProvider
 from app.features.conversations.repositories import ConversationRepository
 from lib.database import DatabaseContract
-from tests.helpers.settings import make_settings
+from tests.helpers.settings import app_with, make_settings
 
 _URL = 'postgresql+asyncpg://user:pass@localhost/huginn'
 
@@ -28,7 +25,7 @@ agents:
 
 async def test_repositories_are_built_per_transaction_not_bound() -> None:
     settings = make_settings(database_url=_URL)
-    container = App().build(SettingsProvider(settings), ConversationProvider())
+    container = app_with(settings).build(ConversationProvider())
 
     assert not container.bound(ConversationRepository)
 
@@ -37,7 +34,7 @@ async def test_repositories_are_built_per_transaction_not_bound() -> None:
 
 async def test_the_blob_store_resolves_without_a_transaction() -> None:
     settings = make_settings(database_url=_URL)
-    container = App().build(SettingsProvider(settings), ConversationProvider())
+    container = app_with(settings).build(ConversationProvider())
 
     # NOTE: a turn's tools resolve this from the root, so it opens its own session
     store = container.resolve(BlobStoreContract)
@@ -49,7 +46,7 @@ async def test_the_blob_store_resolves_without_a_transaction() -> None:
 
 async def test_conversations_answer_which_blobs_they_still_reference() -> None:
     settings = make_settings(database_url=_URL)
-    container = App().build(SettingsProvider(settings), ConversationProvider())
+    container = app_with(settings).build(ConversationProvider())
 
     async with container.resolve(DatabaseContract).session() as session:
         references = container.resolve(BlobReferenceRegistry).for_session(session)
@@ -67,9 +64,7 @@ async def test_conversations_config_provider_threads_a_configured_summary_prompt
     path = tmp_path / 'huginn.yaml'
     path.write_text(_COMPACTION_OVERLAY)
     settings = make_settings(database_url=_URL)
-    container = App().build(
-        SettingsProvider(settings),
-        ConfigProvider(path),
+    container = app_with(settings.model_copy(update={'config_file': path})).build(
         ConversationProvider(),
     )
 

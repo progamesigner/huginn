@@ -11,6 +11,7 @@ from pydantic import BaseModel, ConfigDict
 from sqlalchemy.orm import configure_mappers
 
 from app.core import exceptions
+from lib.container import ProviderContract
 from tests.helpers.schemas import mapped_tables
 
 # Features sit in tiers, outermost first. A feature may only import from a strictly
@@ -514,6 +515,36 @@ def test_orm_mappers_resolve_once_every_schema_is_imported() -> None:
     assert mapped_tables()
 
     configure_mappers()
+
+
+def _providers() -> Iterator[type[ProviderContract]]:
+    for root in ('app', 'bin'):
+        base = _source_root(root)
+        for path in sorted(base.rglob('*.py')):
+            if 'providers' not in {*path.relative_to(base).parts[:-1], path.stem}:
+                continue
+            module = import_module(f'{_package_of(path, base, root)}.{path.stem}')
+            yield from (
+                value
+                for value in vars(module).values()
+                if inspect.isclass(value)
+                and issubclass(value, ProviderContract)
+                and value.__module__ == module.__name__
+            )
+
+
+def test_providers_take_no_construction_arguments() -> None:
+    # NOTE: options come from settings, so a provider is wired the same wherever it
+    # is pulled in transitively and nothing has to list it just to pass an argument
+    providers = list(_providers())
+    violations = [
+        provider.__qualname__
+        for provider in providers
+        if inspect.signature(provider).parameters
+    ]
+
+    assert providers, 'no provider found; the check would pass vacuously'
+    assert not violations, 'providers taking arguments:\n' + '\n'.join(violations)
 
 
 def test_every_package_carries_an_init_module() -> None:

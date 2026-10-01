@@ -16,7 +16,7 @@ from app.features.tools.registry import ToolRegistry
 from app.providers import HuginnEndpointProvider, HuginnProvider
 from bin.server import ServerOptions, build, create
 from lib.router import RouterContract, RouterManager
-from tests.helpers.settings import make_settings
+from tests.helpers.settings import app_with, make_settings
 
 
 def test_create_resolves_router_manager() -> None:
@@ -31,11 +31,9 @@ def test_create_resolves_router_manager() -> None:
 
 def create_with_settings(settings: HuginnSettings) -> ASGIApp:
     return (
-        App()
+        app_with(settings)
         .build(
-            SettingsProvider(settings),
             BootstrapProvider(),
-            RouterProvider(excludes=frozenset({'/healthz', '/readyz'})),
             HuginnProvider(),
             HuginnEndpointProvider(),
         )

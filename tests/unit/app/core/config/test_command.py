@@ -6,11 +6,10 @@ from typer.testing import CliRunner, Result
 
 from app.core.application import App
 from app.core.providers.bootstrap import BootstrapProvider
-from app.core.providers.settings import SettingsProvider
 from app.core.settings import HuginnSettings
 from app.providers import HuginnCommandProvider, HuginnProvider
 from lib.command import CommandContract
-from tests.helpers.settings import make_settings
+from tests.helpers.settings import app_with, make_settings
 
 runner = CliRunner()
 
@@ -44,8 +43,7 @@ def invoke_cli(
     arguments: list[str],
     settings: HuginnSettings | None = None,
 ) -> Result:
-    container = App().build(
-        SettingsProvider(settings),
+    container = (App() if settings is None else app_with(settings)).build(
         BootstrapProvider(),
         HuginnProvider(),
         HuginnCommandProvider(),

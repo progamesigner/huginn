@@ -1,15 +1,13 @@
 import pytest
 
-from app.core.application import App
 from app.core.providers.redis import RedisProvider
-from app.core.providers.settings import SettingsProvider
 from lib.redis import RedisContract, RedisError, RedisManager
-from tests.helpers.settings import make_settings
+from tests.helpers.settings import app_with, make_settings
 
 
 def test_provider_binds_shared_manager() -> None:
     settings = make_settings(redis_url='redis://cache:6379/2')
-    container = App().build(SettingsProvider(settings), RedisProvider())
+    container = app_with(settings).build(RedisProvider())
     manager = container.resolve(RedisContract)
 
     assert isinstance(manager, RedisManager)
@@ -18,8 +16,7 @@ def test_provider_binds_shared_manager() -> None:
 
 
 def test_provider_defers_missing_url_until_resolution() -> None:
-    container = App().build(
-        SettingsProvider(make_settings()),
+    container = app_with(make_settings()).build(
         RedisProvider(),
     )
 
