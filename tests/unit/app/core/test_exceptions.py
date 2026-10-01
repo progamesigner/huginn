@@ -1,70 +1,26 @@
-import pytest
-
-from app.core.exceptions import AppError
-
-
-def test_reason_is_derived_from_class_name() -> None:
-    class ConversationNotFoundError(AppError):
-        status = 404
-        code = 9001
-
-    assert ConversationNotFoundError.reason == 'CONVERSATION_NOT_FOUND'
+from app.core.codespaces import Code
+from app.core.exceptions import AppError, InternalServerError, UnauthorizedError
 
 
-def test_reason_derivation_handles_acronyms() -> None:
-    class LLMTimeoutError(AppError):
-        status = 504
-        code = 9002
-
-    assert LLMTimeoutError.reason == 'LLM_TIMEOUT'
+def test_code_carries_both_the_number_and_the_error_name() -> None:
+    assert int(Code.CONVERSATION_BUSY) == 3
+    assert Code.CONVERSATION_BUSY.name == 'CONVERSATION_BUSY'
 
 
-def test_reason_can_be_overridden_explicitly() -> None:
-    class WeirdError(AppError):
-        status = 400
-        code = 9003
-        reason = 'CUSTOM_REASON'
-
-    assert WeirdError.reason == 'CUSTOM_REASON'
+def test_existing_codes_keep_their_numbers_and_names() -> None:
+    assert InternalServerError.code == 0
+    assert InternalServerError.code.name == 'UNKNOWN_ERROR'
+    assert UnauthorizedError.code == 1
+    assert UnauthorizedError.code.name == 'UNAUTHORIZED'
 
 
-def test_duplicate_code_raises_at_class_creation() -> None:
-    class FirstError(AppError):
-        status = 400
-        code = 9004
+def test_app_error_keeps_its_message_and_headers() -> None:
+    class ExampleError(AppError):
+        status = 418
+        code = Code.UNKNOWN_ERROR
 
-    with pytest.raises(TypeError):
+    error = ExampleError('teapot', headers={'Retry-After': '1'})
 
-        class SecondError(AppError):
-            status = 400
-            code = 9004
-
-
-def test_codespace_accepts_codes_within_range() -> None:
-    class FeatureError(AppError):
-        codespace = range(9100, 9200)
-
-    class InRangeError(FeatureError):
-        status = 400
-        code = 9150
-
-    assert InRangeError.code == 9150
-
-
-def test_codespace_rejects_codes_outside_range() -> None:
-    class OtherFeatureError(AppError):
-        codespace = range(9200, 9300)
-
-    with pytest.raises(TypeError):
-
-        class OutOfRangeError(OtherFeatureError):
-            status = 400
-            code = 9999
-
-
-def test_subclass_without_codespace_is_unrestricted() -> None:
-    class UnrestrictedError(AppError):
-        status = 400
-        code = 9400
-
-    assert UnrestrictedError.code == 9400
+    assert str(error) == 'teapot'
+    assert error.message == 'teapot'
+    assert error.headers == {'Retry-After': '1'}

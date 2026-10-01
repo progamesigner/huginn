@@ -1,5 +1,6 @@
 from fastapi import APIRouter as Router
 from fastapi import Request
+from fastapi.exceptions import RequestValidationError
 from fastapi.params import (
     Body,
     Cookie,
@@ -48,6 +49,7 @@ __all__ = [
     'Query',
     'RedirectResponse',
     'Request',
+    'RequestValidationError',
     'Response',
     'Router',
     'RouterContract',

@@ -353,7 +353,7 @@ async def test_a_request_for_an_agent_the_key_may_not_use_is_forbidden() -> None
         )
 
     assert response.status_code == 403
-    assert response.json()['reason'] == 'FORBIDDEN_AGENT'
+    assert response.json()['error'] == 'FORBIDDEN_AGENT'
     assert turns.requests == []
 
 
@@ -368,7 +368,7 @@ async def test_a_key_that_pins_no_agent_and_cannot_route_is_a_bad_request() -> N
         )
 
     assert response.status_code == 400
-    assert response.json()['reason'] == 'UNROUTABLE_REQUEST'
+    assert response.json()['error'] == 'UNROUTABLE_REQUEST'
     assert turns.requests == []
 
 
@@ -441,7 +441,7 @@ async def test_a_second_turn_on_a_busy_conversation_is_rejected() -> None:
         )
 
     assert response.status_code == 409
-    assert response.json()['reason'] == 'CONVERSATION_BUSY'
+    assert response.json()['error'] == 'CONVERSATION_BUSY'
     assert turns.requests == []
 
 

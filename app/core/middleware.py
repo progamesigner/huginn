@@ -12,7 +12,10 @@ class RequestContextMiddleware:
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
         if scope['type'] == 'http' and scope['path'] not in self.excludes:
+            request_id = uuid4().hex[:12]
+            # NOTE: the error envelope reads it off the request, not the log context
+            scope.setdefault('state', {})['request_id'] = request_id
             clear_contextvars()
-            bind_contextvars(request_id=uuid4().hex[:12])
+            bind_contextvars(request_id=request_id)
 
         await self.app(scope, receive, send)

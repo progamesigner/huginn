@@ -88,7 +88,7 @@ async def test_an_unknown_token_is_unauthorized() -> None:
     response = await fetch(build_app(auth), {'Authorization': 'Bearer wrong'})
 
     assert response.status_code == 401
-    assert response.json()['reason'] == 'UNAUTHORIZED'
+    assert response.json()['error'] == 'UNAUTHORIZED'
     assert response.headers['WWW-Authenticate'] == 'Bearer'
 
 

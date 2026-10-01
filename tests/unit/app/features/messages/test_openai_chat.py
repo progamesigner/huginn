@@ -129,7 +129,7 @@ async def test_a_failed_turn_without_streaming_is_a_real_error_status() -> None:
         )
 
     assert response.status_code == 500
-    assert response.json()['reason'] == 'TURN_FAILED'
+    assert response.json()['error'] == 'TURN_FAILED'
 
 
 async def test_a_failed_openai_stream_carries_an_error_object() -> None:

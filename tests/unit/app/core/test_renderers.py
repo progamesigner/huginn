@@ -1,9 +1,17 @@
 import httpx
+from pydantic import BaseModel
+from starlette.middleware import Middleware
 from starlette.types import ASGIApp
 
-from app.core.exceptions import AppError, InternalServerError
-from app.core.renderers import render_app_error, render_unexpected_error
-from lib.router import Router, RouterManager
+from app.core.codespaces import Code
+from app.core.exceptions import AppError
+from app.core.middleware import RequestContextMiddleware
+from app.core.renderers import (
+    render_app_error,
+    render_unexpected_error,
+    render_validation_error,
+)
+from lib.router import RequestValidationError, Router, RouterManager
 
 
 async def fetch(
@@ -11,12 +19,15 @@ async def fetch(
     path: str,
     *,
     raise_app_exceptions: bool = True,
+    json: object = None,
 ) -> httpx.Response:
     transport = httpx.ASGITransport(app=app, raise_app_exceptions=raise_app_exceptions)
     async with httpx.AsyncClient(
         transport=transport,
         base_url='http://huginn',
     ) as client:
+        if json is not None:
+            return await client.post(path, json=json)
         return await client.get(path)
 
 
@@ -24,8 +35,10 @@ def app_with(router: Router) -> ASGIApp:
     manager = RouterManager(
         exception_handlers={
             AppError: render_app_error,
+            RequestValidationError: render_validation_error,
             Exception: render_unexpected_error,
         },
+        middlewares=[Middleware(RequestContextMiddleware)],
     )
     manager.include(router)
     return manager.app
@@ -34,29 +47,28 @@ def app_with(router: Router) -> ASGIApp:
 async def test_app_error_becomes_envelope_response() -> None:
     class ExampleError(AppError):
         status = 418
-        code = 9500
+        code = Code.TURN_FAILED
 
     router = Router()
 
     @router.get('/boom')
     async def boom() -> None:
-        raise ExampleError('teapot', details={'reason': 'because'})
+        raise ExampleError('teapot')
 
     response = await fetch(app_with(router), '/boom')
 
     assert response.status_code == 418
-    assert response.json() == {
-        'code': 9500,
-        'reason': 'EXAMPLE',
-        'message': 'teapot',
-        'details': {'reason': 'because'},
-    }
+    body = response.json()
+    request_id = body.pop('request_id')
+    assert body == {'code': 5, 'error': 'TURN_FAILED', 'message': 'teapot'}
+    assert isinstance(request_id, str)
+    assert request_id
 
 
 async def test_app_error_headers_are_applied_to_response() -> None:
     class RateLimitedError(AppError):
         status = 429
-        code = 9501
+        code = Code.UNKNOWN_ERROR
 
     router = Router()
 
@@ -73,7 +85,7 @@ async def test_app_error_headers_are_applied_to_response() -> None:
 async def test_app_error_without_headers_omits_extra_headers() -> None:
     class PlainError(AppError):
         status = 400
-        code = 9502
+        code = Code.UNKNOWN_ERROR
 
     router = Router()
 
@@ -98,10 +110,30 @@ async def test_unexpected_exception_becomes_generic_envelope() -> None:
 
     assert response.status_code == 500
     body = response.json()
+    body.pop('request_id')
     assert body == {
-        'code': InternalServerError.code,
-        'reason': 'UNKNOWN_ERROR',
+        'code': 0,
+        'error': 'UNKNOWN_ERROR',
         'message': 'internal server error',
-        'details': None,
     }
     assert 'leaked secret' not in response.text
+
+
+async def test_validation_error_alone_carries_details_without_the_input() -> None:
+    class Payload(BaseModel):
+        count: int
+
+    router = Router()
+
+    @router.post('/count')
+    async def count(payload: Payload) -> int:
+        return payload.count
+
+    response = await fetch(app_with(router), '/count', json={'count': 'secret-ish'})
+
+    assert response.status_code == 422
+    body = response.json()
+    assert body['code'] == 6
+    assert body['error'] == 'INVALID_REQUEST'
+    assert body['details'][0]['loc'] == ['body', 'count']
+    assert 'secret-ish' not in response.text

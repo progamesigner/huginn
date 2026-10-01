@@ -7,10 +7,14 @@ from starlette.middleware import Middleware
 
 from app.core.exceptions import AppError
 from app.core.middleware import RequestContextMiddleware
-from app.core.renderers import render_app_error, render_unexpected_error
+from app.core.renderers import (
+    render_app_error,
+    render_unexpected_error,
+    render_validation_error,
+)
 from app.core.settings import HuginnSettings
 from lib.container import ContainerContract, ProviderContract
-from lib.router import RouterContract, RouterManager
+from lib.router import RequestValidationError, RouterContract, RouterManager
 
 from .logging import LoggingProvider
 from .settings import SettingsProvider
@@ -35,6 +39,7 @@ class RouterProvider(ProviderContract):
             docs=develop,
             exception_handlers={
                 AppError: render_app_error,
+                RequestValidationError: render_validation_error,
                 Exception: render_unexpected_error,
             },
             lifespan=lifespan,

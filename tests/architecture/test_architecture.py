@@ -406,6 +406,29 @@ def test_core_exceptions_hosts_only_app_error_family() -> None:
     assert all(issubclass(member, exceptions.AppError) for member in defined)
 
 
+def test_every_app_error_answers_with_its_own_code() -> None:
+    def family(error: type[exceptions.AppError]) -> Iterator[type[exceptions.AppError]]:
+        for child in error.__subclasses__():
+            yield child
+            yield from family(child)
+
+    for path in sorted(_features_dir().rglob('exceptions.py')):
+        import_module(
+            f'{_package_of(path, _features_dir(), FEATURES_PACKAGE)}.exceptions',
+        )
+
+    owners = {}
+    clashes = [
+        f'{error.__qualname__} reuses {error.code.name} of {owner.__qualname__}'
+        for error in family(exceptions.AppError)
+        if error.__module__.startswith('app.')
+        and (owner := owners.setdefault(error.code, error)) is not error
+    ]
+
+    assert owners, 'no AppError found; the check would pass vacuously'
+    assert not clashes, 'codes shared between errors:\n' + '\n'.join(clashes)
+
+
 def test_feature_package_inits_are_empty_or_relative_reexports() -> None:
     root = _features_dir()
     offenders = [
