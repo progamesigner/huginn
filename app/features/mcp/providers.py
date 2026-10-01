@@ -4,6 +4,7 @@ from app.core.config.exceptions import MissingConfigFileError
 from app.core.config.registry import HuginnConfig
 from app.core.providers.config import ConfigProvider
 from app.core.providers.http import HTTPClientProvider
+from app.features.agents.providers import AgentProvider
 from lib.container import ContainerContract, ProviderContract
 from lib.http import HTTPClientContract
 from lib.mcp import (
@@ -38,7 +39,7 @@ def _transport(container: ContainerContract) -> MCPTransport:
 
 
 class MCPProvider(ProviderContract):
-    dependencies = (ConfigProvider, HTTPClientProvider)
+    dependencies = (AgentProvider, ConfigProvider, HTTPClientProvider)
 
     @override
     def __call__(self, container: ContainerContract) -> None:

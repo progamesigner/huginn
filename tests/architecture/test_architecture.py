@@ -4,6 +4,7 @@ import inspect
 from collections.abc import Iterable, Iterator, Sequence
 from dataclasses import dataclass, fields, is_dataclass
 from datetime import timedelta
+from functools import cache
 from importlib import import_module
 from pathlib import Path
 
@@ -14,18 +15,6 @@ from app.core import exceptions
 from lib.container import ProviderContract
 from tests.helpers.records import mapped_tables
 
-# Features sit in tiers, outermost first. A feature may only import from a strictly
-# lower tier, which keeps the feature graph a DAG however many features get added; a
-# feature absent from this list may not cross the feature boundary at all.
-FEATURE_TIERS: tuple[frozenset[str], ...] = (
-    frozenset({'channels', 'messages', 'skills', 'tools'}),
-    frozenset({'auth'}),
-    frozenset({'conversations'}),
-    frozenset({'identities'}),
-    frozenset({'mcp'}),
-    frozenset({'agents'}),
-    frozenset({'blobs'}),
-)
 # A feature's public face: what it declares and how it is wired, never how it works.
 # There is no exception list; a feature that needs more than this needs a contract on
 # the other side. Config is public because a section validates its references into
@@ -113,11 +102,47 @@ def _import_targets(source: str, package: str) -> Iterator[str]:
                 yield node.module
 
 
-def _tier_of(feature: str) -> int | None:
-    return next(
-        (index for index, tier in enumerate(FEATURE_TIERS) if feature in tier),
-        None,
+def _feature_of(module: str) -> str | None:
+    parts = module.split('.')
+    return (
+        parts[2]
+        if parts[:2] == FEATURES_PACKAGE.split('.') and len(parts) > 2
+        else None
     )
+
+
+# NOTE: a feature may name another only if its providers already depend on that one's;
+# the wiring is declared once and the import rule reads it, so the two cannot drift
+def _closure(provider: type[ProviderContract]) -> set[type[ProviderContract]]:
+    seen = set()
+    pending = list(provider.dependencies)
+    while pending:
+        if (dependency := pending.pop()) in seen:
+            continue
+        seen.add(dependency)
+        pending.extend(dependency.dependencies)
+
+    return seen
+
+
+@cache
+def _feature_reach() -> dict[str, frozenset[str]]:
+    owned = [
+        (feature, provider)
+        for provider in _providers()
+        if (feature := _feature_of(provider.__module__)) is not None
+    ]
+
+    return {
+        feature: frozenset(
+            other
+            for owner, provider in owned
+            if owner == feature
+            for dependency in _closure(provider)
+            if (other := _feature_of(dependency.__module__)) not in (None, feature)
+        )
+        for feature in {feature for feature, _ in owned}
+    }
 
 
 def _cross_feature_violation(feature: str, target: str) -> str | None:
@@ -133,14 +158,10 @@ def _cross_feature_violation(feature: str, target: str) -> str | None:
         return f'{target}: cross-feature import must name a submodule, not the package root'
 
     slice_ = rest.split('.')[0]
-    mine, theirs = _tier_of(feature), _tier_of(imported)
-    if mine is None or theirs is None:
-        return f'{target}: {feature} and {imported} must both appear in FEATURE_TIERS'
-
-    if mine >= theirs:
+    if imported not in _feature_reach().get(feature, frozenset()):
         return (
             f'{target}: {feature} may not import {imported};'
-            f' feature tiers run outermost first and imports must go strictly down'
+            f' no provider of {feature} depends on a provider of {imported}'
         )
 
     if slice_ not in SHARED_SLICES:
@@ -438,7 +459,7 @@ def test_annotated_local_check_reads_the_scope_not_the_syntax() -> None:
     assert flagged('class A:\n    def f(self) -> None:\n        value: int = 1\n')
 
 
-def test_cross_feature_imports_respect_the_feature_tiers() -> None:
+def test_cross_feature_imports_follow_provider_dependencies() -> None:
     root = _features_dir()
     violations = []
 
@@ -458,7 +479,7 @@ def test_cross_feature_imports_respect_the_feature_tiers() -> None:
     assert not violations, 'cross-feature import violations:\n' + '\n'.join(violations)
 
 
-def test_cross_feature_tier_check_allows_the_public_face_downward() -> None:
+def test_cross_feature_check_allows_the_public_face_of_a_dependency() -> None:
     assert _cross_feature_violation('agents', 'app.features.agents.config') is None
     assert _cross_feature_violation('agents', 'lib.llm') is None
     assert _cross_feature_violation('channels', 'app.features.agents.config') is None
@@ -468,26 +489,26 @@ def test_cross_feature_tier_check_allows_the_public_face_downward() -> None:
     assert _cross_feature_violation('skills', 'app.features.mcp.providers') is None
 
 
-def test_cross_feature_tier_check_flags_violations() -> None:
+def test_cross_feature_check_flags_violations() -> None:
     # the package root hides which slice is really being used
     assert _cross_feature_violation('tools', 'app.features.agents') is not None
-    # upward: every capability sits above agents, so agents must not reach back up
+    # against the wiring: agents depends on no capability, so it must not reach one
     assert _cross_feature_violation('agents', 'app.features.tools.registry') is not None
     assert (
         _cross_feature_violation('agents', 'app.features.skills.repositories')
         is not None
     )
-    # sideways: two adapters in the same tier must not know each other
+    # unrelated: no provider of channels depends on skills
     assert (
         _cross_feature_violation('channels', 'app.features.skills.entities') is not None
     )
     # downward but too deep: services is an implementation slice, not vocabulary
     assert _cross_feature_violation('tools', 'app.features.agents.services') is not None
-    # unplaced features are denied outright
+    # a feature whose providers depend on no other feature reaches none
     assert (
         _cross_feature_violation('probes', 'app.features.agents.entities') is not None
     )
-    # agents is the innermost tier: nothing sits below it, so it stays sealed
+    # agents depends on no other feature, so it stays sealed
     users = 'app.features.identities.sources.sqlalchemy'
 
     assert _cross_feature_violation('agents', users) is not None
@@ -500,6 +521,19 @@ def test_cross_feature_tier_check_flags_violations() -> None:
         _cross_feature_violation('channels', 'app.features.conversations.repositories')
         is not None
     )
+
+
+def test_feature_dependencies_form_a_dag() -> None:
+    reach = _feature_reach()
+    cycles = sorted(
+        f'{feature} <-> {other}'
+        for feature, others in reach.items()
+        for other in others
+        if feature < other and feature in reach.get(other, frozenset())
+    )
+
+    assert reach, 'no feature provider found; the check would pass vacuously'
+    assert not cycles, 'features depending on each other:\n' + '\n'.join(cycles)
 
 
 def test_orm_mappers_resolve_once_every_record_is_imported() -> None:

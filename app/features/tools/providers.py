@@ -1,6 +1,8 @@
 from typing import override
 
 from app.core.providers.http import HTTPClientProvider
+from app.features.agents.providers import AgentProvider
+from app.features.blobs.providers import BlobProvider
 from lib.container import ContainerContract, ProviderContract
 
 from .registry import ToolKind, ToolRegistry
@@ -18,7 +20,12 @@ class ToolRegistryProvider(ProviderContract):
 
 
 class ToolProvider(ProviderContract):
-    dependencies = (HTTPClientProvider, ToolRegistryProvider)
+    dependencies = (
+        AgentProvider,
+        BlobProvider,
+        HTTPClientProvider,
+        ToolRegistryProvider,
+    )
 
     @override
     def __call__(self, container: ContainerContract) -> None:
