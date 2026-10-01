@@ -1,10 +1,8 @@
 import asyncio
-import logging
 from dataclasses import dataclass
 
 from lib.documents import DocumentExtractionError, extract
-
-logger = logging.getLogger(__name__)
+from lib.observability import Logger
 
 _PREVIEW = 2000
 
@@ -20,6 +18,8 @@ async def read_document(
     data: bytes,
     name: str | None,
     hint: str,
+    *,
+    logger: Logger,
 ) -> DocumentReading:
     try:
         extracted = await asyncio.to_thread(extract, mime, data, name)

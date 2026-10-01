@@ -6,6 +6,7 @@ from pydantic import JsonValue
 
 from app.features.skills.sources.muninn import MuninnSkillSource
 from lib.mcp import MCPClientContract, MCPToolInfo
+from tests.helpers.logging import make_logger
 
 _INCIDENT = """---
 name: create-incident-report
@@ -63,6 +64,7 @@ def source() -> tuple[MuninnSkillSource, FakeMCP]:
         client,
         'memory',
         'Agents/skills/**/SKILL.md',
+        logger=make_logger(),
     )
     return skills, client
 

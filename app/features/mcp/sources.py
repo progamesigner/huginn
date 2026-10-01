@@ -1,20 +1,25 @@
-import logging
 from typing import override
 
 from app.features.agents.config import AgentConfig
 from app.features.agents.contracts import ToolHarvest, ToolSource
 from app.features.agents.entities import TurnScope, resolve_bindings
 from lib.mcp import MCPClientContract, MCPError
+from lib.observability import Logger
 
 from .bridge import build_mcp_tools
 
-logger = logging.getLogger(__name__)
-
 
 class MCPToolSource(ToolSource):
+    logger: Logger
     client: MCPClientContract
 
-    def __init__(self, client: MCPClientContract) -> None:
+    def __init__(
+        self,
+        client: MCPClientContract,
+        *,
+        logger: Logger,
+    ) -> None:
+        self.logger = logger.bind(component='mcp')
         self.client = client
 
     @override
@@ -24,7 +29,7 @@ class MCPToolSource(ToolSource):
         for ref in agent.mcp:
             inject = resolve_bindings(ref.inject, ref.bind, scope)
             if inject is None:
-                logger.info(
+                self.logger.info(
                     'mcp server %r omitted because bound keys are unavailable: %s',
                     ref.server,
                     ', '.join(sorted(ref.bind)),
@@ -33,7 +38,7 @@ class MCPToolSource(ToolSource):
             try:
                 infos = await self.client.list_tools(ref.server)
             except MCPError as error:
-                logger.warning(
+                self.logger.warning(
                     'agent references mcp server %r which is unavailable;'
                     ' skipping (%s)',
                     ref.server,
@@ -50,7 +55,7 @@ class MCPToolSource(ToolSource):
                 inject,
             )
             if not tools:
-                logger.warning(
+                self.logger.warning(
                     'mcp server %r contributed no tools for this agent (allow=%s)',
                     ref.server,
                     list(ref.allow),

@@ -6,9 +6,11 @@ from app.core.config.registry import HuginnConfig
 from lib.container import ContainerContract, ProviderContract
 from lib.decision import DecisionContract, DecisionManager, DecisionProviderConfig
 from lib.http import HTTPClientContract
+from lib.observability import Logger
 
 from .config import ConfigProvider
 from .http import HTTPClientProvider
+from .logging import LoggingProvider
 from .settings import SettingsProvider
 
 
@@ -29,7 +31,12 @@ def _build_providers(
 
 
 class DecisionProvider(ProviderContract):
-    dependencies = (SettingsProvider, HTTPClientProvider, ConfigProvider)
+    dependencies = (
+        ConfigProvider,
+        HTTPClientProvider,
+        LoggingProvider,
+        SettingsProvider,
+    )
 
     @override
     def __call__(self, container: ContainerContract) -> None:
@@ -44,4 +51,5 @@ class DecisionProvider(ProviderContract):
         return DecisionManager(
             _build_providers(decision_providers(config)),
             container.resolve(HTTPClientContract),
+            logger=container.resolve(Logger).bind(component='decision'),
         )

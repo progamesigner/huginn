@@ -24,6 +24,7 @@ from app.features.identities.entities import (
     LinkedPrincipal,
     Principal,
 )
+from tests.helpers.logging import make_logger
 from tests.helpers.replies import RecordingReply
 
 _LINKED = UUID('00000000-0000-7000-8000-000000000001')
@@ -238,6 +239,7 @@ def make_processor(
         gateway=lambda _: gateway,
         transcription=transcription or FakeTranscription(),
         commands=commands or registry(),
+        logger=make_logger(),
     )
 
 

@@ -1,4 +1,3 @@
-import logging
 from collections.abc import Callable, Mapping, Sequence
 from typing import Annotated, override
 
@@ -13,12 +12,11 @@ from app.features.agents.contracts import (
     TypedTool,
 )
 from app.features.agents.entities import TurnScope, resolve_bindings
+from lib.observability import Logger
 
 from .config import SkillsSourceConfig
 from .entities import SkillMeta
 from .repositories import SkillRepository
-
-logger = logging.getLogger(__name__)
 
 _LIBRARY = 'skills'
 
@@ -93,6 +91,7 @@ class SkillTool(TypedTool[SkillParams]):
 
 
 class SkillToolSource(ToolSource):
+    logger: Logger
     config: SkillsSourceConfig
     repository: Callable[[], SkillRepository]
 
@@ -100,7 +99,10 @@ class SkillToolSource(ToolSource):
         self,
         repository: Callable[[], SkillRepository],
         config: SkillsSourceConfig,
+        *,
+        logger: Logger,
     ) -> None:
+        self.logger = logger.bind(component='skills')
         self.config = config
         self.repository = repository
 
@@ -111,7 +113,7 @@ class SkillToolSource(ToolSource):
 
         inject = resolve_bindings(self.config.inject, self.config.bind, scope)
         if inject is None:
-            logger.info(
+            self.logger.info(
                 'skill library omitted because bound keys are unavailable: %s',
                 ', '.join(sorted(self.config.bind)),
             )
@@ -124,7 +126,9 @@ class SkillToolSource(ToolSource):
                 inject,
             )
         except Exception:
-            logger.exception('Could not read the skill inventory; offering no skills')
+            self.logger.exception(
+                'Could not read the skill inventory; offering no skills',
+            )
             return ToolHarvest(unreachable=(_LIBRARY,))
 
         return ToolHarvest(tools=((tool.name, tool),))

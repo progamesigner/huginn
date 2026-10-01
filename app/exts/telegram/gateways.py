@@ -1,5 +1,4 @@
 import asyncio
-import logging
 from bisect import bisect_right
 from collections.abc import Sequence
 from datetime import timedelta
@@ -19,6 +18,7 @@ from app.contracts.channels import (
     TurnEnding,
 )
 from lib.http import HTTPClientContract
+from lib.observability import Logger
 from lib.temporal import ClockContract, Timer
 
 from .clients import TelegramClient
@@ -30,8 +30,6 @@ from .types import (
     render,
     utf16_offsets,
 )
-
-logger = logging.getLogger(__name__)
 
 # NOTE: telegram only accepts reactions from its own allowed set, and a bot holds one
 # reaction per message, so the failure replaces the ack rather than joining it
@@ -76,6 +74,7 @@ def _split(
 
 
 class TelegramReply(ChannelReplyContract):
+    logger: Logger
     client: TelegramClient
     chat_id: int | str
     clock: ClockContract
@@ -100,7 +99,9 @@ class TelegramReply(ChannelReplyContract):
         interval: timedelta = MESSAGE.edit_interval,
         limit: int = MESSAGE.length_limit,
         typing_interval: timedelta = TYPING.refresh_interval,
+        logger: Logger,
     ) -> None:
+        self.logger = logger.bind(component='telegram')
         self.client = client
         self.chat_id = chat_id
         self.clock = clock
@@ -134,14 +135,14 @@ class TelegramReply(ChannelReplyContract):
         # NOTE: stopping before the last write
         await self._stop_typing()
         await self._flush()
-        logger.info(
+        self.logger.info(
             'Finished the reply after %.3fs',
             self.opened.elapsed().total_seconds(),
         )
 
     @override
     async def on_routed(self, agent: str) -> None:
-        logger.debug('Routed the turn to agent %s', agent)
+        self.logger.debug('Routed the turn to agent %s', agent)
         self.typing = asyncio.create_task(self._keep_typing())
 
     @override
@@ -152,7 +153,7 @@ class TelegramReply(ChannelReplyContract):
 
     @override
     async def on_tool(self, name: str, phase: ToolPhase) -> None:
-        logger.debug('Tool %s %s', name, phase)
+        self.logger.debug('Tool %s %s', name, phase)
 
     @override
     async def unfinished(self, ending: TurnEnding) -> None:
@@ -165,7 +166,7 @@ class TelegramReply(ChannelReplyContract):
             if index < self.sealed:
                 continue
 
-            logger.info(
+            self.logger.info(
                 'Draft reached the %d character limit; continuing in a new message',
                 self.limit,
             )
@@ -181,7 +182,7 @@ class TelegramReply(ChannelReplyContract):
             try:
                 await self.client.send_chat_action(self.chat_id, TYPING.action)
             except Exception as error:
-                logger.debug('Stopped showing the typing status: %s', error)
+                self.logger.debug('Stopped showing the typing status: %s', error)
                 return
 
             await asyncio.sleep(self.typing_interval.total_seconds())
@@ -194,7 +195,7 @@ class TelegramReply(ChannelReplyContract):
             # message would report itself as the first one
             if not self.started:
                 self.started = True
-                logger.info(
+                self.logger.info(
                     'Sent the first draft after %.3fs',
                     self.opened.elapsed().total_seconds(),
                 )
@@ -225,7 +226,9 @@ class TelegramReply(ChannelReplyContract):
             if not entities or error.response.status_code != 400:
                 raise
 
-            logger.warning('Telegram rejected the formatting; sending it as plain text')
+            self.logger.warning(
+                'Telegram rejected the formatting; sending it as plain text',
+            )
             await self._push(text, ())
 
         self.sent = (text, entities)
@@ -233,10 +236,18 @@ class TelegramReply(ChannelReplyContract):
 
 
 class TelegramGateway(ChannelGatewayContract):
+    logger: Logger
     client: TelegramClient
     clock: ClockContract
 
-    def __init__(self, client: TelegramClient, clock: ClockContract) -> None:
+    def __init__(
+        self,
+        client: TelegramClient,
+        clock: ClockContract,
+        *,
+        logger: Logger,
+    ) -> None:
+        self.logger = logger.bind(component='telegram')
         self.client = client
         self.clock = clock
 
@@ -257,14 +268,22 @@ class TelegramGateway(ChannelGatewayContract):
 
     @override
     def reply(self, message: InboundMessage) -> ChannelReplyContract:
-        return TelegramReply(self.client, message.chat, self.clock)
+        return TelegramReply(self.client, message.chat, self.clock, logger=self.logger)
 
 
 class TelegramGatewayFactory(ChannelGatewayFactoryContract):
+    logger: Logger
     clock: ClockContract
     http: HTTPClientContract
 
-    def __init__(self, http: HTTPClientContract, clock: ClockContract) -> None:
+    def __init__(
+        self,
+        http: HTTPClientContract,
+        clock: ClockContract,
+        *,
+        logger: Logger,
+    ) -> None:
+        self.logger = logger.bind(component='telegram')
         self.clock = clock
         self.http = http
 
@@ -273,4 +292,5 @@ class TelegramGatewayFactory(ChannelGatewayFactoryContract):
         return TelegramGateway(
             TelegramClient(http=self.http, bot_token=token),
             self.clock,
+            logger=self.logger,
         )

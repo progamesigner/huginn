@@ -9,6 +9,7 @@ from app.features.agents.exceptions import DuplicateToolNameError
 from app.features.agents.tooling import ToolSet
 from app.features.tools.exceptions import DuplicateToolError, UnknownToolError
 from app.features.tools.registry import ToolKind, ToolRegistry
+from tests.helpers.logging import make_logger
 
 _SCOPE = TurnScope(actor='user:1', agent='scout', channel='support_bot', chat='1')
 
@@ -114,7 +115,7 @@ def test_config_models_maps_configless_tools_to_none() -> None:
 
 
 def test_toolset_add_rejects_duplicate_name() -> None:
-    tools = ToolSet()
+    tools = ToolSet(logger=make_logger())
     tools.add('greet', GreetTool())
 
     with pytest.raises(DuplicateToolNameError, match='greet'):
@@ -136,7 +137,7 @@ def test_params_model_returns_none_for_unknown_kind() -> None:
 
 
 def test_toolset_schemas_use_instance_names() -> None:
-    tools = ToolSet()
+    tools = ToolSet(logger=make_logger())
     tools.add('greet-a', GreetTool())
     tools.add('greet-b', GreetTool())
 

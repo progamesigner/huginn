@@ -12,6 +12,7 @@ from app.features.messages.entities import (
     TurnEvent,
 )
 from app.features.messages.streams import QueuedReply, drain
+from tests.helpers.logging import make_logger
 
 
 async def answer(reply: QueuedReply) -> None:
@@ -30,7 +31,7 @@ async def collect(events: AsyncIterator[TurnEvent]) -> list[TurnEvent]:
 async def test_a_whole_turn_arrives_in_the_order_it_happened() -> None:
     reply = QueuedReply()
 
-    events = await collect(drain(answer(reply), reply))
+    events = await collect(drain(answer(reply), reply, logger=make_logger()))
 
     assert events == [
         RoutedEvent(agent='scout'),
@@ -52,7 +53,7 @@ async def test_the_stream_ends_when_the_turn_returns() -> None:
         await reply.finish()
         recorded.append('recorded')
 
-    events = await collect(drain(turn(), reply))
+    events = await collect(drain(turn(), reply, logger=make_logger()))
 
     assert events == [DoneEvent()]
     assert recorded == ['recorded']
@@ -65,7 +66,7 @@ async def test_a_failing_turn_ends_the_stream_with_an_error() -> None:
         await reply.on_text('half an ')
         raise RuntimeError('boom')
 
-    events = await collect(drain(turn(), reply))
+    events = await collect(drain(turn(), reply, logger=make_logger()))
 
     assert events == [
         TextEvent(text='half an '),
@@ -82,7 +83,9 @@ async def test_an_idle_turn_is_kept_alive() -> None:
         await reply.finish()
 
     events = []
-    async with aclosing(drain(turn(), reply, interval=0.01)) as stream:
+    async with aclosing(
+        drain(turn(), reply, interval=0.01, logger=make_logger()),
+    ) as stream:
         async for event in stream:
             events.append(event)
             if len(events) == 2:
@@ -108,7 +111,7 @@ async def test_a_client_that_leaves_takes_the_turn_with_it() -> None:
             finished.set()
 
     async with asyncio.timeout(1):
-        async with aclosing(drain(turn(), reply)) as stream:
+        async with aclosing(drain(turn(), reply, logger=make_logger())) as stream:
             async for _ in stream:
                 break
 
@@ -127,7 +130,7 @@ async def test_the_queue_pauses_a_turn_the_reader_cannot_keep_up_with() -> None:
             written.append(index)
         await reply.finish()
 
-    async with aclosing(drain(turn(), reply)) as stream:
+    async with aclosing(drain(turn(), reply, logger=make_logger())) as stream:
         await asyncio.sleep(0)
         paused = list(written)
         events = [event async for event in stream]
@@ -162,4 +165,4 @@ async def test_a_cancelled_turn_closes_the_stream_without_a_done() -> None:
     async def turn() -> None:
         raise asyncio.CancelledError
 
-    assert await collect(drain(turn(), reply)) == []
+    assert await collect(drain(turn(), reply, logger=make_logger())) == []

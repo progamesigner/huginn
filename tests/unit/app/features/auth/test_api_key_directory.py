@@ -10,11 +10,13 @@ from app.features.auth.config import (
     ApiKeyToolsConfig,
 )
 from app.features.auth.services import ApiKeyDirectory
+from tests.helpers.logging import make_logger
 
 
 def directory(**keys: ApiKeyConfig) -> ApiKeyDirectory:
     return ApiKeyDirectory(
         HuginnConfig(sections={API_KEYS.key: ApiKeyConfigList(keys)}),
+        logger=make_logger(),
     )
 
 

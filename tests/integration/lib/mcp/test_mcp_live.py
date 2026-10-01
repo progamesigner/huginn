@@ -6,6 +6,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from lib.http import HTTPClientManager
 from lib.mcp import MCPManager, MCPServer, streamable_http_connector
+from tests.helpers.logging import make_logger
 
 pytestmark = pytest.mark.integration
 
@@ -32,7 +33,11 @@ def require_memory_server() -> MCPServer:
 
 async def test_lists_and_calls_a_read_only_tool() -> None:
     http = HTTPClientManager()
-    manager = MCPManager([require_memory_server()], streamable_http_connector(http))
+    manager = MCPManager(
+        [require_memory_server()],
+        streamable_http_connector(http),
+        logger=make_logger(),
+    )
 
     await manager.start()
     try:

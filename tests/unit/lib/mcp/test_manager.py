@@ -14,6 +14,7 @@ from lib.mcp import (
     MCPServer,
     UnknownMCPServerError,
 )
+from tests.helpers.logging import make_logger
 
 
 def _echo_server() -> FastMCP:
@@ -96,6 +97,7 @@ async def test_list_tools_maps_to_our_types() -> None:
     manager = MCPManager(
         [MCPServer('memory', 'http://memory.test')],
         _memory_connector(_echo_server()),
+        logger=make_logger(),
     )
     await manager.start()
     try:
@@ -113,6 +115,7 @@ async def test_call_tool_returns_rendered_text() -> None:
     manager = MCPManager(
         [MCPServer('memory', 'http://memory.test')],
         _memory_connector(_echo_server()),
+        logger=make_logger(),
     )
     await manager.start()
     try:
@@ -127,6 +130,7 @@ async def test_unreachable_server_degrades_without_raising() -> None:
     manager = MCPManager(
         [MCPServer('memory', 'http://memory.test')],
         _failing_connector,
+        logger=make_logger(),
     )
 
     await manager.start()
@@ -146,6 +150,7 @@ async def test_a_server_that_was_down_at_boot_is_used_once_it_answers() -> None:
         [MCPServer('memory', 'http://memory.test')],
         connector,
         cooldown=0.0,
+        logger=make_logger(),
     )
 
     await manager.start()
@@ -165,6 +170,7 @@ async def test_a_session_that_died_is_reopened_on_the_next_call() -> None:
         [MCPServer('memory', 'http://memory.test')],
         _memory_connector(_echo_server()),
         cooldown=0.0,
+        logger=make_logger(),
     )
     await manager.start()
     try:
@@ -183,6 +189,7 @@ async def test_a_dead_server_is_not_retried_until_the_cooldown_lapses() -> None:
         [MCPServer('memory', 'http://memory.test')],
         connector,
         cooldown=30.0,
+        logger=make_logger(),
     )
 
     await manager.start()
@@ -205,6 +212,7 @@ async def test_a_refresh_reopens_a_server_nobody_asked_for() -> None:
         [MCPServer('memory', 'http://memory.test')],
         connector,
         cooldown=0.0,
+        logger=make_logger(),
     )
 
     await manager.start()
@@ -223,6 +231,7 @@ async def test_a_server_that_stays_down_is_announced_once_not_once_per_attempt(
         [MCPServer('memory', 'http://memory.test')],
         _failing_connector,
         cooldown=0.0,
+        logger=make_logger(),
     )
 
     with caplog.at_level('INFO', logger='lib.mcp.manager'):
@@ -247,6 +256,7 @@ async def test_a_server_that_comes_back_says_so(
         [MCPServer('memory', 'http://memory.test')],
         connector,
         cooldown=0.0,
+        logger=make_logger(),
     )
 
     with caplog.at_level('INFO', logger='lib.mcp.manager'):
@@ -266,6 +276,7 @@ async def test_the_heartbeat_refreshes_without_anyone_asking() -> None:
         connector,
         cooldown=0.0,
         interval=0.01,
+        logger=make_logger(),
     )
 
     await manager.start()
@@ -285,6 +296,7 @@ async def test_degraded_start_logs_the_underlying_error(
     manager = MCPManager(
         [MCPServer('memory', 'http://memory.test')],
         _group_failing_connector,
+        logger=make_logger(),
     )
 
     with caplog.at_level('WARNING', logger='lib.mcp.manager'):
@@ -299,7 +311,7 @@ async def test_degraded_start_logs_the_underlying_error(
 
 
 async def test_call_unknown_server_raises() -> None:
-    manager = MCPManager([], _memory_connector(_echo_server()))
+    manager = MCPManager([], _memory_connector(_echo_server()), logger=make_logger())
     await manager.start()
     try:
         with pytest.raises(UnknownMCPServerError):

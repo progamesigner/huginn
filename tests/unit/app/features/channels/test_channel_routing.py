@@ -7,6 +7,7 @@ from app.features.channels.config import (
     routing_policy,
 )
 from lib.llm import LLMContract
+from tests.helpers.logging import make_logger
 
 
 async def test_channel_instance_can_route_directly_to_its_agent() -> None:
@@ -17,6 +18,7 @@ async def test_channel_instance_can_route_directly_to_its_agent() -> None:
     router = Router(
         agents={'scout': scout},
         llm=cast(LLMContract, object()),
+        logger=make_logger(),
     )
 
     resolved = await router.resolve(

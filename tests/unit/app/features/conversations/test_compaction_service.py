@@ -17,6 +17,7 @@ from lib.llm import (
     TextChunk,
     TextSegment,
 )
+from tests.helpers.logging import make_logger
 from tests.unit.app.features.agents.test_agent_runner import FakeLLM
 from tests.unit.app.features.conversations.test_conversation_repository import (
     FakeConversationRepository,
@@ -68,6 +69,7 @@ def build_service(
         max_retries=max_retries,
         instructions=instructions,
         instruction=instruction,
+        logger=make_logger(),
     )
 
 

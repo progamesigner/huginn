@@ -5,12 +5,16 @@ from app.core.config.registry import HuginnConfig
 from app.core.providers.config import ConfigProvider
 from app.features.agents.providers import AgentProvider
 from lib.container import ContainerContract, ProviderContract
+from lib.observability import Logger
 
 from .services import ApiKeyDirectory
 
 
 def _directory(container: ContainerContract) -> ApiKeyDirectory:
-    return ApiKeyDirectory(container.resolve(HuginnConfig))
+    return ApiKeyDirectory(
+        container.resolve(HuginnConfig),
+        logger=container.resolve(Logger),
+    )
 
 
 class AuthProvider(ProviderContract):

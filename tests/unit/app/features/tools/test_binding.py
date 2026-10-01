@@ -8,6 +8,7 @@ from app.features.agents.tooling import ToolSet
 from app.features.tools.binding import ConfiguredTool, build_bound_tool
 from app.features.tools.config import ToolConfig
 from app.features.tools.registry import ToolKind, ToolRegistry
+from tests.helpers.logging import make_logger
 
 _SCOPE = TurnScope(actor='user:1', agent='scout', channel='support_bot', chat='1')
 
@@ -119,7 +120,7 @@ def test_build_bound_tool_applies_description_override() -> None:
 
 def test_same_kind_instances_are_distinguishable_in_a_tool_set() -> None:
     registry = _registry()
-    tools = ToolSet()
+    tools = ToolSet(logger=make_logger())
     tools.add(
         'search',
         build_bound_tool(

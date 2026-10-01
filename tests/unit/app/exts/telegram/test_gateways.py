@@ -13,6 +13,7 @@ from app.exts.telegram.gateways import TelegramGateway, TelegramReply
 from app.features.agents.contracts import TurnStream
 from lib.http import HTTPClientManager
 from tests.helpers.clock import FakeClock
+from tests.helpers.logging import make_logger
 
 _BASE_URL = 'https://api.telegram.org/bottelegram-token'
 _FILE_URL = 'https://api.telegram.org/file/bottelegram-token'
@@ -31,7 +32,7 @@ def make_client() -> TelegramClient:
 
 
 def make_reply(clock: FakeClock) -> TelegramReply:
-    return TelegramReply(make_client(), _CHAT_ID, clock)
+    return TelegramReply(make_client(), _CHAT_ID, clock, logger=make_logger())
 
 
 def make_typing_reply(clock: FakeClock) -> TelegramReply:
@@ -40,6 +41,7 @@ def make_typing_reply(clock: FakeClock) -> TelegramReply:
         _CHAT_ID,
         clock,
         typing_interval=_TYPING_INTERVAL,
+        logger=make_logger(),
     )
 
 
@@ -199,7 +201,13 @@ async def test_rolls_over_into_a_new_message_at_a_line_break() -> None:
         side_effect=[message(7), message(8)],
     )
     edit = respx.post(f'{_BASE_URL}/editMessageText').mock(return_value=message(7))
-    streamer = TelegramReply(make_client(), _CHAT_ID, FakeClock(), limit=12)
+    streamer = TelegramReply(
+        make_client(),
+        _CHAT_ID,
+        FakeClock(),
+        limit=12,
+        logger=make_logger(),
+    )
 
     await drive(streamer, 'first line\nsecond line')
     await streamer.finish()
@@ -213,7 +221,13 @@ async def test_rollover_cuts_mid_token_when_there_is_no_whitespace() -> None:
     send = respx.post(f'{_BASE_URL}/sendMessage').mock(
         side_effect=[message(7), message(8)],
     )
-    streamer = TelegramReply(make_client(), _CHAT_ID, FakeClock(), limit=5)
+    streamer = TelegramReply(
+        make_client(),
+        _CHAT_ID,
+        FakeClock(),
+        limit=5,
+        logger=make_logger(),
+    )
 
     await drive(streamer, 'abcdefghij')
     await streamer.finish()
@@ -261,7 +275,13 @@ async def test_the_length_limit_is_measured_on_the_rendered_text() -> None:
     # NOTE: the heading drops '# ' and gains '📌 ', and the emoji is two utf-16 code units,
     # so a round that fits the budget as markdown does not fit it as what the reader sees
     markdown = '# Heading\n\nbody'
-    streamer = TelegramReply(make_client(), _CHAT_ID, FakeClock(), limit=len(markdown))
+    streamer = TelegramReply(
+        make_client(),
+        _CHAT_ID,
+        FakeClock(),
+        limit=len(markdown),
+        logger=make_logger(),
+    )
 
     await drive(streamer, markdown)
     await streamer.finish()
@@ -274,7 +294,13 @@ async def test_a_sealed_message_is_never_rewritten_when_more_text_arrives() -> N
     respx.post(f'{_BASE_URL}/sendMessage').mock(side_effect=[message(7), message(8)])
     edit = respx.post(f'{_BASE_URL}/editMessageText').mock(return_value=message(8))
     clock = FakeClock()
-    streamer = TelegramReply(make_client(), _CHAT_ID, clock, limit=12)
+    streamer = TelegramReply(
+        make_client(),
+        _CHAT_ID,
+        clock,
+        limit=12,
+        logger=make_logger(),
+    )
 
     # NOTE: every flush re-renders the whole round, so this is what pins the claim that a
     # re-render cannot move a boundary the reader has already been shown
@@ -293,7 +319,13 @@ async def test_an_entity_spanning_a_rollover_is_clipped_into_both_messages() -> 
     send = respx.post(f'{_BASE_URL}/sendMessage').mock(
         side_effect=[message(7), message(8)],
     )
-    streamer = TelegramReply(make_client(), _CHAT_ID, FakeClock(), limit=5)
+    streamer = TelegramReply(
+        make_client(),
+        _CHAT_ID,
+        FakeClock(),
+        limit=5,
+        logger=make_logger(),
+    )
 
     await drive(streamer, '**aaa bbb**')
     await streamer.finish()
@@ -341,7 +373,13 @@ async def test_keeps_editing_the_continuation_message_after_a_rollover() -> None
     respx.post(f'{_BASE_URL}/sendMessage').mock(side_effect=[message(7), message(8)])
     edit = respx.post(f'{_BASE_URL}/editMessageText').mock(return_value=message(8))
     clock = FakeClock()
-    streamer = TelegramReply(make_client(), _CHAT_ID, clock, limit=12)
+    streamer = TelegramReply(
+        make_client(),
+        _CHAT_ID,
+        clock,
+        limit=12,
+        logger=make_logger(),
+    )
 
     await drive(streamer, 'first line\nsecond')
     clock.advance(timedelta(seconds=1.2))
@@ -381,7 +419,13 @@ async def test_a_rollover_does_not_report_itself_as_the_first_draft(
     caplog: pytest.LogCaptureFixture,
 ) -> None:
     respx.post(f'{_BASE_URL}/sendMessage').mock(side_effect=[message(7), message(8)])
-    streamer = TelegramReply(make_client(), _CHAT_ID, FakeClock(), limit=12)
+    streamer = TelegramReply(
+        make_client(),
+        _CHAT_ID,
+        FakeClock(),
+        limit=12,
+        logger=make_logger(),
+    )
 
     with caplog.at_level('INFO'):
         await drive(streamer, 'first line\nsecond line')
@@ -545,7 +589,7 @@ def make_message(message_id: int = 31) -> InboundMessage:
 
 
 def make_gateway(clock: FakeClock) -> TelegramGateway:
-    return TelegramGateway(make_client(), clock)
+    return TelegramGateway(make_client(), clock, logger=make_logger())
 
 
 @respx.mock

@@ -1,11 +1,9 @@
 from graphlib import CycleError, TopologicalSorter
-from logging import getLogger
 from typing import Self
 
 from app.core.settings import Environment, HuginnSettings
 from lib.container import Container, ProviderContract
-
-logger = getLogger(__name__)
+from lib.observability import Logger
 
 
 class BuildError(Exception):
@@ -56,10 +54,15 @@ class App(Container):
         _reject_duplicate_providers(providers, items)
         _include_transitive_dependencies(providers, items)
 
-        for key in _sort_providers(items):
-            logger.info('Registering provider %s', key.__name__)
-            provider = items[key]
-            provider(self)
+        order = _sort_providers(items)
+        for key in order:
+            items[key](self)
+
+        # NOTE: the logger is itself wired by a provider, so the account comes after
+        if self.bound(Logger):
+            logger = self.resolve(Logger).bind(component='app')
+            for key in order:
+                logger.info('Registered provider %s', key.__name__)
 
         return self
 

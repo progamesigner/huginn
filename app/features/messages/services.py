@@ -1,4 +1,3 @@
-import logging
 from collections.abc import AsyncGenerator
 from contextlib import aclosing
 from dataclasses import dataclass
@@ -14,6 +13,7 @@ from app.features.agents.entities import (
     TurnRequest,
 )
 from lib.guid import GUIDContract
+from lib.observability import Logger
 from lib.redis import RedisContract, RedisLock
 
 from .entities import OpenedEvent, TurnEvent
@@ -23,8 +23,6 @@ from .exceptions import (
     UnroutableRequestError,
 )
 from .streams import QueuedReply, drain
-
-logger = logging.getLogger(__name__)
 
 _LOCK_TTL = timedelta(seconds=30)
 
@@ -70,6 +68,7 @@ def _policy(agent: str | None, client: ApiClient) -> RoutingPolicy:
 
 
 class ChatService:
+    logger: Logger
     guid: GUIDContract
     redis: RedisContract
     turns: TurnServiceContract
@@ -82,7 +81,9 @@ class ChatService:
         guid: GUIDContract,
         *,
         ttl: timedelta = _LOCK_TTL,
+        logger: Logger,
     ) -> None:
+        self.logger = logger.bind(component='messages')
         self.guid = guid
         self.redis = redis
         self.turns = turns
@@ -111,6 +112,7 @@ class ChatService:
             self.redis,
             f'messages:{client.key}:{thread}',
             ttl=self.ttl,
+            logger=self.logger,
         )
         if not await lock.acquire():
             raise ConversationBusyError(f'conversation {thread!r} is already answering')
@@ -131,13 +133,17 @@ class ChatService:
     async def stream(self, prepared: PreparedTurn) -> AsyncGenerator[TurnEvent]:
         reply = QueuedReply()
         await reply.events.put(OpenedEvent(conversation=prepared.conversation))
-        logger.info('Opened a turn on conversation %s', prepared.conversation)
+        self.logger.info('Opened a turn on conversation %s', prepared.conversation)
         try:
             async with (
                 prepared.lock.renew(),
-                aclosing(drain(self.turns.handle(prepared.request, reply), reply)) as (
-                    events
-                ),
+                aclosing(
+                    drain(
+                        self.turns.handle(prepared.request, reply),
+                        reply,
+                        logger=self.logger,
+                    ),
+                ) as (events),
             ):
                 async for event in events:
                     yield event

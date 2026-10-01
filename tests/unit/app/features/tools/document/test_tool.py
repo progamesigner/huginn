@@ -14,6 +14,7 @@ from app.features.tools.document.tool import ReadDocumentTool, build_read_docume
 from app.features.tools.exceptions import ToolError
 from app.features.tools.websearch.config import WebSearchToolConfig
 from lib.llm import ToolCallSegment
+from tests.helpers.logging import make_logger
 
 _SCOPE = TurnScope(actor='user:1', agent='scout', channel='support_bot', chat='1')
 
@@ -147,7 +148,10 @@ def test_the_builder_refuses_a_foreign_config() -> None:
 
 async def test_tool_set_returns_a_safe_error_without_aborting() -> None:
     blob_id = uuid4()
-    result = await ToolSet({'read_document': _tool(None, blob_id)}).execute(
+    result = await ToolSet(
+        {'read_document': _tool(None, blob_id)},
+        logger=make_logger(),
+    ).execute(
         ToolCallSegment(
             id='call-1',
             name='read_document',

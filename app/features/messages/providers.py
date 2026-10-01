@@ -9,6 +9,7 @@ from app.features.agents.providers import TurnProvider
 from app.features.auth.providers import AuthProvider
 from lib.container import ContainerContract, ProviderContract
 from lib.guid import GUIDContract
+from lib.observability import Logger
 from lib.redis import RedisContract
 from lib.router import RouterContract
 from lib.temporal import ClockContract
@@ -30,6 +31,7 @@ def _service(container: ContainerContract) -> ChatService:
         container.resolve(TurnServiceContract),
         container.resolve(RedisContract),
         container.resolve(GUIDContract),
+        logger=container.resolve(Logger),
     )
 
 

@@ -2,6 +2,7 @@ import pytest
 from pydantic import SecretStr, ValidationError
 
 from lib.llm import ModelRef, ProviderConfig, ProviderRegistry
+from tests.helpers.logging import make_logger
 
 
 def test_provider_config_defaults_to_direct_connection() -> None:
@@ -76,7 +77,7 @@ def test_registry_routes_model_to_its_provider_adapter() -> None:
         api_key=SecretStr('secret'),
         models=('gpt-5',),
     )
-    registry = ProviderRegistry((anthropic, openai))
+    registry = ProviderRegistry((anthropic, openai), logger=make_logger())
 
     resolved = registry.resolve(ModelRef(model='claude-opus-4-8'))
 
@@ -86,6 +87,6 @@ def test_registry_routes_model_to_its_provider_adapter() -> None:
 
 
 def test_registry_returns_none_for_unknown_model() -> None:
-    registry = ProviderRegistry(())
+    registry = ProviderRegistry((), logger=make_logger())
 
     assert registry.resolve(ModelRef(model='unknown-model')) is None

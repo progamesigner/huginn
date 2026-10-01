@@ -1,4 +1,3 @@
-import logging
 from collections.abc import AsyncIterator, Collection, Sequence
 from contextlib import asynccontextmanager
 from datetime import datetime
@@ -27,6 +26,7 @@ from app.features.blobs.contracts import BlobReferenceSource, BlobServiceContrac
 from lib.database import DatabaseContract
 from lib.guid import GUIDContract
 from lib.llm import LLMContract, Message, ModelRef
+from lib.observability import Logger
 from lib.temporal import ClockContract
 
 from .compaction import (
@@ -63,8 +63,6 @@ def routing_turn(turn: Turn) -> RoutingTurn:
 
 
 _TEXT = 'text'
-
-logger = logging.getLogger(__name__)
 
 
 class ConversationTranscript:
@@ -165,6 +163,7 @@ class ConversationTranscript:
 
 
 class ConversationControl(ConversationServiceContract):
+    logger: Logger
     clock: ClockContract
     config: HuginnConfig
     database: DatabaseContract
@@ -178,7 +177,10 @@ class ConversationControl(ConversationServiceContract):
         clock: ClockContract,
         llm: LLMContract,
         config: HuginnConfig,
+        *,
+        logger: Logger,
     ) -> None:
+        self.logger = logger.bind(component='conversations')
         self.clock = clock
         self.config = config
         self.database = database
@@ -197,7 +199,7 @@ class ConversationControl(ConversationServiceContract):
                 None if agent is None else self.config.section(AGENTS).root.get(agent)
             )
             if configured is None:
-                logger.warning(
+                self.logger.warning(
                     'Conversation %s has no configured latest agent %r',
                     conversation.id,
                     agent,
@@ -214,6 +216,7 @@ class ConversationControl(ConversationServiceContract):
                 repository,
                 instructions=load_instructions(configured),
                 instruction=self.config.section(COMPACTION).summary_prompt,
+                logger=self.logger,
             )
             result = await service.force(conversation, ref)
 
@@ -232,6 +235,7 @@ class ConversationControl(ConversationServiceContract):
 
 
 class ConversationTranscriptStore(TranscriptServiceContract):
+    logger: Logger
     blobs: BlobServiceContract
     clock: ClockContract
     config: HuginnConfig
@@ -247,7 +251,10 @@ class ConversationTranscriptStore(TranscriptServiceContract):
         llm: LLMContract,
         config: HuginnConfig,
         blobs: BlobServiceContract,
+        *,
+        logger: Logger,
     ) -> None:
+        self.logger = logger.bind(component='conversations')
         self.blobs = blobs
         self.clock = clock
         self.config = config
@@ -363,11 +370,12 @@ class ConversationTranscriptStore(TranscriptServiceContract):
                 repository,
                 instructions=load_instructions(configured),
                 instruction=self.config.section(COMPACTION).summary_prompt,
+                logger=self.logger,
             )
             result = await service.maybe_compact(conversation, ref)
 
         if result.compacted:
-            logger.info('Compacted conversation %s', conversation.id)
+            self.logger.info('Compacted conversation %s', conversation.id)
 
     @asynccontextmanager
     async def _open(

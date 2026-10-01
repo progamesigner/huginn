@@ -18,6 +18,7 @@ from lib.decision import (
     DecisionResult,
     DecisionTimeoutError,
 )
+from tests.helpers.logging import make_logger
 
 from .test_agent_router import FakeLLM
 
@@ -48,7 +49,7 @@ async def test_decision_only_receives_authorized_candidates(
     agents = {
         name: AgentConfig(description=name) for name in ('scout', 'fallback', 'secret')
     }
-    router = Router(agents, FakeLLM(), decisions=decisions)
+    router = Router(agents, FakeLLM(), decisions=decisions, logger=make_logger())
     policy = RoutingPolicy(
         selection=SelectionPolicy(fallback='fallback', engine='decision', model='jev'),
         allowed=frozenset(('scout', 'fallback')),
@@ -83,6 +84,7 @@ async def test_decision_failure_falls_back_without_logging_state(
         {name: AgentConfig(description=name) for name in ('a', 'b')},
         FakeLLM(),
         decisions=decisions,
+        logger=make_logger(),
     )
     selection = SelectionPolicy(fallback='a', engine='decision', model='jev')
     assert (
@@ -102,6 +104,7 @@ async def test_zero_one_and_missing_client() -> None:
         {'a': AgentConfig(description='a'), 'b': AgentConfig(description='b')},
         FakeLLM(),
         decisions=decisions,
+        logger=make_logger(),
     )
     selection = SelectionPolicy(fallback='a', engine='decision', model='jev')
     context = RoutingContext(current=(TurnPrompt(text='hi', actor='u'),))
@@ -156,7 +159,12 @@ async def test_a_decision_below_its_threshold_falls_back(
     reason: str | None,
 ) -> None:
     agents = {name: AgentConfig(description=name) for name in ('a', 'b')}
-    router = Router(agents, FakeLLM(), decisions=_answering(answer))
+    router = Router(
+        agents,
+        FakeLLM(),
+        decisions=_answering(answer),
+        logger=make_logger(),
+    )
     selection = SelectionPolicy(
         fallback='b',
         engine='decision',

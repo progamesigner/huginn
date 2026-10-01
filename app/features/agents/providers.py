@@ -12,6 +12,7 @@ from lib.concurrency import TaskSupervisor
 from lib.container import ContainerContract, ProviderContract
 from lib.decision import DecisionContract
 from lib.llm import LLMContract
+from lib.observability import Logger
 from lib.temporal import ClockContract
 
 from .config import AGENTS, DEFAULTS, DefaultsConfig
@@ -43,7 +44,12 @@ def _router(container: ContainerContract) -> Router:
         defaults,
         defaults.router_prompt,
         decisions=container.resolve(DecisionContract),
-        shadows=TaskSupervisor(limit=_SHADOW_LIMIT, grace=_SHADOW_GRACE),
+        shadows=TaskSupervisor(
+            limit=_SHADOW_LIMIT,
+            grace=_SHADOW_GRACE,
+            logger=container.resolve(Logger).bind(component='router'),
+        ),
+        logger=container.resolve(Logger),
     )
 
 
@@ -57,6 +63,7 @@ def _turns(container: ContainerContract) -> TurnHandler:
         clock=container.resolve(ClockContract),
         defaults=defaults,
         default_max_completion_tokens=defaults.max_completion_tokens,
+        logger=container.resolve(Logger),
     )
 
 

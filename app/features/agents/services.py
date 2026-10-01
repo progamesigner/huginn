@@ -1,5 +1,4 @@
 import asyncio
-import logging
 from base64 import b64encode
 from collections.abc import AsyncIterator, Iterator, Sequence
 from typing import cast, override
@@ -27,6 +26,7 @@ from lib.llm import (
     ToolCallSegment,
     ToolResultSegment,
 )
+from lib.observability import Logger
 from lib.temporal import ClockContract, isoformat
 
 from .config import (
@@ -58,8 +58,6 @@ from .exceptions import MalformedToolCallError, UnservableModelError
 from .router import Router
 from .tooling import ToolSet
 
-logger = logging.getLogger(__name__)
-
 _PDF = 'application/pdf'
 
 _UNREACHABLE_NOTE = (
@@ -69,7 +67,12 @@ _UNREACHABLE_NOTE = (
 )
 
 
-def _instructions(agent: AgentConfig, unreachable: Sequence[str]) -> str:
+def _instructions(
+    agent: AgentConfig,
+    unreachable: Sequence[str],
+    *,
+    logger: Logger,
+) -> str:
     instructions = load_instructions(agent)
     if not unreachable:
         return instructions
@@ -152,6 +155,8 @@ def _prompt_segments(
     prompt: TurnPrompt,
     capabilities: ModelCapabilities,
     model: str,
+    *,
+    logger: Logger,
 ) -> Iterator[Segment]:
     if prompt.text:
         yield TextSegment(text=prompt.text)
@@ -185,7 +190,7 @@ def _prompt_segments(
             yield TextSegment(text=attachment.transcript or attachment.hint)
 
 
-def _build_messages(turn: TurnInput) -> Iterator[Message]:
+def _build_messages(turn: TurnInput, *, logger: Logger) -> Iterator[Message]:
     yield Message(
         role='system',
         segments=(TextSegment(text=turn.instructions),),
@@ -194,7 +199,9 @@ def _build_messages(turn: TurnInput) -> Iterator[Message]:
     yield from turn.prior_turns
     dt = isoformat(turn.now)
     for prompt in turn.prompts:
-        if segments := tuple(_prompt_segments(prompt, turn.capabilities, turn.model)):
+        if segments := tuple(
+            _prompt_segments(prompt, turn.capabilities, turn.model, logger=logger),
+        ):
             header = TextSegment(text=f'[{dt}] ({turn.channel}) {prompt.actor}:\n\n')
             yield Message(role='user', segments=(header, *segments))
 
@@ -228,6 +235,8 @@ async def _execute(
     tool_timeout: float,
     clock: ClockContract,
     sink: TurnStream,
+    *,
+    logger: Logger,
 ) -> tuple[ToolResultSegment, ToolExecution]:
     timer = clock.timer()
     await sink.on_tool(call.name, 'started')
@@ -263,8 +272,13 @@ async def _execute_calls(
     tool_timeout: float,
     clock: ClockContract,
     sink: TurnStream,
+    *,
+    logger: Logger,
 ) -> tuple[tuple[ToolResultSegment, ...], Step]:
-    tasks = (_execute(tools, call, tool_timeout, clock, sink) for call in calls)
+    tasks = (
+        _execute(tools, call, tool_timeout, clock, sink, logger=logger)
+        for call in calls
+    )
     results, records = cast(
         tuple[tuple[ToolResultSegment, ...], tuple[ToolExecution, ...]],
         zip(*await asyncio.gather(*tasks), strict=True),
@@ -300,11 +314,20 @@ def _affordable(deadline: float, minimum: float) -> bool:
 
 
 class AgentRunner:
+    logger: Logger
     llm: LLMClient
     tools: ToolSet
     clock: ClockContract
 
-    def __init__(self, llm: LLMClient, tools: ToolSet, clock: ClockContract) -> None:
+    def __init__(
+        self,
+        llm: LLMClient,
+        tools: ToolSet,
+        clock: ClockContract,
+        *,
+        logger: Logger,
+    ) -> None:
+        self.logger = logger.bind(component='agents')
         self.llm = llm
         self.tools = tools
         self.clock = clock
@@ -315,7 +338,7 @@ class AgentRunner:
 
     async def _process(self, turn: TurnInput, sink: TurnStream) -> TurnOutput:
         budget = turn.budget
-        history = list(_build_messages(turn))
+        history = list(_build_messages(turn, logger=self.logger))
         steps = []
         text = ''
         deadline = asyncio.get_running_loop().time() + budget.turn_timeout
@@ -324,7 +347,7 @@ class AgentRunner:
             # NOTE: the first iteration always opens -- a turn that never reached the
             # model has nothing to hand back, however little budget it was given
             if iteration and not _affordable(deadline, budget.min_iteration_budget):
-                logger.warning(
+                self.logger.warning(
                     'Stopping after %d iterations with under %.1fs of'
                     ' turn_timeout=%.1fs left',
                     iteration,
@@ -350,13 +373,13 @@ class AgentRunner:
                     tool_calls = draft.tool_calls()
 
                     if not tool_calls:
-                        logger.info(
+                        self.logger.info(
                             'Turn completed after %d iterations',
                             iteration + 1,
                         )
                         return TurnOutput(text=draft.text, steps=(*steps, Step()))
 
-                    logger.info(
+                    self.logger.info(
                         'Iteration %d executing %d tool calls',
                         iteration,
                         len(tool_calls),
@@ -367,9 +390,10 @@ class AgentRunner:
                         budget.tool_timeout,
                         self.clock,
                         sink,
+                        logger=self.logger,
                     )
             except TimeoutError:
-                logger.warning(
+                self.logger.warning(
                     'Turn exceeded turn_timeout=%.1fs; delivering what it had',
                     budget.turn_timeout,
                 )
@@ -384,7 +408,7 @@ class AgentRunner:
             history.append(_assistant_message(text, tool_calls))
             history.extend(_tool_result_messages(results))
 
-        logger.warning(
+        self.logger.warning(
             'Turn hit max_iterations=%d without finishing',
             budget.max_iterations,
         )
@@ -392,6 +416,7 @@ class AgentRunner:
 
 
 class TurnHandler(TurnServiceContract):
+    logger: Logger
     clock: ClockContract
     llm: LLMContract
     router: Router
@@ -409,7 +434,10 @@ class TurnHandler(TurnServiceContract):
         clock: ClockContract,
         defaults: DefaultsConfig | None = None,
         default_max_completion_tokens: int | None = None,
+        *,
+        logger: Logger,
     ) -> None:
+        self.logger = logger.bind(component='turns')
         self.clock = clock
         self.defaults = defaults or DefaultsConfig()
         self.default_max_completion_tokens = default_max_completion_tokens
@@ -421,7 +449,7 @@ class TurnHandler(TurnServiceContract):
     @override
     async def handle(self, request: TurnRequest, reply: ChannelReplyContract) -> None:
         if not request.prompts:
-            logger.info('Nothing to answer for chat %s', request.chat)
+            self.logger.info('Nothing to answer for chat %s', request.chat)
             return
 
         context = RoutingContext(current=request.prompts)
@@ -465,7 +493,10 @@ class TurnHandler(TurnServiceContract):
         try:
             await self.store.maintain(request.channel, request.chat, agent.name, ref)
         except Exception:
-            logger.exception('Could not compact the conversation for %s', request.chat)
+            self.logger.exception(
+                'Could not compact the conversation for %s',
+                request.chat,
+            )
 
     async def _run(
         self,
@@ -482,17 +513,22 @@ class TurnHandler(TurnServiceContract):
                 request.channel,
                 request.chat,
             )
-            scope = _turn_scope(request, agent.name, document_blobs)
+            scope = _turn_scope(request, agent.name, document_blobs, logger=self.logger)
             tools, unreachable = await build_tool_set(
                 self.sources.sources(),
                 agent.config,
                 scope,
                 request.denied_tools,
+                logger=self.logger,
             )
-            runner = AgentRunner(client, tools, self.clock)
+            runner = AgentRunner(client, tools, self.clock, logger=self.logger)
             output = await runner.run(
                 TurnInput(
-                    instructions=_instructions(agent.config, unreachable),
+                    instructions=_instructions(
+                        agent.config,
+                        unreachable,
+                        logger=self.logger,
+                    ),
                     prompts=request.prompts,
                     model=ref.model,
                     capabilities=self.llm.capabilities(ref),
@@ -513,7 +549,7 @@ class TurnHandler(TurnServiceContract):
             raise
 
         if not output.completed:
-            logger.info('Turn ended %s for chat %s', output.ending, request.chat)
+            self.logger.info('Turn ended %s for chat %s', output.ending, request.chat)
             await reply.unfinished(output.ending)
 
         await reply.finish()
@@ -535,7 +571,10 @@ class TurnHandler(TurnServiceContract):
                 answer,
             )
         except Exception:
-            logger.exception('Could not record the failed turn for %s', request.chat)
+            self.logger.exception(
+                'Could not record the failed turn for %s',
+                request.chat,
+            )
 
 
 async def build_tool_set(
@@ -543,8 +582,10 @@ async def build_tool_set(
     agent: AgentConfig,
     scope: TurnScope,
     denied: frozenset[str] = frozenset(),
+    *,
+    logger: Logger,
 ) -> tuple[ToolSet, tuple[str, ...]]:
-    tools = ToolSet()
+    tools = ToolSet(logger=logger)
     unreachable = []
     for source in sources:
         harvest = await source.collect(agent, scope)
@@ -563,6 +604,8 @@ def _turn_scope(
     request: TurnRequest,
     agent: str,
     document_blobs: frozenset[str] = frozenset(),
+    *,
+    logger: Logger,
 ) -> TurnScope:
     prompt = request.prompts[-1]
     accounts = {item.account for item in request.prompts}

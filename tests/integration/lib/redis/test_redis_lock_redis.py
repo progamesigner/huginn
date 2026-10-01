@@ -6,6 +6,7 @@ from datetime import timedelta
 import pytest
 
 from lib.redis import RedisLock, RedisManager
+from tests.helpers.logging import make_logger
 
 pytestmark = pytest.mark.integration
 
@@ -27,8 +28,8 @@ def key() -> str:
 
 
 async def test_only_one_contender_holds_the_lock(redis: RedisManager, key: str) -> None:
-    owner = RedisLock(redis, key, ttl=_TTL)
-    rival = RedisLock(redis, key, ttl=_TTL)
+    owner = RedisLock(redis, key, ttl=_TTL, logger=make_logger())
+    rival = RedisLock(redis, key, ttl=_TTL, logger=make_logger())
 
     assert await owner.acquire() is True
     assert await rival.acquire() is False
@@ -42,8 +43,8 @@ async def test_an_unrenewed_lease_expires_and_frees_the_lock(
     redis: RedisManager,
     key: str,
 ) -> None:
-    abandoned = RedisLock(redis, key, ttl=_TTL)
-    successor = RedisLock(redis, key, ttl=_TTL)
+    abandoned = RedisLock(redis, key, ttl=_TTL, logger=make_logger())
+    successor = RedisLock(redis, key, ttl=_TTL, logger=make_logger())
 
     assert await abandoned.acquire() is True
     await asyncio.sleep(_TTL.total_seconds() * 2)
@@ -57,8 +58,8 @@ async def test_extend_keeps_the_lock_past_its_original_ttl(
     redis: RedisManager,
     key: str,
 ) -> None:
-    owner = RedisLock(redis, key, ttl=_TTL)
-    rival = RedisLock(redis, key, ttl=_TTL)
+    owner = RedisLock(redis, key, ttl=_TTL, logger=make_logger())
+    rival = RedisLock(redis, key, ttl=_TTL, logger=make_logger())
 
     assert await owner.acquire() is True
     await asyncio.sleep(_TTL.total_seconds() * 0.6)
@@ -73,8 +74,8 @@ async def test_a_non_owner_can_neither_extend_nor_release(
     redis: RedisManager,
     key: str,
 ) -> None:
-    owner = RedisLock(redis, key, ttl=_TTL)
-    rival = RedisLock(redis, key, ttl=_TTL)
+    owner = RedisLock(redis, key, ttl=_TTL, logger=make_logger())
+    rival = RedisLock(redis, key, ttl=_TTL, logger=make_logger())
 
     assert await owner.acquire() is True
 
@@ -89,8 +90,8 @@ async def test_release_after_expiry_never_deletes_the_next_owners_lock(
     redis: RedisManager,
     key: str,
 ) -> None:
-    lapsed = RedisLock(redis, key, ttl=_TTL)
-    successor = RedisLock(redis, key, ttl=_TTL)
+    lapsed = RedisLock(redis, key, ttl=_TTL, logger=make_logger())
+    successor = RedisLock(redis, key, ttl=_TTL, logger=make_logger())
 
     assert await lapsed.acquire() is True
     await asyncio.sleep(_TTL.total_seconds() * 2)
@@ -105,8 +106,8 @@ async def test_the_watchdog_holds_the_lock_through_a_long_turn(
     redis: RedisManager,
     key: str,
 ) -> None:
-    owner = RedisLock(redis, key, ttl=_TTL)
-    rival = RedisLock(redis, key, ttl=_TTL)
+    owner = RedisLock(redis, key, ttl=_TTL, logger=make_logger())
+    rival = RedisLock(redis, key, ttl=_TTL, logger=make_logger())
 
     assert await owner.acquire() is True
 
@@ -121,8 +122,8 @@ async def test_the_lock_lapses_once_the_watchdog_stops(
     redis: RedisManager,
     key: str,
 ) -> None:
-    owner = RedisLock(redis, key, ttl=_TTL)
-    successor = RedisLock(redis, key, ttl=_TTL)
+    owner = RedisLock(redis, key, ttl=_TTL, logger=make_logger())
+    successor = RedisLock(redis, key, ttl=_TTL, logger=make_logger())
 
     assert await owner.acquire() is True
     async with owner.renew():

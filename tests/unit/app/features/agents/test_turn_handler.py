@@ -45,6 +45,7 @@ from lib.llm import (
 )
 from lib.temporal import ClockContract, ClockManager
 from tests.helpers.clock import FakeClock
+from tests.helpers.logging import make_logger
 from tests.helpers.replies import RecordingReply
 
 from .test_agent_runner import EchoTool, FakeLLM, SleepTool, StallingLLM
@@ -216,10 +217,11 @@ def handler_with(llm: FakeLLM, source: ToolSource) -> TurnHandler:
 
     return TurnHandler(
         llm=FakeModels(llm),
-        router=Router(agents(), FakeModels(llm), DEFAULTS),
+        router=Router(agents(), FakeModels(llm), DEFAULTS, logger=make_logger()),
         sources=sources,
         store=FakeStore(),
         clock=ClockManager(),
+        logger=make_logger(),
     )
 
 
@@ -232,11 +234,12 @@ def make_handler(
 ) -> TurnHandler:
     return TurnHandler(
         llm=FakeModels(llm),
-        router=Router(agents(), FakeModels(llm), DEFAULTS),
+        router=Router(agents(), FakeModels(llm), DEFAULTS, logger=make_logger()),
         sources=ToolSourceRegistry(),
         store=store,
         clock=clock or ClockManager(),
         default_max_completion_tokens=default_max_completion_tokens,
+        logger=make_logger(),
     )
 
 
@@ -251,10 +254,16 @@ def configured_handler(
 
     return TurnHandler(
         llm=FakeModels(llm),
-        router=Router({'scout': agent}, FakeModels(llm), DEFAULTS),
+        router=Router(
+            {'scout': agent},
+            FakeModels(llm),
+            DEFAULTS,
+            logger=make_logger(),
+        ),
         sources=sources,
         store=store,
         clock=ClockManager(),
+        logger=make_logger(),
     )
 
 
@@ -282,7 +291,7 @@ def test_turn_scope_carries_the_last_prompts_identity() -> None:
         },
     )
 
-    assert _turn_scope(turn, 'scout') == TurnScope(
+    assert _turn_scope(turn, 'scout', logger=make_logger()) == TurnScope(
         actor='user:1',
         agent='scout',
         channel='support_bot',
@@ -312,7 +321,7 @@ def test_turn_scope_withholds_identity_when_accounts_are_mixed() -> None:
         },
     )
 
-    scope = _turn_scope(turn, 'scout')
+    scope = _turn_scope(turn, 'scout', logger=make_logger())
 
     assert scope.actor == 'user:2'
     assert scope.account is None
@@ -333,7 +342,7 @@ def test_turn_scope_withholds_identity_when_an_unlinked_actor_joins(
     prompts = (unlinked, linked) if linked_last else (linked, unlinked)
     turn = request('first', 'second').model_copy(update={'prompts': prompts})
 
-    scope = _turn_scope(turn, 'scout')
+    scope = _turn_scope(turn, 'scout', logger=make_logger())
 
     assert scope.account is None
     assert scope.handle is None
@@ -355,11 +364,17 @@ async def test_request_token_limit_overrides_agent_and_default() -> None:
     configured = agents()['scout'].model_copy(update={'max_completion_tokens': 8192})
     handler = TurnHandler(
         llm=FakeModels(llm),
-        router=Router({'scout': configured}, FakeModels(llm), DEFAULTS),
+        router=Router(
+            {'scout': configured},
+            FakeModels(llm),
+            DEFAULTS,
+            logger=make_logger(),
+        ),
         sources=ToolSourceRegistry(),
         store=FakeStore(),
         clock=ClockManager(),
         default_max_completion_tokens=16384,
+        logger=make_logger(),
     )
 
     await handler.handle(
@@ -375,11 +390,17 @@ async def test_agent_token_limit_overrides_default() -> None:
     configured = agents()['scout'].model_copy(update={'max_completion_tokens': 8192})
     handler = TurnHandler(
         llm=FakeModels(llm),
-        router=Router({'scout': configured}, FakeModels(llm), DEFAULTS),
+        router=Router(
+            {'scout': configured},
+            FakeModels(llm),
+            DEFAULTS,
+            logger=make_logger(),
+        ),
         sources=ToolSourceRegistry(),
         store=FakeStore(),
         clock=ClockManager(),
         default_max_completion_tokens=16384,
+        logger=make_logger(),
     )
 
     await handler.handle(request('hello'), RecordingReply())
@@ -525,11 +546,12 @@ async def test_a_chat_replays_history_after_routing_to_a_different_agent() -> No
     models = FakeModels(llm)
     handler = TurnHandler(
         llm=models,
-        router=Router(configs, models, DEFAULTS),
+        router=Router(configs, models, DEFAULTS, logger=make_logger()),
         sources=ToolSourceRegistry(),
         store=store,
         clock=ClockManager(),
         defaults=DEFAULTS,
+        logger=make_logger(),
     )
 
     await handler.handle(
@@ -587,10 +609,16 @@ async def test_a_turn_asks_the_provider_the_agent_pinned() -> None:
     pinned = agents()['scout'].model_copy(update={'provider': 'bifrost'})
     handler = TurnHandler(
         llm=models,
-        router=Router({'scout': pinned}, FakeModels(llm), DEFAULTS),
+        router=Router(
+            {'scout': pinned},
+            FakeModels(llm),
+            DEFAULTS,
+            logger=make_logger(),
+        ),
         sources=ToolSourceRegistry(),
         store=FakeStore(),
         clock=ClockManager(),
+        logger=make_logger(),
     )
 
     await handler.handle(request('hello'), RecordingReply())
@@ -607,11 +635,12 @@ async def test_an_agent_without_a_model_inherits_the_default_provider() -> None:
     defaults = DefaultsConfig(model='default-model', provider='openai')
     handler = TurnHandler(
         llm=models,
-        router=Router({'scout': bare}, FakeModels(llm), defaults),
+        router=Router({'scout': bare}, FakeModels(llm), defaults, logger=make_logger()),
         sources=ToolSourceRegistry(),
         store=FakeStore(),
         clock=ClockManager(),
         defaults=defaults,
+        logger=make_logger(),
     )
 
     await handler.handle(request('hello'), RecordingReply())
@@ -627,11 +656,12 @@ async def test_an_agent_naming_only_a_model_does_not_inherit_the_default_provide
     defaults = DefaultsConfig(model='default-model', provider='openai')
     handler = TurnHandler(
         llm=models,
-        router=Router(agents(), FakeModels(llm), defaults),
+        router=Router(agents(), FakeModels(llm), defaults, logger=make_logger()),
         sources=ToolSourceRegistry(),
         store=FakeStore(),
         clock=ClockManager(),
         defaults=defaults,
+        logger=make_logger(),
     )
 
     await handler.handle(request('hello'), RecordingReply())
@@ -685,10 +715,16 @@ async def test_a_turn_that_cannot_assemble_its_tools_still_records_the_prompt() 
     store = FakeStore()
     handler = TurnHandler(
         llm=FakeModels(answering()),
-        router=Router(agents(), FakeModels(answering()), DEFAULTS),
+        router=Router(
+            agents(),
+            FakeModels(answering()),
+            DEFAULTS,
+            logger=make_logger(),
+        ),
         sources=_registry(BrokenSource()),
         store=store,
         clock=ClockManager(),
+        logger=make_logger(),
     )
 
     with pytest.raises(RuntimeError, match='unreachable'):
@@ -917,7 +953,7 @@ async def test_routing_context_loads_history_only_when_needed(
             'summary',
         ),
     )
-    router = Router({}, FakeModels(None))
+    router = Router({}, FakeModels(None), logger=make_logger())
     router.resolve = AsyncMock(side_effect=RuntimeError('stop after routing'))
     handler = TurnHandler(
         FakeModels(None),
@@ -925,6 +961,7 @@ async def test_routing_context_loads_history_only_when_needed(
         ToolSourceRegistry(),
         store,
         ClockManager(),
+        logger=make_logger(),
     )
     prompts = (TurnPrompt(text='one', actor='u'), TurnPrompt(text='two', actor='u'))
     request = TurnRequest(

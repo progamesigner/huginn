@@ -17,6 +17,7 @@ from app.features.tools.document.config import DocumentToolConfig
 from app.features.tools.document.tool import ReadDocumentTool, build_read_document
 from app.features.tools.registry import ToolKind, ToolRegistry
 from app.features.tools.sources import ConfiguredToolSource
+from tests.helpers.logging import make_logger
 
 
 class EchoParams(ToolParams):
@@ -43,7 +44,7 @@ def _source() -> ConfiguredToolSource:
     config = HuginnConfig(
         sections={'tools': ToolConfigList({'echo': ToolConfig(kind='echo')})},
     )
-    return ConfiguredToolSource(config, registry)
+    return ConfiguredToolSource(config, registry, logger=make_logger())
 
 
 async def test_configured_tool_source_binds_and_hides_turn_value() -> None:
@@ -141,7 +142,7 @@ async def test_document_source_applies_turn_allow_list() -> None:
             'tools': ToolConfigList({'read': DocumentToolConfig(kind='read_document')}),
         },
     )
-    source = ConfiguredToolSource(config, registry)
+    source = ConfiguredToolSource(config, registry, logger=make_logger())
     agent = AgentConfig(description='test', tools=(ToolRef(name='read'),))
     scope = TurnScope(
         actor='user:1',

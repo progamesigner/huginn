@@ -19,6 +19,7 @@ from lib.mcp import (
     MCPToolInfo,
     UnknownMCPServerError,
 )
+from tests.helpers.logging import make_logger
 from tests.helpers.replies import RecordingReply
 from tests.unit.app.features.agents.test_agent_runner import FakeLLM
 from tests.unit.app.features.agents.test_turn_handler import (
@@ -81,7 +82,7 @@ async def test_collect_namespaces_and_applies_allowlist() -> None:
     client = FakeClient({'memory': (_info('recall'), _info('forget'))})
     agent = _agent(MCPRef(server='memory', allow=('recall',), inject={'user': 'swag'}))
 
-    harvest = await MCPToolSource(client).collect(agent, _SCOPE)
+    harvest = await MCPToolSource(client, logger=make_logger()).collect(agent, _SCOPE)
 
     assert [name for name, _ in harvest.tools] == ['mcp__memory__recall']
 
@@ -108,7 +109,7 @@ async def test_collect_binds_the_turn_scope_into_tool_arguments() -> None:
         handle='alice',
     )
 
-    harvest = await MCPToolSource(client).collect(agent, scope)
+    harvest = await MCPToolSource(client, logger=make_logger()).collect(agent, scope)
     tool = harvest.tools[0][1]
     await tool.invoke('{"query":"weather"}')
 
@@ -121,7 +122,7 @@ async def test_collect_withholds_a_server_when_a_binding_is_missing() -> None:
     client = FakeClient({'memory': (_info('recall'),)})
     agent = _agent(MCPRef(server='memory', bind={'user': 'handle'}))
 
-    harvest = await MCPToolSource(client).collect(agent, _SCOPE)
+    harvest = await MCPToolSource(client, logger=make_logger()).collect(agent, _SCOPE)
 
     assert harvest.tools == ()
 
@@ -133,7 +134,7 @@ async def test_collect_skips_unavailable_servers() -> None:
         MCPRef(server='memory', allow=('recall',)),
     )
 
-    harvest = await MCPToolSource(client).collect(agent, _SCOPE)
+    harvest = await MCPToolSource(client, logger=make_logger()).collect(agent, _SCOPE)
 
     assert [name for name, _ in harvest.tools] == ['mcp__memory__recall']
     assert harvest.unreachable == ('stock',)
@@ -152,7 +153,10 @@ async def test_collect_skips_a_server_that_lost_its_session(
     )
 
     with caplog.at_level('WARNING'):
-        harvest = await MCPToolSource(client).collect(agent, _SCOPE)
+        harvest = await MCPToolSource(client, logger=make_logger()).collect(
+            agent,
+            _SCOPE,
+        )
 
     assert [name for name, _ in harvest.tools] == ['mcp__memory__recall']
     assert harvest.unreachable == ('muninn',)
@@ -203,7 +207,7 @@ async def test_two_accounts_on_one_bot_each_reach_their_own_memory_scope() -> No
     handler = configured_handler(
         FakeLLM([*_recalling(), *_recalling()]),
         FakeStore(),
-        MCPToolSource(client),
+        MCPToolSource(client, logger=make_logger()),
         mcp=(MCPRef(server='memory', allow=('recall',), bind={'user': 'handle'}),),
     )
 

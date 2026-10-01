@@ -22,6 +22,7 @@ from lib.llm import (
     TextSegment,
 )
 from lib.temporal import ClockManager
+from tests.helpers.logging import make_logger
 from tests.unit.app.features.agents.test_agent_runner import FakeLLM
 
 pytestmark = pytest.mark.integration
@@ -84,6 +85,7 @@ async def test_compact_end_to_end_against_real_postgres(session: AsyncSession) -
         FakeLLMContract(llm_client),
         repository,
         keep_turns=keep_turns,
+        logger=make_logger(),
     )
 
     result = await service.maybe_compact(conversation, ModelRef(model='test-model'))
@@ -129,6 +131,7 @@ async def test_compact_leaves_database_untouched_when_llm_output_is_not_json(
         repository,
         keep_turns=1,
         max_retries=1,
+        logger=make_logger(),
     )
 
     result = await service.maybe_compact(conversation, ModelRef(model='test-model'))
@@ -168,6 +171,7 @@ async def test_second_compaction_folds_prior_summary_turn(
         FakeLLMContract(first_llm),
         repository,
         keep_turns=1,
+        logger=make_logger(),
     )
     first_result = await first_service.maybe_compact(
         conversation,
@@ -196,6 +200,7 @@ async def test_second_compaction_folds_prior_summary_turn(
         FakeLLMContract(second_llm),
         repository,
         keep_turns=1,
+        logger=make_logger(),
     )
 
     second_result = await second_service.maybe_compact(
@@ -297,10 +302,12 @@ async def test_concurrent_compact_yields_exactly_one_winner(database_url: str) -
         service_a = CompactionService(
             FakeLLMContract(FakeLLM([_summary_chunks('{"summary": "race a"}')])),
             repository_a,
+            logger=make_logger(),
         )
         service_b = CompactionService(
             FakeLLMContract(FakeLLM([_summary_chunks('{"summary": "race b"}')])),
             repository_b,
+            logger=make_logger(),
         )
 
         outcomes = await asyncio.gather(

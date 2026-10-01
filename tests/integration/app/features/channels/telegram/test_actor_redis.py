@@ -10,6 +10,7 @@ from app.contracts.channels import InboundMessage
 from app.features.channels.telegram.actor import TelegramChatActor
 from app.features.channels.telegram.config import TelegramChannelConfig
 from lib.redis import RedisManager
+from tests.helpers.logging import make_logger
 
 pytestmark = pytest.mark.integration
 
@@ -67,7 +68,7 @@ async def test_concurrent_messages_to_one_chat_all_process_within_two_rounds(
     redis: RedisManager,
 ) -> None:
     processor = SettlingProcessor(settle=0.2)
-    actor = TelegramChatActor(redis, processor, ttl=_TTL)
+    actor = TelegramChatActor(redis, processor, ttl=_TTL, logger=make_logger())
     chat_id = 12345
 
     messages = [message(i, chat_id) for i in range(1, 6)]
@@ -83,8 +84,8 @@ async def test_two_chats_process_concurrently_without_blocking_each_other(
 ) -> None:
     a = SettlingProcessor(settle=0.2)
     b = SettlingProcessor(settle=0.2)
-    actor_a = TelegramChatActor(redis, a, ttl=_TTL)
-    actor_b = TelegramChatActor(redis, b, ttl=_TTL)
+    actor_a = TelegramChatActor(redis, a, ttl=_TTL, logger=make_logger())
+    actor_b = TelegramChatActor(redis, b, ttl=_TTL, logger=make_logger())
 
     started = time.perf_counter()
     await asyncio.gather(

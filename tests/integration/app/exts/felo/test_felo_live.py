@@ -15,6 +15,7 @@ from lib.llm import ModelCapabilities
 from lib.llm.adapters.openai import OpenAIAdapter
 from lib.llm.client import ProviderConfig
 from lib.temporal import ClockManager
+from tests.helpers.logging import make_logger
 from tests.helpers.replies import RecordingReply
 
 pytestmark = pytest.mark.integration
@@ -64,7 +65,7 @@ async def test_agent_loop_with_websearch_live() -> None:
     openai_api_key = require_openai_api_key()
 
     http = HTTPClientManager()
-    tools = ToolSet()
+    tools = ToolSet(logger=make_logger())
     repository = WebSearchRepository(http)
     tools.add('websearch', WebSearchTool(repository, felo_api_key, _FELO_BASE_URL))
     llm = OpenAIAdapter(
@@ -94,7 +95,10 @@ async def test_agent_loop_with_websearch_live() -> None:
 
     sink = RecordingReply()
 
-    output = await AgentRunner(llm, tools, ClockManager()).run(turn, sink)
+    output = await AgentRunner(llm, tools, ClockManager(), logger=make_logger()).run(
+        turn,
+        sink,
+    )
 
     executions = [record for step in output.steps for record in step.tools]
 

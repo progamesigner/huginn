@@ -16,6 +16,7 @@ from app.features.agents.contracts import (
 from app.features.agents.entities import TurnScope
 from app.features.agents.exceptions import AgentError, DuplicateToolNameError
 from app.features.agents.services import build_tool_set
+from tests.helpers.logging import make_logger
 
 _SCOPE = TurnScope(actor='user:1', agent='test', channel='test', chat='1')
 
@@ -63,6 +64,7 @@ async def test_build_tool_set_merges_every_source() -> None:
         (FakeSource('echo'), FakeSource('recall', 'skill')),
         _agent(),
         _SCOPE,
+        logger=make_logger(),
     )
 
     assert set(tools.tools) == {'echo', 'recall', 'skill'}
@@ -77,6 +79,7 @@ async def test_build_tool_set_gathers_what_every_source_could_not_reach() -> Non
         ),
         _agent(),
         _SCOPE,
+        logger=make_logger(),
     )
 
     assert unreachable == ('muninn', 'skills')
@@ -90,6 +93,7 @@ async def test_build_tool_set_drops_a_denied_tool() -> None:
         _agent(),
         _SCOPE,
         frozenset({'recall'}),
+        logger=make_logger(),
     )
 
     assert set(tools.tools) == {'echo'}
@@ -101,13 +105,14 @@ async def test_build_tool_set_denying_an_absent_tool_adds_nothing() -> None:
         _agent(),
         _SCOPE,
         frozenset({'recall'}),
+        logger=make_logger(),
     )
 
     assert set(tools.tools) == {'echo'}
 
 
 async def test_build_tool_set_is_empty_without_sources() -> None:
-    tools, _ = await build_tool_set((), _agent(), _SCOPE)
+    tools, _ = await build_tool_set((), _agent(), _SCOPE, logger=make_logger())
 
     assert tools.tools == {}
 
@@ -116,7 +121,7 @@ async def test_build_tool_set_hands_every_source_the_agent() -> None:
     agent = _agent()
     sources = (FakeSource('echo'), FakeSource('recall'))
 
-    await build_tool_set(sources, agent, _SCOPE)
+    await build_tool_set(sources, agent, _SCOPE, logger=make_logger())
 
     assert [source.seen for source in sources] == [[agent], [agent]]
 
@@ -127,6 +132,7 @@ async def test_build_tool_set_rejects_a_name_claimed_by_two_sources() -> None:
             (FakeSource('echo'), FakeSource('echo')),
             _agent(),
             _SCOPE,
+            logger=make_logger(),
         )
 
 

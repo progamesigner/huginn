@@ -1,5 +1,7 @@
 from typing import override
 
+from structlog.stdlib import BoundLogger
+
 from .client import LLMClient, ProviderConfig, ProviderRegistry
 from .contracts import HTTPConnector, LLMContract
 from .types import ModelRef
@@ -33,8 +35,9 @@ class LLMManager(LLMContract):
         self,
         providers: tuple[ProviderConfig, ...],
         http: HTTPConnector,
+        logger: BoundLogger,
     ) -> None:
-        self.registry = ProviderRegistry(providers)
+        self.registry = ProviderRegistry(providers, logger)
         self.http = http
         self.clients = {}
 

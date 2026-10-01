@@ -14,6 +14,7 @@ from lib.mcp import (
     MCPTransport,
     streamable_http_connector,
 )
+from lib.observability import Logger
 
 from .config import MCP_SERVERS, MCPServerConfig, MCPServerConfigList
 
@@ -60,6 +61,14 @@ class MCPProvider(ProviderContract):
             config = container.resolve(HuginnConfig)
         except MissingConfigFileError:
             # NOTE: no config file at all means no servers; a malformed one still fails
-            return MCPManager([], connector)
+            return MCPManager(
+                [],
+                connector,
+                logger=container.resolve(Logger).bind(component='mcp'),
+            )
 
-        return MCPManager(_build_servers(config.section(MCP_SERVERS)), connector)
+        return MCPManager(
+            _build_servers(config.section(MCP_SERVERS)),
+            connector,
+            logger=container.resolve(Logger).bind(component='mcp'),
+        )

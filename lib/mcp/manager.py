@@ -1,5 +1,4 @@
 import asyncio
-import logging
 from collections.abc import AsyncIterator, Callable, Mapping, Sequence
 from contextlib import AbstractAsyncContextManager, asynccontextmanager, suppress
 from dataclasses import dataclass
@@ -9,12 +8,11 @@ from mcp import ClientSession
 from mcp.client.streamable_http import streamable_http_client
 from mcp.types import CallToolResult, TextContent
 from pydantic import JsonValue
+from structlog.stdlib import BoundLogger
 
 from .contracts import HTTPConnector, MCPClientContract
 from .exceptions import MCPConnectionError, UnknownMCPServerError
 from .types import MCPServer, MCPToolInfo
-
-logger = logging.getLogger(__name__)
 
 type Connector = Callable[[MCPServer], AbstractAsyncContextManager[ClientSession]]
 
@@ -71,13 +69,16 @@ class _Connection:
     lock: asyncio.Lock
     retry_at: float
     announced: bool
+    logger: BoundLogger
 
     def __init__(
         self,
         server: MCPServer,
         connector: Connector,
+        logger: BoundLogger,
         cooldown: float = _RECONNECT_COOLDOWN,
     ) -> None:
+        self.logger = logger
         self.server = server
         self.connector = connector
         self.cooldown = cooldown
@@ -142,7 +143,7 @@ class _Connection:
             return
 
         self.announced = True
-        logger.warning(
+        self.logger.warning(
             'MCP server %s is unavailable; its tools will be absent (%s)',
             self.server.name,
             error,
@@ -153,7 +154,7 @@ class _Connection:
             return
 
         self.announced = False
-        logger.info('MCP server %s answered again', self.server.name)
+        self.logger.info('MCP server %s answered again', self.server.name)
 
     async def _launch(self) -> None:
         self.error = None
@@ -195,6 +196,7 @@ class MCPManager(MCPClientContract):
         self,
         servers: Sequence[MCPServer],
         connector: Connector,
+        logger: BoundLogger,
         cooldown: float = _RECONNECT_COOLDOWN,
         interval: float = _HEARTBEAT_INTERVAL,
     ) -> None:
@@ -203,7 +205,7 @@ class MCPManager(MCPClientContract):
         self.interval = interval
         self.heartbeat = None
         self.connections = {
-            server.name: _Connection(server, connector, cooldown)
+            server.name: _Connection(server, connector, logger, cooldown)
             for server in self.servers
         }
 

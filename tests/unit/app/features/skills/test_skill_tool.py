@@ -16,6 +16,7 @@ from app.features.skills.sources.contracts import SkillSource
 from app.features.skills.tools import SkillParams, SkillToolSource, _build_skill_tool
 from lib.llm import ToolCallSegment
 from tests.helpers.clock import FakeClock
+from tests.helpers.logging import make_logger
 
 
 class FakeSource(SkillSource):
@@ -48,7 +49,7 @@ async def build(*names: str) -> tuple[ToolSet, SkillRepository]:
     source = FakeSource(tuple(_meta(name) for name in names))
     repository = SkillRepository(source, FakeClock(), ttl=timedelta(minutes=15))
     inventory = await repository.inventory({})
-    tools = ToolSet()
+    tools = ToolSet(logger=make_logger())
     tools.add('skill', _build_skill_tool(repository, inventory, {}))
     return tools, repository
 
@@ -96,7 +97,11 @@ def _broken_repository() -> SkillRepository:
 def _source(*names: str) -> SkillToolSource:
     source = FakeSource(tuple(_meta(name) for name in names))
     repository = SkillRepository(source, FakeClock(), ttl=timedelta(minutes=15))
-    return SkillToolSource(lambda: repository, SkillsSourceConfig())
+    return SkillToolSource(
+        lambda: repository,
+        SkillsSourceConfig(),
+        logger=make_logger(),
+    )
 
 
 def _agent(*, enabled: bool = True, allow: tuple[str, ...] = ()) -> AgentConfig:
@@ -146,6 +151,7 @@ async def test_source_withholds_skills_when_a_bound_scope_is_missing() -> None:
     tools = SkillToolSource(
         lambda: repository,
         SkillsSourceConfig(bind={'user': 'handle'}),
+        logger=make_logger(),
     )
 
     harvest = await tools.collect(_agent(), _SCOPE)
@@ -159,6 +165,7 @@ async def test_source_carries_bound_scope_from_inventory_into_load() -> None:
     tools = SkillToolSource(
         lambda: repository,
         SkillsSourceConfig(inject={'agent': 'default'}, bind={'user': 'handle'}),
+        logger=make_logger(),
     )
     scope = TurnScope(
         actor='user:1',
@@ -181,7 +188,11 @@ async def test_source_carries_bound_scope_from_inventory_into_load() -> None:
 async def test_a_source_that_cannot_read_the_inventory_offers_no_skills(
     caplog: pytest.LogCaptureFixture,
 ) -> None:
-    source = SkillToolSource(lambda: _broken_repository(), SkillsSourceConfig())
+    source = SkillToolSource(
+        lambda: _broken_repository(),
+        SkillsSourceConfig(),
+        logger=make_logger(),
+    )
 
     with caplog.at_level('ERROR'):
         harvest = await source.collect(_agent(), _SCOPE)

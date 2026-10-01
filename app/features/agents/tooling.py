@@ -1,22 +1,27 @@
-import logging
 from collections.abc import Mapping
 
 from pydantic import JsonValue, ValidationError
 
 from lib.llm import ToolCallSegment, ToolResultSegment
+from lib.observability import Logger
 
 from .contracts import Tool
 from .exceptions import DuplicateToolNameError
-
-logger = logging.getLogger(__name__)
 
 type Instances = dict[str, Tool]
 
 
 class ToolSet:
+    logger: Logger
     tools: Instances
 
-    def __init__(self, tools: Mapping[str, Tool] | None = None) -> None:
+    def __init__(
+        self,
+        tools: Mapping[str, Tool] | None = None,
+        *,
+        logger: Logger,
+    ) -> None:
+        self.logger = logger.bind(component='tools')
         self.tools = dict(tools or {})
 
     def add(self, name: str, tool: Tool) -> None:
@@ -57,7 +62,7 @@ class ToolSet:
                 error=True,
             )
         except Exception as error:
-            logger.exception('Tool %s raised while executing', call.name)
+            self.logger.exception('Tool %s raised while executing', call.name)
             return ToolResultSegment(
                 tool_call_id=call.id,
                 content=f'tool {call.name!r} failed: {error}',

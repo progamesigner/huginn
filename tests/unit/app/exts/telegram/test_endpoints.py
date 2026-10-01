@@ -3,6 +3,7 @@ import json
 import pytest
 
 from app.exts.telegram.endpoints import _inbound
+from tests.helpers.logging import make_logger
 
 
 def body(**message: object) -> bytes:
@@ -31,7 +32,7 @@ def photo(width: int, height: int, file_size: int) -> dict[str, object]:
 
 
 def test_inbound_carries_no_attachment_for_a_text_message() -> None:
-    message = _inbound('support', body(text='hello'))
+    message = _inbound('support', body(text='hello'), logger=make_logger())
 
     assert message is not None
     assert message.text == 'hello'
@@ -45,6 +46,7 @@ def test_inbound_carries_the_photo_size_that_fits() -> None:
             caption='what is this',
             photo=[photo(90, 60, 900), photo(1280, 960, 400_000)],
         ),
+        logger=make_logger(),
     )
 
     assert message is not None
@@ -60,7 +62,11 @@ def test_inbound_carries_the_photo_size_that_fits() -> None:
 
 
 def test_inbound_carries_a_photo_without_a_caption() -> None:
-    message = _inbound('support', body(photo=[photo(1280, 960, 400_000)]))
+    message = _inbound(
+        'support',
+        body(photo=[photo(1280, 960, 400_000)]),
+        logger=make_logger(),
+    )
 
     assert message is not None
     assert message.text == ''
@@ -68,7 +74,11 @@ def test_inbound_carries_a_photo_without_a_caption() -> None:
 
 
 def test_inbound_drops_a_photo_no_size_of_which_fits() -> None:
-    message = _inbound('support', body(photo=[photo(6000, 4000, 9_000_000)]))
+    message = _inbound(
+        'support',
+        body(photo=[photo(6000, 4000, 9_000_000)]),
+        logger=make_logger(),
+    )
 
     assert message is not None
     assert message.attachments == ()
@@ -86,6 +96,7 @@ def test_inbound_carries_a_voice_note() -> None:
                 'file_size': 8_000,
             },
         ),
+        logger=make_logger(),
     )
 
     assert message is not None
@@ -109,6 +120,7 @@ def test_inbound_falls_back_to_the_vendor_voice_mime() -> None:
                 'duration': 12,
             },
         ),
+        logger=make_logger(),
     )
 
     assert message is not None
@@ -127,6 +139,7 @@ def test_inbound_carries_an_audio_file() -> None:
                 'file_size': 2_000_000,
             },
         ),
+        logger=make_logger(),
     )
 
     assert message is not None
@@ -149,6 +162,7 @@ def test_inbound_carries_a_document_with_its_filename() -> None:
                 'file_size': 12_000,
             },
         ),
+        logger=make_logger(),
     )
 
     assert message is not None
@@ -170,6 +184,7 @@ def test_inbound_carries_both_a_photo_and_a_voice_note() -> None:
                 'duration': 3,
             },
         ),
+        logger=make_logger(),
     )
 
     assert message is not None
@@ -177,11 +192,18 @@ def test_inbound_carries_both_a_photo_and_a_voice_note() -> None:
 
 
 def test_inbound_discards_an_update_without_a_message() -> None:
-    assert _inbound('support', json.dumps({'update_id': 42}).encode()) is None
+    assert (
+        _inbound(
+            'support',
+            json.dumps({'update_id': 42}).encode(),
+            logger=make_logger(),
+        )
+        is None
+    )
 
 
 def test_inbound_discards_an_unparseable_update() -> None:
-    assert _inbound('support', b'not json') is None
+    assert _inbound('support', b'not json', logger=make_logger()) is None
 
 
 def test_inbound_lands_the_body_of_an_unparseable_update(
@@ -192,7 +214,7 @@ def test_inbound_lands_the_body_of_an_unparseable_update(
     unparseable = b'{"update_id": 42, "message": "a sentence, not an object"}'
 
     with caplog.at_level('ERROR'):
-        assert _inbound('support', unparseable) is None
+        assert _inbound('support', unparseable, logger=make_logger()) is None
 
     assert 'a sentence, not an object' in caplog.text
 
@@ -202,7 +224,11 @@ def entity(offset: int, length: int, type_: str = 'bot_command') -> dict[str, ob
 
 
 def test_inbound_reads_a_command_off_the_vendor_entities() -> None:
-    message = _inbound('support', body(text='/new', entities=[entity(0, 4)]))
+    message = _inbound(
+        'support',
+        body(text='/new', entities=[entity(0, 4)]),
+        logger=make_logger(),
+    )
 
     assert message is not None
     assert message.command is not None
@@ -214,6 +240,7 @@ def test_inbound_keeps_what_follows_a_command_as_its_arguments() -> None:
     message = _inbound(
         'support',
         body(text='/register  ABC123 ', entities=[entity(0, 9)]),
+        logger=make_logger(),
     )
 
     assert message is not None
@@ -228,6 +255,7 @@ def test_inbound_drops_the_bot_mention_from_a_group_command() -> None:
     message = _inbound(
         'support',
         body(text='/help@huginn_bot please', entities=[entity(0, 16)]),
+        logger=make_logger(),
     )
 
     assert message is not None
@@ -241,6 +269,7 @@ def test_inbound_ignores_a_command_that_does_not_open_the_message() -> None:
     message = _inbound(
         'support',
         body(text='ask it with /help next time', entities=[entity(12, 5)]),
+        logger=make_logger(),
     )
 
     assert message is not None
@@ -252,6 +281,7 @@ def test_inbound_ignores_an_entity_that_is_not_a_command() -> None:
     message = _inbound(
         'support',
         body(text='@someone hello', entities=[entity(0, 8, 'mention')]),
+        logger=make_logger(),
     )
 
     assert message is not None
@@ -259,7 +289,11 @@ def test_inbound_ignores_an_entity_that_is_not_a_command() -> None:
 
 
 def test_inbound_lowercases_the_command_name() -> None:
-    message = _inbound('support', body(text='/NEW', entities=[entity(0, 4)]))
+    message = _inbound(
+        'support',
+        body(text='/NEW', entities=[entity(0, 4)]),
+        logger=make_logger(),
+    )
 
     assert message is not None
     assert message.command is not None
@@ -267,7 +301,7 @@ def test_inbound_lowercases_the_command_name() -> None:
 
 
 def test_inbound_carries_no_command_for_ordinary_text() -> None:
-    message = _inbound('support', body(text='hello'))
+    message = _inbound('support', body(text='hello'), logger=make_logger())
 
     assert message is not None
     assert message.command is None
@@ -276,7 +310,7 @@ def test_inbound_carries_no_command_for_ordinary_text() -> None:
 def test_inbound_names_the_vendor_that_delivered_it() -> None:
     # NOTE: identity is keyed by provider and realm, so a command handler that never
     # sees the channel config still has to learn which vendor this came from
-    message = _inbound('support', body(text='hello'))
+    message = _inbound('support', body(text='hello'), logger=make_logger())
 
     assert message is not None
     assert message.kind == 'telegram'

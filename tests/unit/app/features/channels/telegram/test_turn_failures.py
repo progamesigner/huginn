@@ -20,6 +20,7 @@ from lib.concurrency import TaskSupervisor
 from lib.http import HTTPClientManager
 from lib.redis import RedisContract
 from tests.helpers.clock import FakeClock
+from tests.helpers.logging import make_logger
 
 _BASE_URL = 'https://api.telegram.org/botbot-token'
 _CHANNEL = 'support_bot'
@@ -92,10 +93,15 @@ def make_handler(
     return TelegramMessageHandler(
         config=make_config(),
         redis=make_redis(),
-        gateways=TelegramGatewayFactory(HTTPClientManager(), FakeClock()),
+        gateways=TelegramGatewayFactory(
+            HTTPClientManager(),
+            FakeClock(),
+            logger=make_logger(),
+        ),
         clock=FakeClock(),
         actor=actor,
         supervisor=supervisor,
+        logger=make_logger(),
     )
 
 
@@ -126,7 +132,7 @@ async def run_turn(
 async def test_a_completed_turn_keeps_only_the_reaction_it_started_with() -> None:
     route = mock_reactions()
     actor = FakeActor()
-    supervisor = TaskSupervisor()
+    supervisor = TaskSupervisor(logger=make_logger())
 
     await run_turn(make_handler(actor, supervisor), supervisor)
 
@@ -141,7 +147,7 @@ async def test_a_crashed_turn_replaces_the_ack_with_the_failure_reaction() -> No
     # arrives here as an exception out of the turn, which is what this drives
     route = mock_reactions()
     actor = FakeActor(error=RuntimeError('llm stream died'))
-    supervisor = TaskSupervisor()
+    supervisor = TaskSupervisor(logger=make_logger())
 
     await run_turn(make_handler(actor, supervisor), supervisor)
 
@@ -154,7 +160,7 @@ async def test_a_crashed_turn_is_reported_in_the_log(
 ) -> None:
     mock_reactions()
     actor = FakeActor(error=RuntimeError('llm stream died'))
-    supervisor = TaskSupervisor()
+    supervisor = TaskSupervisor(logger=make_logger())
     handler = make_handler(actor, supervisor)
 
     with caplog.at_level('ERROR'):
@@ -169,7 +175,7 @@ async def test_a_failed_acknowledgement_does_not_cost_the_user_their_turn() -> N
     # that moment took the whole answer down with it
     route = mock_reactions(status=400)
     actor = FakeActor()
-    supervisor = TaskSupervisor()
+    supervisor = TaskSupervisor(logger=make_logger())
 
     await run_turn(make_handler(actor, supervisor), supervisor)
 
@@ -183,7 +189,7 @@ async def test_a_failed_report_leaves_nothing_for_the_supervisor_to_catch(
 ) -> None:
     route = mock_reactions(status=400)
     actor = FakeActor(error=RuntimeError('llm stream died'))
-    supervisor = TaskSupervisor()
+    supervisor = TaskSupervisor(logger=make_logger())
     handler = make_handler(actor, supervisor)
 
     with caplog.at_level('ERROR'):
@@ -203,7 +209,7 @@ async def test_a_failed_report_leaves_nothing_for_the_supervisor_to_catch(
 async def test_each_turn_runs_under_its_own_turn_id() -> None:
     mock_reactions()
     actor = FakeActor()
-    supervisor = TaskSupervisor()
+    supervisor = TaskSupervisor(logger=make_logger())
     handler = make_handler(actor, supervisor)
 
     await run_turn(handler, supervisor, event=7)

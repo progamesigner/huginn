@@ -21,6 +21,7 @@ from app.features.identities.providers import IdentityProvider
 from lib.command import CommandContract
 from lib.concurrency import TaskSupervisor, TaskSupervisorContract
 from lib.container import ContainerContract, ProviderContract
+from lib.observability import Logger
 from lib.redis import RedisContract
 from lib.temporal import ClockContract
 
@@ -36,6 +37,7 @@ def _actor(container: ContainerContract) -> TelegramChatActor:
     return TelegramChatActor(
         container.resolve(RedisContract),
         container.resolve(TelegramTurnProcessor).process,
+        logger=container.resolve(Logger),
     )
 
 
@@ -47,6 +49,7 @@ def _turns(container: ContainerContract) -> TelegramTurnProcessor:
         identities=container.resolve(IdentityResolutionServiceContract),
         gateway=lambda channel: gateways.gateway(channel.token),
         transcription=container.resolve(TranscriptionServiceContract),
+        logger=container.resolve(Logger),
     )
 
 
@@ -58,6 +61,7 @@ def _handler(container: ContainerContract) -> TelegramMessageHandler:
         clock=container.resolve(ClockContract),
         actor=container.resolve(TelegramChatActor),
         supervisor=container.resolve(TaskSupervisorContract),
+        logger=container.resolve(Logger),
     )
 
 
@@ -76,7 +80,11 @@ class TelegramProvider(ProviderContract):
     def __call__(self, container: ContainerContract) -> None:
         container.bind(
             TaskSupervisorContract,
-            instance=TaskSupervisor(limit=_TURN_LIMIT, grace=_TURN_GRACE),
+            instance=TaskSupervisor(
+                limit=_TURN_LIMIT,
+                grace=_TURN_GRACE,
+                logger=container.resolve(Logger).bind(component='telegram'),
+            ),
         )
         container.bind(TelegramTurnProcessor, factory=_turns)
         container.bind(TelegramChatActor, factory=_actor)

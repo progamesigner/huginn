@@ -5,6 +5,7 @@ from pydantic import Field
 from app.features.agents.contracts import ToolOutput, ToolParams, TypedTool
 from app.features.agents.tooling import ToolSet
 from lib.llm import ToolCallSegment
+from tests.helpers.logging import make_logger
 
 
 class EchoParams(ToolParams):
@@ -32,7 +33,7 @@ class BoomTool(TypedTool[EchoParams]):
 
 
 def make_toolset() -> ToolSet:
-    tools = ToolSet()
+    tools = ToolSet(logger=make_logger())
     tools.add('echo', EchoTool())
     tools.add('boom', BoomTool())
     return tools

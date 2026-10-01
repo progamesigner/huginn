@@ -1,5 +1,4 @@
 import json
-import logging
 from collections.abc import Iterator, Sequence
 from dataclasses import dataclass
 from typing import Annotated
@@ -16,12 +15,11 @@ from lib.llm import (
     TextChunk,
     TextSegment,
 )
+from lib.observability import Logger
 
 from .entities import Conversation, Part, Turn
 from .exceptions import NoTurnsToCompactError
 from .repositories import ConversationRepository
-
-logger = logging.getLogger(__name__)
 
 _CHARS_PER_TOKEN = 4
 _DEFAULT_KEEP_TURNS = 8
@@ -140,6 +138,7 @@ def _summary_messages(
 
 
 class CompactionService:
+    logger: Logger
     llm: LLMContract
     repository: ConversationRepository
     keep_turns: int
@@ -157,7 +156,10 @@ class CompactionService:
         max_retries: int = _DEFAULT_MAX_RETRIES,
         instructions: str = '',
         instruction: str | None = None,
+        *,
+        logger: Logger,
     ) -> None:
+        self.logger = logger.bind(component='compaction')
         self.llm = llm
         self.repository = repository
         self.keep_turns = keep_turns
@@ -285,7 +287,7 @@ class CompactionService:
             try:
                 return SummaryOutput.model_validate_json(raw)
             except ValidationError:
-                logger.warning(
+                self.logger.warning(
                     'compact: summary output failed validation on attempt %d/%d',
                     attempt + 1,
                     self.max_retries + 1,

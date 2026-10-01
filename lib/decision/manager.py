@@ -1,5 +1,7 @@
 from typing import override
 
+from structlog.stdlib import BoundLogger
+
 from .adapters.base import HTTPDecisionAdapter
 from .adapters.bifrost import BifrostAdapter
 from .adapters.typesafe import TypeSafeAdapter
@@ -28,8 +30,9 @@ class DecisionManager(DecisionContract):
         self,
         providers: tuple[DecisionProviderConfig, ...],
         http: HTTPConnector,
+        logger: BoundLogger,
     ) -> None:
-        self.registry = DecisionProviderRegistry(providers)
+        self.registry = DecisionProviderRegistry(providers, logger)
         self.http = http
         self.clients = {}
 

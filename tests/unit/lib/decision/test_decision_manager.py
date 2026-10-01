@@ -4,6 +4,7 @@ from lib.decision import DecisionManager, DecisionProviderConfig, DecisionRef
 from lib.decision.adapters.bifrost import BifrostAdapter
 from lib.decision.adapters.typesafe import TypeSafeAdapter
 from lib.http import HTTPClientManager
+from tests.helpers.logging import make_logger
 
 
 def _providers() -> tuple[DecisionProviderConfig, ...]:
@@ -32,7 +33,7 @@ def _providers() -> tuple[DecisionProviderConfig, ...]:
 
 
 def test_manager_builds_the_adapter_each_provider_names() -> None:
-    manager = DecisionManager(_providers(), HTTPClientManager())
+    manager = DecisionManager(_providers(), HTTPClientManager(), logger=make_logger())
 
     bifrost = manager.client_for(DecisionRef(model='typesafe/jev-1.13.0'))
     openrouter = manager.client_for(DecisionRef(model='typesafe/jev-1.13'))
@@ -44,14 +45,14 @@ def test_manager_builds_the_adapter_each_provider_names() -> None:
 
 
 def test_manager_reuses_one_client_per_provider() -> None:
-    manager = DecisionManager(_providers(), HTTPClientManager())
+    manager = DecisionManager(_providers(), HTTPClientManager(), logger=make_logger())
     ref = DecisionRef(model='jev-1.13.0')
 
     assert manager.client_for(ref) is manager.client_for(ref)
 
 
 def test_manager_has_no_client_for_an_unserved_model() -> None:
-    manager = DecisionManager(_providers(), HTTPClientManager())
+    manager = DecisionManager(_providers(), HTTPClientManager(), logger=make_logger())
 
     assert manager.client_for(DecisionRef(model='jev-0')) is None
     assert (
@@ -61,6 +62,6 @@ def test_manager_has_no_client_for_an_unserved_model() -> None:
 
 
 def test_manager_without_providers_serves_nothing() -> None:
-    manager = DecisionManager((), HTTPClientManager())
+    manager = DecisionManager((), HTTPClientManager(), logger=make_logger())
 
     assert manager.client_for(DecisionRef(model='jev-1.13.0')) is None

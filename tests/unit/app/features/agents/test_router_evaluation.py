@@ -21,6 +21,7 @@ from app.features.agents.eval_report import (
 )
 from app.features.agents.evaluation import TokenPrices, Variant, evaluate
 from app.features.agents.router import Router, RoutingDecision
+from tests.helpers.logging import make_logger
 
 from .test_agent_router import FakeLLM
 
@@ -53,7 +54,7 @@ def test_export_tags_and_private_file_round_trip(tmp_path: Path) -> None:
 
 
 async def test_three_variants_and_report_do_not_include_state() -> None:
-    router = Router({}, FakeLLM())
+    router = Router({}, FakeLLM(), logger=make_logger())
     router.decide = AsyncMock(
         side_effect=[
             RoutingDecision('a'),
@@ -103,7 +104,7 @@ async def test_three_variants_and_report_do_not_include_state() -> None:
 
 async def test_agreement_audit_and_inferred_labels_are_separate() -> None:
     samples = tuple(_sample(str(index)) for index in range(20))
-    router = Router({}, FakeLLM())
+    router = Router({}, FakeLLM(), logger=make_logger())
     router.decide = AsyncMock(return_value=RoutingDecision('a'))
     selections = dict[Variant, SelectionPolicy](
         {
@@ -132,7 +133,7 @@ async def test_agreement_audit_and_inferred_labels_are_separate() -> None:
 
 
 async def test_incomplete_comparison_never_infers_labels() -> None:
-    router = Router({}, FakeLLM())
+    router = Router({}, FakeLLM(), logger=make_logger())
     router.decide = AsyncMock(return_value=RoutingDecision('a'))
     samples = (_sample(),)
     results = await evaluate(

@@ -6,6 +6,7 @@ from datetime import timedelta
 import pytest
 
 from lib.redis import RedisLock, RedisMailbox, RedisManager
+from tests.helpers.logging import make_logger
 
 pytestmark = pytest.mark.integration
 
@@ -27,7 +28,10 @@ def chat() -> str:
 
 
 def make_mailbox(redis: RedisManager, chat: str) -> RedisMailbox:
-    return RedisMailbox(RedisLock(redis, f'{chat}:lock', ttl=_TTL), f'{chat}:queue')
+    return RedisMailbox(
+        RedisLock(redis, f'{chat}:lock', ttl=_TTL, logger=make_logger()),
+        f'{chat}:queue',
+    )
 
 
 async def backlog(redis: RedisManager, chat: str) -> int:

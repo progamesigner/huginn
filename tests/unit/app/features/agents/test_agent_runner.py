@@ -35,6 +35,7 @@ from lib.llm import (
 )
 from lib.temporal import ClockManager
 from tests.helpers.clock import FakeClock
+from tests.helpers.logging import make_logger
 from tests.helpers.replies import RecordingReply
 
 _VISION = ModelCapabilities(vision=True)
@@ -149,7 +150,7 @@ class AdvancingTool(TypedTool[ProbeParams]):
 
 
 def make_toolset() -> ToolSet:
-    tools = ToolSet()
+    tools = ToolSet(logger=make_logger())
     tools.add('echo', EchoTool())
     tools.add('sleep', SleepTool())
     return tools
@@ -228,7 +229,7 @@ async def test_run_returns_text_immediately_when_no_tool_calls() -> None:
             ],
         ],
     )
-    runner = AgentRunner(llm, make_toolset(), ClockManager())
+    runner = AgentRunner(llm, make_toolset(), ClockManager(), logger=make_logger())
     sink = RecordingReply()
 
     output = await runner.run(make_turn(), sink)
@@ -255,7 +256,7 @@ async def test_run_sends_the_token_limit_on_every_tool_loop_iteration() -> None:
         ],
     )
 
-    await AgentRunner(llm, make_toolset(), ClockManager()).run(
+    await AgentRunner(llm, make_toolset(), ClockManager(), logger=make_logger()).run(
         make_turn(max_completion_tokens=4096),
         discard(),
     )
@@ -272,7 +273,10 @@ def breakpoints(request: CompletionRequest) -> list[int]:
 async def test_run_marks_the_instructions_as_the_static_breakpoint() -> None:
     llm = answering()
 
-    await AgentRunner(llm, make_toolset(), ClockManager()).run(make_turn(), discard())
+    await AgentRunner(llm, make_toolset(), ClockManager(), logger=make_logger()).run(
+        make_turn(),
+        discard(),
+    )
 
     system = llm.requests[0].messages[0]
     assert system.role == 'system'
@@ -295,7 +299,10 @@ async def test_run_rolls_the_second_breakpoint_onto_the_newest_message() -> None
         ],
     )
 
-    await AgentRunner(llm, make_toolset(), ClockManager()).run(make_turn(), discard())
+    await AgentRunner(llm, make_toolset(), ClockManager(), logger=make_logger()).run(
+        make_turn(),
+        discard(),
+    )
 
     first, second = llm.requests
     # NOTE: two breakpoints per request, never more -- Anthropic allows four and
@@ -313,7 +320,7 @@ async def test_run_does_not_leave_a_breakpoint_on_a_replayed_prior_turn() -> Non
     )
     llm = answering()
 
-    await AgentRunner(llm, make_toolset(), ClockManager()).run(
+    await AgentRunner(llm, make_toolset(), ClockManager(), logger=make_logger()).run(
         make_turn(prior_turns=prior),
         discard(),
     )
@@ -348,7 +355,7 @@ async def test_run_stays_within_the_breakpoint_budget_with_a_replayed_summary() 
         ],
     )
 
-    await AgentRunner(llm, make_toolset(), ClockManager()).run(
+    await AgentRunner(llm, make_toolset(), ClockManager(), logger=make_logger()).run(
         make_turn(prior_turns=prior),
         discard(),
     )
@@ -368,7 +375,7 @@ async def test_run_executes_single_tool_call_then_finishes() -> None:
             [TextChunk(text='done'), FinishChunk(reason='stop')],
         ],
     )
-    runner = AgentRunner(llm, make_toolset(), ClockManager())
+    runner = AgentRunner(llm, make_toolset(), ClockManager(), logger=make_logger())
 
     output = await runner.run(make_turn(), discard())
 
@@ -396,7 +403,7 @@ async def test_run_tells_the_stream_when_a_tool_starts_and_finishes() -> None:
             [TextChunk(text='done'), FinishChunk(reason='stop')],
         ],
     )
-    runner = AgentRunner(llm, make_toolset(), ClockManager())
+    runner = AgentRunner(llm, make_toolset(), ClockManager(), logger=make_logger())
     sink = RecordingReply()
 
     await runner.run(make_turn(), sink)
@@ -416,7 +423,7 @@ async def test_run_reports_a_tool_that_answered_with_an_error_as_failed() -> Non
             [TextChunk(text='done'), FinishChunk(reason='stop')],
         ],
     )
-    runner = AgentRunner(llm, make_toolset(), ClockManager())
+    runner = AgentRunner(llm, make_toolset(), ClockManager(), logger=make_logger())
     sink = RecordingReply()
 
     await runner.run(make_turn(), sink)
@@ -435,7 +442,7 @@ async def test_run_rejects_a_tool_call_that_arrived_without_a_call_id() -> None:
             ],
         ],
     )
-    runner = AgentRunner(llm, make_toolset(), ClockManager())
+    runner = AgentRunner(llm, make_toolset(), ClockManager(), logger=make_logger())
     sink = RecordingReply()
 
     with pytest.raises(MalformedToolCallError):
@@ -455,7 +462,7 @@ async def test_run_rejects_only_the_call_id_and_not_an_unnamed_tool() -> None:
             [TextChunk(text='done'), FinishChunk(reason='stop')],
         ],
     )
-    runner = AgentRunner(llm, make_toolset(), ClockManager())
+    runner = AgentRunner(llm, make_toolset(), ClockManager(), logger=make_logger())
     sink = RecordingReply()
 
     output = await runner.run(make_turn(), sink)
@@ -485,7 +492,7 @@ async def test_run_executes_multiple_tool_calls_in_one_turn() -> None:
             [TextChunk(text='done'), FinishChunk(reason='stop')],
         ],
     )
-    runner = AgentRunner(llm, make_toolset(), ClockManager())
+    runner = AgentRunner(llm, make_toolset(), ClockManager(), logger=make_logger())
 
     output = await runner.run(make_turn(), discard())
 
@@ -518,7 +525,7 @@ async def test_run_executes_tool_calls_concurrently() -> None:
             [TextChunk(text='done'), FinishChunk(reason='stop')],
         ],
     )
-    runner = AgentRunner(llm, make_toolset(), ClockManager())
+    runner = AgentRunner(llm, make_toolset(), ClockManager(), logger=make_logger())
 
     started = time.monotonic()
     await runner.run(make_turn(), discard())
@@ -551,7 +558,7 @@ async def test_run_iterates_across_multiple_turns_until_no_tool_calls() -> None:
             [TextChunk(text='done'), FinishChunk(reason='stop')],
         ],
     )
-    runner = AgentRunner(llm, make_toolset(), ClockManager())
+    runner = AgentRunner(llm, make_toolset(), ClockManager(), logger=make_logger())
 
     output = await runner.run(make_turn(), discard())
 
@@ -571,7 +578,7 @@ async def test_run_marks_incomplete_when_max_iterations_exhausted(
         ]
 
     llm = FakeLLM([always_calls_tool(), always_calls_tool()])
-    runner = AgentRunner(llm, make_toolset(), ClockManager())
+    runner = AgentRunner(llm, make_toolset(), ClockManager(), logger=make_logger())
 
     with caplog.at_level('WARNING'):
         output = await runner.run(make_turn(max_iterations=2), discard())
@@ -597,7 +604,7 @@ async def test_run_reports_tool_timeout_as_error_and_continues(
             [TextChunk(text='done'), FinishChunk(reason='stop')],
         ],
     )
-    runner = AgentRunner(llm, make_toolset(), ClockManager())
+    runner = AgentRunner(llm, make_toolset(), ClockManager(), logger=make_logger())
 
     with caplog.at_level('WARNING'):
         output = await runner.run(make_turn(tool_timeout=0.05), discard())
@@ -619,7 +626,7 @@ async def test_run_delivers_the_partial_answer_when_the_turn_budget_expires(
     caplog: pytest.LogCaptureFixture,
 ) -> None:
     llm = StallingLLM('half an ')
-    runner = AgentRunner(llm, make_toolset(), ClockManager())
+    runner = AgentRunner(llm, make_toolset(), ClockManager(), logger=make_logger())
     sink = RecordingReply()
 
     with caplog.at_level('WARNING'):
@@ -646,7 +653,7 @@ async def test_run_keeps_the_streamed_text_when_the_budget_expires_in_a_tool() -
             ],
         ],
     )
-    runner = AgentRunner(llm, make_toolset(), ClockManager())
+    runner = AgentRunner(llm, make_toolset(), ClockManager(), logger=make_logger())
 
     output = await runner.run(make_turn(turn_timeout=0.05), discard())
 
@@ -671,7 +678,7 @@ async def test_run_does_not_open_an_iteration_it_cannot_afford(
             [TextChunk(text='never asked'), FinishChunk(reason='stop')],
         ],
     )
-    runner = AgentRunner(llm, make_toolset(), ClockManager())
+    runner = AgentRunner(llm, make_toolset(), ClockManager(), logger=make_logger())
 
     with caplog.at_level('WARNING'):
         output = await runner.run(
@@ -686,7 +693,7 @@ async def test_run_does_not_open_an_iteration_it_cannot_afford(
 
 async def test_run_always_opens_the_first_iteration_however_small_the_budget() -> None:
     llm = answering()
-    runner = AgentRunner(llm, make_toolset(), ClockManager())
+    runner = AgentRunner(llm, make_toolset(), ClockManager(), logger=make_logger())
 
     output = await runner.run(
         make_turn(turn_timeout=300.0, min_iteration_budget=600.0),
@@ -724,7 +731,7 @@ async def test_run_records_steps_for_each_iteration(
             [TextChunk(text='done'), FinishChunk(reason='stop')],
         ],
     )
-    runner = AgentRunner(llm, make_toolset(), ClockManager())
+    runner = AgentRunner(llm, make_toolset(), ClockManager(), logger=make_logger())
 
     with caplog.at_level('INFO'):
         output = await runner.run(make_turn(), discard())
@@ -754,7 +761,7 @@ async def test_run_records_failed_tool_execution_in_steps() -> None:
             [TextChunk(text='done'), FinishChunk(reason='stop')],
         ],
     )
-    runner = AgentRunner(llm, make_toolset(), ClockManager())
+    runner = AgentRunner(llm, make_toolset(), ClockManager(), logger=make_logger())
 
     output = await runner.run(make_turn(tool_timeout=0.05), discard())
 
@@ -765,7 +772,7 @@ async def test_run_records_failed_tool_execution_in_steps() -> None:
 
 async def test_tool_duration_is_measured_by_the_injected_clock() -> None:
     clock = FakeClock()
-    tools = ToolSet()
+    tools = ToolSet(logger=make_logger())
     tools.add('advance', AdvancingTool(clock, timedelta(seconds=2)))
     llm = FakeLLM(
         [
@@ -776,7 +783,7 @@ async def test_tool_duration_is_measured_by_the_injected_clock() -> None:
             [TextChunk(text='done'), FinishChunk(reason='stop')],
         ],
     )
-    runner = AgentRunner(llm, tools, clock)
+    runner = AgentRunner(llm, tools, clock, logger=make_logger())
 
     output = await runner.run(make_turn(), discard())
 
@@ -797,9 +804,9 @@ async def test_run_binds_turn_id_during_tool_execution() -> None:
         [probe_response(), [TextChunk(text='done'), FinishChunk(reason='stop')]],
     )
     probe = ProbeTool()
-    tools = ToolSet()
+    tools = ToolSet(logger=make_logger())
     tools.add('probe', probe)
-    runner = AgentRunner(llm, tools, ClockManager())
+    runner = AgentRunner(llm, tools, ClockManager(), logger=make_logger())
 
     await runner.run(make_turn(), discard())
 
@@ -817,9 +824,9 @@ async def test_run_generates_unique_turn_id_per_turn() -> None:
         ],
     )
     probe = ProbeTool()
-    tools = ToolSet()
+    tools = ToolSet(logger=make_logger())
     tools.add('probe', probe)
-    runner = AgentRunner(llm, tools, ClockManager())
+    runner = AgentRunner(llm, tools, ClockManager(), logger=make_logger())
 
     await runner.run(make_turn(), discard())
     first = probe.seen['turn_id']
@@ -830,7 +837,7 @@ async def test_run_generates_unique_turn_id_per_turn() -> None:
 
 async def test_an_attached_image_reaches_the_model_beside_its_caption() -> None:
     llm = answering()
-    runner = AgentRunner(llm, make_toolset(), ClockManager())
+    runner = AgentRunner(llm, make_toolset(), ClockManager(), logger=make_logger())
     prompt = TurnPrompt(
         text='what is this?',
         actor='user:1',
@@ -850,7 +857,7 @@ async def test_an_attached_image_reaches_the_model_beside_its_caption() -> None:
 
 async def test_a_photo_without_a_caption_is_still_a_message() -> None:
     llm = answering()
-    runner = AgentRunner(llm, make_toolset(), ClockManager())
+    runner = AgentRunner(llm, make_toolset(), ClockManager(), logger=make_logger())
     prompt = TurnPrompt(text='', actor='user:1', attachments=(attachment(),))
 
     await runner.run(make_turn(prompts=(prompt,)), discard())
@@ -866,7 +873,7 @@ async def test_a_model_without_vision_gets_the_image_hint(
     caplog: pytest.LogCaptureFixture,
 ) -> None:
     llm = answering()
-    runner = AgentRunner(llm, make_toolset(), ClockManager())
+    runner = AgentRunner(llm, make_toolset(), ClockManager(), logger=make_logger())
     prompt = TurnPrompt(text='', actor='user:1', attachments=(attachment(),))
 
     with caplog.at_level('INFO'):
@@ -889,7 +896,7 @@ async def test_a_pdf_reaches_the_model_as_a_document_only_when_it_reads_them(
     caplog: pytest.LogCaptureFixture,
 ) -> None:
     llm = answering()
-    runner = AgentRunner(llm, make_toolset(), ClockManager())
+    runner = AgentRunner(llm, make_toolset(), ClockManager(), logger=make_logger())
     pdf = attachment(
         'document',
         data=b'%PDF',
@@ -924,7 +931,7 @@ async def test_a_pdf_reaches_the_model_as_a_document_only_when_it_reads_them(
 
 async def test_a_transcribed_voice_note_arrives_as_what_it_said() -> None:
     llm = answering()
-    runner = AgentRunner(llm, make_toolset(), ClockManager())
+    runner = AgentRunner(llm, make_toolset(), ClockManager(), logger=make_logger())
     voice = attachment('audio', mime='audio/ogg', hint='[audio: audio/ogg 12s]')
     prompt = TurnPrompt(
         text='',
@@ -942,7 +949,7 @@ async def test_a_transcribed_voice_note_arrives_as_what_it_said() -> None:
 
 async def test_an_attachment_the_model_cannot_take_arrives_as_its_hint() -> None:
     llm = answering()
-    runner = AgentRunner(llm, make_toolset(), ClockManager())
+    runner = AgentRunner(llm, make_toolset(), ClockManager(), logger=make_logger())
     voice = attachment('audio', mime='audio/ogg', hint='[audio: audio/ogg 12s]')
     prompt = TurnPrompt(text='', actor='user:1', attachments=(voice,))
 
@@ -956,7 +963,7 @@ async def test_an_attachment_the_model_cannot_take_arrives_as_its_hint() -> None
 
 async def test_a_prompt_with_nothing_in_it_is_not_a_message() -> None:
     llm = answering()
-    runner = AgentRunner(llm, make_toolset(), ClockManager())
+    runner = AgentRunner(llm, make_toolset(), ClockManager(), logger=make_logger())
     prompt = TurnPrompt(text='', actor='user:1')
 
     await runner.run(make_turn(prompts=(prompt,)), discard())
@@ -971,9 +978,9 @@ async def test_run_joins_a_turn_id_its_caller_already_bound() -> None:
         [probe_response(), [TextChunk(text='done'), FinishChunk(reason='stop')]],
     )
     probe = ProbeTool()
-    tools = ToolSet()
+    tools = ToolSet(logger=make_logger())
     tools.add('probe', probe)
-    runner = AgentRunner(llm, tools, ClockManager())
+    runner = AgentRunner(llm, tools, ClockManager(), logger=make_logger())
 
     with bound_contextvars(turn_id='opened-by-the-channel'):
         await runner.run(make_turn(), discard())

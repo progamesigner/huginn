@@ -2,6 +2,7 @@ from typing import override
 
 from app.contracts.channels import ChannelGatewayFactoryContract
 from app.core.providers.http import HTTPClientProvider
+from app.core.providers.logging import LoggingProvider
 from app.core.providers.router import RouterProvider
 from app.core.providers.temporal import ClockProvider
 from app.exts.telegram.gateways import TelegramGatewayFactory
@@ -13,7 +14,7 @@ from lib.router import RouterContract
 
 
 class TelegramGatewayProvider(ProviderContract):
-    dependencies = (ClockProvider, HTTPClientProvider)
+    dependencies = (ClockProvider, HTTPClientProvider, LoggingProvider)
 
     @override
     def __call__(self, container: ContainerContract) -> None:

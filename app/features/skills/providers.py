@@ -6,6 +6,7 @@ from app.core.providers.temporal import ClockProvider
 from app.features.mcp.providers import MCPProvider
 from lib.container import ContainerContract, ProviderContract
 from lib.mcp import MCPClientContract
+from lib.observability import Logger
 from lib.temporal import ClockContract
 
 from .config import SKILLS
@@ -23,6 +24,7 @@ def _repository(container: ContainerContract) -> SkillRepository:
         container.resolve(MCPClientContract),
         settings.server,
         settings.glob,
+        logger=container.resolve(Logger),
     )
     return SkillRepository(source, container.resolve(ClockContract))
 

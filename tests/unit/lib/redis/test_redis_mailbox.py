@@ -2,6 +2,7 @@ from datetime import timedelta
 
 from lib.redis import RedisLock, RedisMailbox
 from lib.redis.scripts import CLAIM, DRAIN
+from tests.helpers.logging import make_logger
 from tests.helpers.redis import FakeClient, make_redis
 
 _KEYS = ('chat:7:lock', 'chat:7:queue')
@@ -10,7 +11,10 @@ _TTL = timedelta(milliseconds=60)
 
 
 def make_mailbox(client: FakeClient) -> RedisMailbox:
-    return RedisMailbox(RedisLock(make_redis(client), _KEYS[0], ttl=_TTL), _KEYS[1])
+    return RedisMailbox(
+        RedisLock(make_redis(client), _KEYS[0], ttl=_TTL, logger=make_logger()),
+        _KEYS[1],
+    )
 
 
 def test_claim_takes_the_lock_and_enqueues_in_a_single_script() -> None:
@@ -78,7 +82,7 @@ async def test_both_scripts_carry_the_same_owner_token() -> None:
 
 async def test_the_mailbox_follows_the_lock_to_its_alias() -> None:
     redis = make_redis(FakeClient(outcomes=[1]))
-    lock = RedisLock(redis, _KEYS[0], ttl=_TTL, alias='queue')
+    lock = RedisLock(redis, _KEYS[0], ttl=_TTL, alias='queue', logger=make_logger())
 
     await RedisMailbox(lock, _KEYS[1]).claim(_MESSAGE)
 

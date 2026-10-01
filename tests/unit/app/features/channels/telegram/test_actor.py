@@ -6,6 +6,7 @@ from pydantic import SecretStr
 from app.contracts.channels import InboundMessage
 from app.features.channels.telegram.actor import TelegramChatActor
 from app.features.channels.telegram.config import TelegramChannelConfig
+from tests.helpers.logging import make_logger
 from tests.helpers.redis import FakeClient, make_redis
 
 _TTL = timedelta(seconds=60)
@@ -54,7 +55,12 @@ def collector() -> tuple[Rounds, Processor]:
 
 async def test_a_refused_claim_leaves_processing_to_the_owner() -> None:
     rounds, process = collector()
-    actor = TelegramChatActor(make_redis(FakeClient(outcomes=[0])), process, ttl=_TTL)
+    actor = TelegramChatActor(
+        make_redis(FakeClient(outcomes=[0])),
+        process,
+        ttl=_TTL,
+        logger=make_logger(),
+    )
 
     await actor.handle(channel(), inbound(1))
 
@@ -66,7 +72,12 @@ async def test_the_owner_processes_its_own_message_then_stops_on_an_empty_drain(
 ):
     rounds, process = collector()
     client = FakeClient(outcomes=[1, []])
-    actor = TelegramChatActor(make_redis(client), process, ttl=_TTL)
+    actor = TelegramChatActor(
+        make_redis(client),
+        process,
+        ttl=_TTL,
+        logger=make_logger(),
+    )
 
     await actor.handle(channel(), inbound(1))
 
@@ -76,7 +87,12 @@ async def test_the_owner_processes_its_own_message_then_stops_on_an_empty_drain(
 async def test_a_non_empty_drain_coalesces_into_a_second_round() -> None:
     rounds, process = collector()
     client = FakeClient(outcomes=[1, [queued(2), queued(3)], []])
-    actor = TelegramChatActor(make_redis(client), process, ttl=_TTL)
+    actor = TelegramChatActor(
+        make_redis(client),
+        process,
+        ttl=_TTL,
+        logger=make_logger(),
+    )
 
     await actor.handle(channel(), inbound(1))
 
@@ -86,7 +102,12 @@ async def test_a_non_empty_drain_coalesces_into_a_second_round() -> None:
 async def test_unreadable_queued_bytes_are_dropped_from_the_round() -> None:
     rounds, process = collector()
     client = FakeClient(outcomes=[1, [b'not json', queued(2)], []])
-    actor = TelegramChatActor(make_redis(client), process, ttl=_TTL)
+    actor = TelegramChatActor(
+        make_redis(client),
+        process,
+        ttl=_TTL,
+        logger=make_logger(),
+    )
 
     await actor.handle(channel(), inbound(1))
 
@@ -96,7 +117,12 @@ async def test_unreadable_queued_bytes_are_dropped_from_the_round() -> None:
 async def test_the_claim_queues_the_port_message_itself() -> None:
     _, process = collector()
     client = FakeClient(outcomes=[1, []])
-    actor = TelegramChatActor(make_redis(client), process, ttl=_TTL)
+    actor = TelegramChatActor(
+        make_redis(client),
+        process,
+        ttl=_TTL,
+        logger=make_logger(),
+    )
     message = inbound(1)
 
     await actor.handle(channel(), message)

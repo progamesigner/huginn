@@ -1,9 +1,9 @@
 import asyncio
-import logging
 from collections.abc import AsyncGenerator, Coroutine
 from typing import override
 
 from app.contracts.channels import ChannelReplyContract, ToolPhase, TurnEnding
+from lib.observability import Logger
 
 from .entities import (
     DoneEvent,
@@ -15,8 +15,6 @@ from .entities import (
     TurnEvent,
     UnfinishedEvent,
 )
-
-logger = logging.getLogger(__name__)
 
 _FAILED = 'the turn failed before it finished'
 _PENDING = 256
@@ -57,7 +55,12 @@ class QueuedReply(ChannelReplyContract):
         await self.events.put(None)
 
 
-async def guard(turn: Coroutine[None, None, None], reply: QueuedReply) -> None:
+async def guard(
+    turn: Coroutine[None, None, None],
+    reply: QueuedReply,
+    *,
+    logger: Logger,
+) -> None:
     try:
         await turn
     except Exception:
@@ -71,8 +74,10 @@ async def drain(
     turn: Coroutine[None, None, None],
     reply: QueuedReply,
     interval: float = _PING_INTERVAL,
+    *,
+    logger: Logger,
 ) -> AsyncGenerator[TurnEvent]:
-    task = asyncio.create_task(guard(turn, reply))
+    task = asyncio.create_task(guard(turn, reply, logger=logger))
     try:
         while True:
             try:

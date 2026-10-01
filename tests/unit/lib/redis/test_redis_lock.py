@@ -5,6 +5,7 @@ import pytest
 
 from lib.redis import RedisError, RedisLock
 from lib.redis.scripts import EXTEND, RELEASE
+from tests.helpers.logging import make_logger
 from tests.helpers.redis import FakeClient, make_redis
 
 _TTL = timedelta(milliseconds=60)
@@ -22,21 +23,21 @@ def test_rejects_a_non_positive_ttl() -> None:
     redis = make_redis(FakeClient())
 
     with pytest.raises(RedisError, match='lock ttl must be positive'):
-        RedisLock(redis, 'chat:7', ttl=timedelta(0))
+        RedisLock(redis, 'chat:7', ttl=timedelta(0), logger=make_logger())
 
 
 def test_owner_tokens_are_unique_per_lock() -> None:
     redis = make_redis(FakeClient())
 
-    first = RedisLock(redis, 'chat:7', ttl=_TTL)
-    second = RedisLock(redis, 'chat:7', ttl=_TTL)
+    first = RedisLock(redis, 'chat:7', ttl=_TTL, logger=make_logger())
+    second = RedisLock(redis, 'chat:7', ttl=_TTL, logger=make_logger())
 
     assert first.token != second.token
 
 
 async def test_acquire_writes_the_owner_token_with_nx_and_the_lease() -> None:
     client = FakeClient()
-    lock = RedisLock(make_redis(client), 'chat:7', ttl=_TTL)
+    lock = RedisLock(make_redis(client), 'chat:7', ttl=_TTL, logger=make_logger())
 
     assert await lock.acquire() is True
     assert client.writes == [('chat:7', lock.token, True, 60)]
@@ -44,7 +45,7 @@ async def test_acquire_writes_the_owner_token_with_nx_and_the_lease() -> None:
 
 async def test_release_evaluates_the_script_against_the_owner_token() -> None:
     client = FakeClient()
-    lock = RedisLock(make_redis(client), 'chat:7', ttl=_TTL)
+    lock = RedisLock(make_redis(client), 'chat:7', ttl=_TTL, logger=make_logger())
 
     assert await lock.release() is True
     assert client.evaluated == [(RELEASE, ('chat:7',), (lock.token,))]
@@ -52,7 +53,7 @@ async def test_release_evaluates_the_script_against_the_owner_token() -> None:
 
 async def test_extend_hands_the_script_a_fresh_lease() -> None:
     client = FakeClient()
-    lock = RedisLock(make_redis(client), 'chat:7', ttl=_TTL)
+    lock = RedisLock(make_redis(client), 'chat:7', ttl=_TTL, logger=make_logger())
 
     assert await lock.extend() is True
     assert client.evaluated == [(EXTEND, ('chat:7',), (lock.token, 60))]
@@ -60,7 +61,7 @@ async def test_extend_hands_the_script_a_fresh_lease() -> None:
 
 async def test_a_falsy_reply_means_the_lock_is_no_longer_ours() -> None:
     client = FakeClient(outcomes=[0, 0])
-    lock = RedisLock(make_redis(client), 'chat:7', ttl=_TTL)
+    lock = RedisLock(make_redis(client), 'chat:7', ttl=_TTL, logger=make_logger())
 
     assert await lock.extend() is False
     assert await lock.release() is False
@@ -68,7 +69,7 @@ async def test_a_falsy_reply_means_the_lock_is_no_longer_ours() -> None:
 
 async def test_watchdog_renews_the_lease_while_the_lock_is_held() -> None:
     client = FakeClient()
-    lock = RedisLock(make_redis(client), 'chat:7', ttl=_TTL)
+    lock = RedisLock(make_redis(client), 'chat:7', ttl=_TTL, logger=make_logger())
 
     async with lock.renew():
         await asyncio.sleep(_TTL.total_seconds() * 1.5)
@@ -80,7 +81,7 @@ async def test_watchdog_renews_the_lease_while_the_lock_is_held() -> None:
 
 async def test_watchdog_stops_once_the_lease_is_lost() -> None:
     client = FakeClient(outcomes=[0])
-    lock = RedisLock(make_redis(client), 'chat:7', ttl=_TTL)
+    lock = RedisLock(make_redis(client), 'chat:7', ttl=_TTL, logger=make_logger())
 
     async with lock.renew():
         await asyncio.sleep(_TTL.total_seconds() * 1.5)
@@ -90,7 +91,7 @@ async def test_watchdog_stops_once_the_lease_is_lost() -> None:
 
 async def test_operations_target_the_configured_alias() -> None:
     redis = make_redis(FakeClient())
-    lock = RedisLock(redis, 'chat:7', ttl=_TTL, alias='queue')
+    lock = RedisLock(redis, 'chat:7', ttl=_TTL, alias='queue', logger=make_logger())
 
     await lock.acquire()
 

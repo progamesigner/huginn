@@ -1,13 +1,11 @@
-import logging
 from hmac import compare_digest
 from typing import override
 
 from app.contracts.auth import ApiClient, ApiRouting, AuthContract
 from app.core.config.registry import HuginnConfig
+from lib.observability import Logger
 
 from .config import API_KEYS, ApiKeyConfig
-
-logger = logging.getLogger(__name__)
 
 type Registered = tuple[tuple[bytes, ApiClient], ...]
 
@@ -49,9 +47,16 @@ def _registered(config: HuginnConfig) -> Registered:
 
 
 class ApiKeyDirectory(AuthContract):
+    logger: Logger
     clients: Registered
 
-    def __init__(self, config: HuginnConfig) -> None:
+    def __init__(
+        self,
+        config: HuginnConfig,
+        *,
+        logger: Logger,
+    ) -> None:
+        self.logger = logger.bind(component='auth')
         self.clients = _registered(config)
 
     @override
@@ -64,6 +69,6 @@ class ApiKeyDirectory(AuthContract):
                 found = client
 
         if found is None:
-            logger.info('Rejected an unknown api key')
+            self.logger.info('Rejected an unknown api key')
 
         return found

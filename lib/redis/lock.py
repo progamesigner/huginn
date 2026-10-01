@@ -1,15 +1,14 @@
 import asyncio
-import logging
 import secrets
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from datetime import timedelta
 
+from structlog.stdlib import BoundLogger
+
 from .contracts import RedisContract
 from .exceptions import RedisError
 from .scripts import EXTEND, RELEASE
-
-logger = logging.getLogger(__name__)
 
 _RENEWALS_PER_LEASE = 3
 
@@ -17,6 +16,7 @@ _RENEWALS_PER_LEASE = 3
 class RedisLock:
     alias: str | None
     key: str
+    logger: BoundLogger
     redis: RedisContract
     token: bytes
     ttl: timedelta
@@ -27,6 +27,7 @@ class RedisLock:
         key: str,
         *,
         ttl: timedelta,
+        logger: BoundLogger,
         alias: str | None = None,
     ) -> None:
         if ttl <= timedelta(0):
@@ -34,6 +35,7 @@ class RedisLock:
 
         self.alias = alias
         self.key = key
+        self.logger = logger
         self.redis = redis
         self.token = secrets.token_bytes(16)
         self.ttl = ttl
@@ -72,5 +74,8 @@ class RedisLock:
         while True:
             await asyncio.sleep(interval)
             if not await self.extend():
-                logger.warning('Lost redis lock %s before its lease renewed', self.key)
+                self.logger.warning(
+                    'Lost redis lock %s before its lease renewed',
+                    self.key,
+                )
                 return

@@ -12,6 +12,7 @@ from lib.decision import (
     DecisionRequest,
 )
 from lib.http import HTTPClientManager
+from tests.helpers.logging import make_logger
 
 pytestmark = pytest.mark.integration
 
@@ -72,9 +73,11 @@ def _provider(name: str) -> tuple[DecisionProviderConfig, str]:
 @pytest.mark.parametrize('name', ['typesafe', 'openrouter', 'bifrost'])
 async def test_live_choice_picks_one_of_the_offered_options(name: str) -> None:
     provider, model = _provider(name)
-    client = DecisionManager((provider,), HTTPClientManager()).client_for(
-        DecisionRef(model=model),
-    )
+    client = DecisionManager(
+        (provider,),
+        HTTPClientManager(),
+        logger=make_logger(),
+    ).client_for(DecisionRef(model=model))
     assert client is not None
 
     result = await client.decide(

@@ -21,6 +21,7 @@ from app.features.agents.entities import (
 from app.features.agents.router import Router, RoutingDecision
 from app.features.agents.router_commands import cli
 from lib.command import CommandContract
+from tests.helpers.logging import make_logger
 
 from .test_agent_router import FakeLLM
 from .test_router_evaluation import _sample
@@ -81,7 +82,7 @@ def test_export_evaluate_review_and_report(tmp_path: Path) -> None:
         ),
     )
     container.bind(TranscriptServiceContract, instance=DatasetStore())
-    router = Router({}, FakeLLM(), DefaultsConfig(model='chat'))
+    router = Router({}, FakeLLM(), DefaultsConfig(model='chat'), logger=make_logger())
     router.decide = AsyncMock(return_value=RoutingDecision('a'))
     container.bind(Router, instance=router)
     commands = container.resolve(CommandContract)

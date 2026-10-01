@@ -16,6 +16,8 @@ def configure_logging(
         structlog.contextvars.merge_contextvars,
         structlog.stdlib.add_logger_name,
         structlog.stdlib.add_log_level,
+        # NOTE: injected loggers keep the printf-style calls the stdlib ones made
+        structlog.stdlib.PositionalArgumentsFormatter(),
         structlog.processors.TimeStamper(fmt='iso', utc=True),
     ]
 

@@ -35,6 +35,7 @@ from lib.llm import (
     TextSegment,
 )
 from lib.temporal import ClockManager
+from tests.helpers.logging import make_logger
 
 pytestmark = pytest.mark.integration
 
@@ -149,6 +150,7 @@ def _store(database: DatabaseContract) -> ConversationTranscriptStore:
             sections={'blobs': BlobsConfig(), 'compaction': CompactionConfig()},
         ),
         BlobService(database, GUIDManager(), ClockManager()),
+        logger=make_logger(),
     )
 
 
@@ -501,6 +503,7 @@ async def test_a_record_that_raises_partway_commits_nothing(database_url: str) -
             sections={'blobs': BlobsConfig(), 'compaction': CompactionConfig()},
         ),
         FlakyBlobs(),
+        logger=make_logger(),
     )
     prompt = TurnPrompt(
         text='look',

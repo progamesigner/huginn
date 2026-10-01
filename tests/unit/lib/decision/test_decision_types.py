@@ -10,6 +10,7 @@ from lib.decision import (
     DecisionRef,
     DecisionRequest,
 )
+from tests.helpers.logging import make_logger
 
 
 def _provider(name: str, *models: str) -> DecisionProviderConfig:
@@ -98,7 +99,7 @@ def test_provider_needs_a_model() -> None:
 
 def test_registry_resolves_a_bare_model_its_only_owner_offers() -> None:
     typesafe = _provider('typesafe', 'jev-1.13.0')
-    registry = DecisionProviderRegistry((typesafe,))
+    registry = DecisionProviderRegistry((typesafe,), logger=make_logger())
 
     assert registry.resolve(DecisionRef(model='jev-1.13.0')) is typesafe
     assert registry.resolve(DecisionRef(model='jev-0')) is None
@@ -107,7 +108,7 @@ def test_registry_resolves_a_bare_model_its_only_owner_offers() -> None:
 def test_registry_pins_a_model_to_the_named_provider() -> None:
     first = _provider('first', 'jev-1.13.0')
     second = _provider('second', 'jev-1.13.0')
-    registry = DecisionProviderRegistry((first, second))
+    registry = DecisionProviderRegistry((first, second), logger=make_logger())
 
     assert (
         registry.resolve(DecisionRef(model='jev-1.13.0', provider='second')) is second
@@ -119,6 +120,7 @@ def test_registry_pins_a_model_to_the_named_provider() -> None:
 def test_registry_refuses_a_bare_model_several_providers_claim() -> None:
     registry = DecisionProviderRegistry(
         (_provider('first', 'jev-1.13.0'), _provider('second', 'jev-1.13.0')),
+        logger=make_logger(),
     )
 
     assert registry.resolve(DecisionRef(model='jev-1.13.0')) is None

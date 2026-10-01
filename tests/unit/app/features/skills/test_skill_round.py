@@ -22,6 +22,7 @@ from lib.llm import (
 from lib.mcp import MCPClientContract, MCPToolInfo
 from lib.temporal import ClockManager
 from tests.helpers.clock import FakeClock
+from tests.helpers.logging import make_logger
 from tests.helpers.replies import RecordingReply
 from tests.unit.app.features.agents.test_agent_runner import FakeLLM
 
@@ -66,9 +67,16 @@ async def test_agent_loads_a_skill_through_the_tool_loop() -> None:
         skills=SkillsConfig(enabled=True),
     )
     tools, _ = await build_tool_set(
-        (SkillToolSource(lambda: repository, SkillsSourceConfig()),),
+        (
+            SkillToolSource(
+                lambda: repository,
+                SkillsSourceConfig(),
+                logger=make_logger(),
+            ),
+        ),
         agent,
         TurnScope(actor='user:1', agent='test', channel='test', chat='1'),
+        logger=make_logger(),
     )
     llm = FakeLLM(
         [
@@ -84,7 +92,7 @@ async def test_agent_loads_a_skill_through_the_tool_loop() -> None:
             [TextChunk(text='done'), FinishChunk(reason='stop')],
         ],
     )
-    runner = AgentRunner(llm, tools, ClockManager())
+    runner = AgentRunner(llm, tools, ClockManager(), logger=make_logger())
 
     output = await runner.run(
         TurnInput(

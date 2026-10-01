@@ -672,6 +672,39 @@ def test_feature_contracts_name_the_service_behind_them() -> None:
     assert not names, 'feature contracts must be *ServiceContract:\n' + '\n'.join(names)
 
 
+def _logger_lookups(source: str) -> Iterator[int]:
+    for node in ast.walk(ast.parse(source)):
+        if isinstance(node, ast.Call) and (
+            (isinstance(node.func, ast.Attribute) and node.func.attr in _LOOKUPS)
+            or (isinstance(node.func, ast.Name) and node.func.id in _LOOKUPS)
+        ):
+            yield node.lineno
+
+
+_LOOKUPS = frozenset({'getLogger', 'get_logger'})
+
+
+def test_loggers_arrive_injected_never_looked_up() -> None:
+    # NOTE: lib/observability builds the pipeline, so it alone may ask for a logger
+    violations = [
+        f'{path}:{line}'
+        for root in ('app', 'lib')
+        for path in sorted(_source_root(root).rglob('*.py'))
+        if 'observability' not in path.parts
+        for line in _logger_lookups(path.read_text())
+    ]
+
+    assert not violations, 'logger looked up instead of injected:\n' + '\n'.join(
+        violations,
+    )
+
+
+def test_logger_lookup_check_sees_both_spellings() -> None:
+    assert list(_logger_lookups('logging.getLogger(__name__)')) == [1]
+    assert list(_logger_lookups('structlog.get_logger()')) == [1]
+    assert list(_logger_lookups('logger.info("x")')) == []
+
+
 def test_every_package_carries_an_init_module() -> None:
     # NOTE: grimp does not walk namespace packages, so a directory without an
     # __init__.py silently shrinks what the layers contract checks rather than

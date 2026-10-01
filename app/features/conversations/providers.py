@@ -14,6 +14,7 @@ from lib.container import ContainerContract, ProviderContract
 from lib.database import DatabaseContract
 from lib.guid import GUIDContract
 from lib.llm import LLMContract
+from lib.observability import Logger
 from lib.temporal import ClockContract
 
 from .contracts import ConversationServiceContract
@@ -27,6 +28,7 @@ def _control(container: ContainerContract) -> ConversationControl:
         container.resolve(ClockContract),
         container.resolve(LLMContract),
         container.resolve(HuginnConfig),
+        logger=container.resolve(Logger),
     )
 
 
@@ -38,6 +40,7 @@ def _store(container: ContainerContract) -> ConversationTranscriptStore:
         container.resolve(LLMContract),
         container.resolve(HuginnConfig),
         container.resolve(BlobServiceContract),
+        logger=container.resolve(Logger),
     )
 
 

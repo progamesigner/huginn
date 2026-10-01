@@ -51,6 +51,7 @@ from app.features.tools.websearch.tool import WebSearchTool, build_websearch
 from lib.container import ContainerContract, ProviderContract
 from lib.guid import GUIDContract
 from lib.mcp import MCPClientContract
+from lib.observability import Logger
 from lib.temporal import ClockContract
 
 # NOTE: every registry is filled here, at the composition root, so a feature never
@@ -143,7 +144,10 @@ class MCPContributions(ProviderContract):
         _section(container, MCP_SERVERS)
         container.contribute(
             ToolSource,
-            lambda c: MCPToolSource(c.resolve(MCPClientContract)),
+            lambda c: MCPToolSource(
+                c.resolve(MCPClientContract),
+                logger=c.resolve(Logger),
+            ),
         )
 
 
@@ -158,6 +162,7 @@ class SkillContributions(ProviderContract):
             lambda c: SkillToolSource(
                 lambda: c.resolve(SkillRepository),
                 c.resolve(HuginnConfig).section(SKILLS),
+                logger=c.resolve(Logger),
             ),
         )
 
@@ -198,5 +203,6 @@ class ToolContributions(ProviderContract):
             lambda c: ConfiguredToolSource(
                 c.resolve(HuginnConfig),
                 c.resolve(ToolRegistry),
+                logger=c.resolve(Logger),
             ),
         )

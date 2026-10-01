@@ -28,6 +28,7 @@ from lib.llm import (
     TextSegment,
 )
 from lib.temporal import ClockManager
+from tests.helpers.logging import make_logger
 
 pytestmark = pytest.mark.integration
 
@@ -91,6 +92,7 @@ def _control(database: DatabaseContract, llm: LLMContract) -> ConversationContro
         ClockManager(),
         llm,
         _config(),
+        logger=make_logger(),
     )
 
 

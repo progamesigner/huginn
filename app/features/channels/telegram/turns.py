@@ -1,4 +1,3 @@
-import logging
 from collections.abc import Callable
 
 from app.contracts.channels import (
@@ -19,10 +18,9 @@ from app.features.channels.registry import CommandRegistry
 from app.features.identities.contracts import IdentityResolutionServiceContract
 from app.features.identities.entities import LinkedPrincipal, Principal
 from lib.documents import SUPPORTED_MIMES
+from lib.observability import Logger
 
 from .config import TelegramChannelConfig
-
-logger = logging.getLogger(__name__)
 
 type GatewayFactory = Callable[[TelegramChannelConfig], ChannelGatewayContract]
 
@@ -86,6 +84,7 @@ def _hint(attachment: InboundAttachment) -> str:
 
 
 class TelegramTurnProcessor:
+    logger: Logger
     commands: CommandRegistry
     gateway: GatewayFactory
     identities: IdentityResolutionServiceContract
@@ -99,7 +98,10 @@ class TelegramTurnProcessor:
         gateway: GatewayFactory,
         transcription: TranscriptionServiceContract,
         commands: CommandRegistry,
+        *,
+        logger: Logger,
     ) -> None:
+        self.logger = logger.bind(component='telegram')
         self.commands = commands
         self.gateway = gateway
         self.identities = identities
@@ -132,7 +134,7 @@ class TelegramTurnProcessor:
 
             await self.turns.handle(request, reply)
         except Exception:
-            logger.exception('Turn failed for chat %s', said[-1].chat)
+            self.logger.exception('Turn failed for chat %s', said[-1].chat)
             await self._abandon(gateway, reply, said)
 
     async def _abandon(
@@ -146,7 +148,7 @@ class TelegramTurnProcessor:
             for message in messages:
                 await gateway.abandon(message)
         except Exception as error:
-            logger.error('Could not report the failed turn: %s', error)
+            self.logger.error('Could not report the failed turn: %s', error)
 
     async def _actor(
         self,
@@ -179,7 +181,7 @@ class TelegramTurnProcessor:
             try:
                 data = await gateway.fetch(attachment)
             except Exception:
-                logger.exception(
+                self.logger.exception(
                     'Could not fetch the %s of message %s',
                     attachment.kind,
                     message.id,
@@ -209,6 +211,7 @@ class TelegramTurnProcessor:
                 data,
                 attachment.name,
                 _hint(attachment),
+                logger=self.logger,
             )
             transcript = reading.transcript
             document_text = reading.text
@@ -231,11 +234,11 @@ class TelegramTurnProcessor:
         command: InboundCommand,
         message: InboundMessage,
     ) -> None:
-        logger.info('Handling /%s for chat %s', command.name, message.chat)
+        self.logger.info('Handling /%s for chat %s', command.name, message.chat)
         try:
             answer = await self.commands.dispatch(command, message)
         except Exception:
-            logger.exception(
+            self.logger.exception(
                 'Command /%s failed for chat %s',
                 command.name,
                 message.chat,
@@ -252,7 +255,7 @@ class TelegramTurnProcessor:
         reply: ChannelReplyContract,
         messages: tuple[InboundMessage, ...],
     ) -> None:
-        logger.info('Nothing readable in the round for chat %s', messages[-1].chat)
+        self.logger.info('Nothing readable in the round for chat %s', messages[-1].chat)
         await reply.on_text(_decline_note(messages))
         await reply.finish()
 
@@ -265,12 +268,15 @@ class TelegramTurnProcessor:
         try:
             return await self.transcription.transcribe(attachment.mime, data)
         except TranscriptionUnavailableError:
-            logger.warning(
+            self.logger.warning(
                 'Dropping the voice of message %s: no transcription is configured',
                 message.id,
             )
         except Exception:
-            logger.exception('Could not transcribe the voice of message %s', message.id)
+            self.logger.exception(
+                'Could not transcribe the voice of message %s',
+                message.id,
+            )
 
         return None
 

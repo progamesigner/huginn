@@ -1,11 +1,9 @@
-import logging
 from typing import Annotated, Literal, Protocol, Self
 
 from pydantic import Field, SecretStr, model_validator
+from structlog.stdlib import BoundLogger
 
 from .types import DecisionRef, DecisionRequest, DecisionResult, DecisionValue
-
-logger = logging.getLogger(__name__)
 
 type Adapter = Literal['bifrost', 'typesafe']
 
@@ -47,9 +45,13 @@ class DecisionProviderRegistry:
     providers: dict[str, DecisionProviderConfig]
     models: dict[str, tuple[DecisionProviderConfig, ...]]
 
-    def __init__(self, providers: tuple[DecisionProviderConfig, ...]) -> None:
+    def __init__(
+        self,
+        providers: tuple[DecisionProviderConfig, ...],
+        logger: BoundLogger,
+    ) -> None:
         self.providers = {provider.name: provider for provider in providers}
-        self.models = _index_models(providers)
+        self.models = _index_models(providers, logger)
 
     def resolve(self, ref: DecisionRef) -> DecisionProviderConfig | None:
         if ref.provider is not None:
@@ -68,6 +70,7 @@ class DecisionProviderRegistry:
 
 def _index_models(
     providers: tuple[DecisionProviderConfig, ...],
+    logger: BoundLogger,
 ) -> dict[str, tuple[DecisionProviderConfig, ...]]:
     claims = {
         model: tuple(owner for owner in providers if model in owner.models)

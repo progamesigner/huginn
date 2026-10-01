@@ -17,6 +17,7 @@ from lib.llm import (
     TextChunk,
     TextSegment,
 )
+from tests.helpers.logging import make_logger
 
 
 class FakeClient:
@@ -105,11 +106,12 @@ async def test_resolve_returns_pinned_agent_without_calling_the_llm() -> None:
     llm = FakeLLM(_saying('scout'))
     policy = RoutingPolicy(agent='scout')
 
-    agent = await Router(agents, llm, _defaults('default-model')).resolve(
-        policy,
-        '123',
-        'hello',
-    )
+    agent = await Router(
+        agents,
+        llm,
+        _defaults('default-model'),
+        logger=make_logger(),
+    ).resolve(policy, '123', 'hello')
 
     assert agent.config is agents['scout']
     # NOTE: the name is half the answer -- a conversation is keyed by it, and an
@@ -122,11 +124,12 @@ async def test_resolve_uses_router_llm_choice_when_valid() -> None:
     agents = _agents()
     policy = RoutingPolicy(selection=_selection())
 
-    agent = await Router(agents, FakeLLM(_saying('scout')), _defaults('m')).resolve(
-        policy,
-        '999',
-        'research this',
-    )
+    agent = await Router(
+        agents,
+        FakeLLM(_saying('scout')),
+        _defaults('m'),
+        logger=make_logger(),
+    ).resolve(policy, '999', 'research this')
 
     assert agent.config is agents['scout']
 
@@ -139,11 +142,8 @@ async def test_resolve_parses_choice_from_a_decorated_reply() -> None:
         agents,
         FakeLLM(_saying('I choose scout.')),
         _defaults('m'),
-    ).resolve(
-        policy,
-        '999',
-        'hi',
-    )
+        logger=make_logger(),
+    ).resolve(policy, '999', 'hi')
 
     assert agent.config is agents['scout']
 
@@ -152,11 +152,12 @@ async def test_resolve_falls_back_when_llm_picks_unknown_agent() -> None:
     agents = _agents()
     policy = RoutingPolicy(selection=_selection())
 
-    agent = await Router(agents, FakeLLM(_saying('banana')), _defaults('m')).resolve(
-        policy,
-        '999',
-        'hi',
-    )
+    agent = await Router(
+        agents,
+        FakeLLM(_saying('banana')),
+        _defaults('m'),
+        logger=make_logger(),
+    ).resolve(policy, '999', 'hi')
 
     assert agent.config is agents['concierge']
 
@@ -169,11 +170,8 @@ async def test_resolve_falls_back_when_reply_is_ambiguous() -> None:
         agents,
         FakeLLM(_saying('scout or concierge')),
         _defaults('m'),
-    ).resolve(
-        policy,
-        '999',
-        'hi',
-    )
+        logger=make_logger(),
+    ).resolve(policy, '999', 'hi')
 
     assert agent.config is agents['concierge']
 
@@ -183,11 +181,12 @@ async def test_resolve_falls_back_when_llm_call_errors() -> None:
     client = FakeClient(error=TimeoutError('slow'))
     policy = RoutingPolicy(selection=_selection())
 
-    agent = await Router(agents, FakeLLM(client), _defaults('m')).resolve(
-        policy,
-        '999',
-        'hi',
-    )
+    agent = await Router(
+        agents,
+        FakeLLM(client),
+        _defaults('m'),
+        logger=make_logger(),
+    ).resolve(policy, '999', 'hi')
 
     assert agent.config is agents['concierge']
 
@@ -196,11 +195,12 @@ async def test_resolve_falls_back_when_router_model_has_no_provider() -> None:
     agents = _agents()
     policy = RoutingPolicy(selection=_selection())
 
-    agent = await Router(agents, FakeLLM(None), _defaults('m')).resolve(
-        policy,
-        '999',
-        'hi',
-    )
+    agent = await Router(
+        agents,
+        FakeLLM(None),
+        _defaults('m'),
+        logger=make_logger(),
+    ).resolve(policy, '999', 'hi')
 
     assert agent.config is agents['concierge']
 
@@ -209,11 +209,12 @@ async def test_resolve_uses_router_model_for_selection() -> None:
     client = _saying('scout')
     policy = RoutingPolicy(selection=_selection(model='router-model'))
 
-    await Router(_agents(), FakeLLM(client), _defaults('default-model')).resolve(
-        policy,
-        '999',
-        'hi',
-    )
+    await Router(
+        _agents(),
+        FakeLLM(client),
+        _defaults('default-model'),
+        logger=make_logger(),
+    ).resolve(policy, '999', 'hi')
 
     assert client.requests[0].model == 'router-model'
 
@@ -222,11 +223,12 @@ async def test_resolve_falls_back_to_default_model_for_selection() -> None:
     client = _saying('scout')
     policy = RoutingPolicy(selection=_selection())
 
-    await Router(_agents(), FakeLLM(client), _defaults('default-model')).resolve(
-        policy,
-        '999',
-        'hi',
-    )
+    await Router(
+        _agents(),
+        FakeLLM(client),
+        _defaults('default-model'),
+        logger=make_logger(),
+    ).resolve(policy, '999', 'hi')
 
     assert client.requests[0].model == 'default-model'
 
@@ -237,11 +239,12 @@ async def test_resolve_pins_the_router_llm_to_the_configured_provider() -> None:
         selection=_selection(model='claude-sonnet-5', provider='bifrost'),
     )
 
-    await Router(_agents(), llm, _defaults('default-model')).resolve(
-        policy,
-        '999',
-        'hi',
-    )
+    await Router(
+        _agents(),
+        llm,
+        _defaults('default-model'),
+        logger=make_logger(),
+    ).resolve(policy, '999', 'hi')
 
     assert llm.refs == [ModelRef(model='claude-sonnet-5', provider='bifrost')]
 
@@ -255,7 +258,11 @@ async def test_resolve_leaves_the_router_provider_unpinned_when_only_a_model_is_
     policy = RoutingPolicy(selection=_selection(model='router-model'))
     defaults = _defaults('default-model', provider='openai')
 
-    await Router(_agents(), llm, defaults).resolve(policy, '999', 'hi')
+    await Router(_agents(), llm, defaults, logger=make_logger()).resolve(
+        policy,
+        '999',
+        'hi',
+    )
 
     assert llm.refs == [ModelRef(model='router-model')]
 
@@ -265,7 +272,11 @@ async def test_resolve_inherits_the_default_provider_with_the_default_model() ->
     policy = RoutingPolicy(selection=_selection())
     defaults = _defaults('default-model', provider='openai')
 
-    await Router(_agents(), llm, defaults).resolve(policy, '999', 'hi')
+    await Router(_agents(), llm, defaults, logger=make_logger()).resolve(
+        policy,
+        '999',
+        'hi',
+    )
 
     assert llm.refs == [ModelRef(model='default-model', provider='openai')]
 
@@ -275,7 +286,11 @@ async def test_resolve_raises_when_no_agent_or_selection_policy() -> None:
     policy = RoutingPolicy()
 
     with pytest.raises(UnroutableError, match='999'):
-        await Router(agents, FakeLLM()).resolve(policy, '999', 'hello')
+        await Router(agents, FakeLLM(), logger=make_logger()).resolve(
+            policy,
+            '999',
+            'hello',
+        )
 
 
 async def test_resolve_offers_the_router_only_its_allowed_candidates() -> None:
@@ -291,11 +306,8 @@ async def test_resolve_offers_the_router_only_its_allowed_candidates() -> None:
         _agents(),
         FakeLLM(client),
         _defaults('default-model'),
-    ).resolve(
-        policy,
-        '999',
-        'hello',
-    )
+        logger=make_logger(),
+    ).resolve(policy, '999', 'hello')
 
     prompt = client.requests[0].messages[0].segments[0]
     assert isinstance(prompt, TextSegment)
@@ -310,7 +322,11 @@ async def test_resolve_refuses_a_pinned_agent_outside_what_the_caller_may_reach(
     policy = RoutingPolicy(agent='scout', allowed=frozenset({'concierge'}))
 
     with pytest.raises(UnroutableError, match='scout'):
-        await Router(_agents(), FakeLLM()).resolve(policy, '999', 'hello')
+        await Router(_agents(), FakeLLM(), logger=make_logger()).resolve(
+            policy,
+            '999',
+            'hello',
+        )
 
 
 async def test_resolve_leaves_every_agent_routable_when_nothing_narrows_it() -> None:
@@ -318,7 +334,11 @@ async def test_resolve_leaves_every_agent_routable_when_nothing_narrows_it() -> 
     # must keep reaching all of them
     policy = RoutingPolicy(agent='scout')
 
-    routed = await Router(_agents(), FakeLLM()).resolve(policy, '999', 'hello')
+    routed = await Router(_agents(), FakeLLM(), logger=make_logger()).resolve(
+        policy,
+        '999',
+        'hello',
+    )
 
     assert routed.name == 'scout'
 
@@ -329,11 +349,12 @@ async def test_resolve_falls_back_to_the_default_preamble_without_configuration(
     client = _saying('scout')
     policy = RoutingPolicy(selection=_selection())
 
-    await Router(_agents(), FakeLLM(client), _defaults('m')).resolve(
-        policy,
-        '999',
-        'hi',
-    )
+    await Router(
+        _agents(),
+        FakeLLM(client),
+        _defaults('m'),
+        logger=make_logger(),
+    ).resolve(policy, '999', 'hi')
 
     prompt = client.requests[0].messages[0].segments[0]
     assert isinstance(prompt, TextSegment)
@@ -348,6 +369,7 @@ async def test_resolve_uses_a_configured_router_preamble() -> None:
         FakeLLM(client),
         _defaults('m'),
         prompt='Pick the best agent.',
+        logger=make_logger(),
     )
 
     await router.resolve(policy, '999', 'hi')

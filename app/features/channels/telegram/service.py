@@ -1,4 +1,3 @@
-import logging
 from typing import override
 from uuid import uuid4
 
@@ -13,18 +12,18 @@ from app.contracts.channels import (
 from app.core.config.registry import HuginnConfig
 from app.features.channels.config import CHANNELS
 from lib.concurrency import TaskSupervisorContract
+from lib.observability import Logger
 from lib.redis import RedisContract
 from lib.temporal import ClockContract, Timer
 
 from .actor import TelegramChatActor
 from .config import TelegramChannelConfig
 
-logger = logging.getLogger(__name__)
-
 _DEDUPE_TTL = 6 * 60 * 60
 
 
 class TelegramMessageHandler(ChannelMessageHandlerContract):
+    logger: Logger
     actor: TelegramChatActor
     clock: ClockContract
     config: HuginnConfig
@@ -40,7 +39,10 @@ class TelegramMessageHandler(ChannelMessageHandlerContract):
         clock: ClockContract,
         actor: TelegramChatActor,
         supervisor: TaskSupervisorContract,
+        *,
+        logger: Logger,
     ) -> None:
+        self.logger = logger.bind(component='telegram')
         self.actor = actor
         self.clock = clock
         self.config = config
@@ -58,11 +60,11 @@ class TelegramMessageHandler(ChannelMessageHandlerContract):
         timer = self.clock.timer()
         channel = self._channel(message.channel)
         if channel is None:
-            logger.error('No telegram channel named %s', message.channel)
+            self.logger.error('No telegram channel named %s', message.channel)
             return
 
         if not await self._reserve(message):
-            logger.info(
+            self.logger.info(
                 'Skipping duplicate update %s for %s',
                 message.event,
                 message.channel,
@@ -79,7 +81,7 @@ class TelegramMessageHandler(ChannelMessageHandlerContract):
         try:
             await gateway.abandon(message)
         except Exception as error:
-            logger.error('Could not report the failed turn: %s', error)
+            self.logger.error('Could not report the failed turn: %s', error)
 
     async def _acknowledge(
         self,
@@ -90,9 +92,9 @@ class TelegramMessageHandler(ChannelMessageHandlerContract):
         try:
             await gateway.acknowledge(message)
         except Exception as error:
-            logger.warning('Could not acknowledge %s: %s', message.event, error)
+            self.logger.warning('Could not acknowledge %s: %s', message.event, error)
         else:
-            logger.info(
+            self.logger.info(
                 'Acknowledged %s after %.3fs',
                 message.event,
                 timer.elapsed().total_seconds(),
@@ -114,7 +116,7 @@ class TelegramMessageHandler(ChannelMessageHandlerContract):
             try:
                 await self.actor.handle(channel, message)
             except Exception:
-                logger.exception('Turn failed for %s', message.channel)
+                self.logger.exception('Turn failed for %s', message.channel)
                 await self._abandon(gateway, message)
 
     async def _reserve(self, message: InboundMessage) -> bool:
@@ -124,5 +126,5 @@ class TelegramMessageHandler(ChannelMessageHandlerContract):
                 return bool(await client.set(key, b'1', nx=True, ex=_DEDUPE_TTL))
         except Exception as error:
             # NOTE: dedupe is best-effort; availability beats exactly-once here
-            logger.warning('Dedupe unavailable; processing without it: %s', error)
+            self.logger.warning('Dedupe unavailable; processing without it: %s', error)
             return True

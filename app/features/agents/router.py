@@ -1,4 +1,3 @@
-import logging
 import re
 from collections.abc import AsyncIterator, Mapping
 from dataclasses import dataclass, replace
@@ -21,6 +20,7 @@ from lib.llm import (
     TextChunk,
     TextSegment,
 )
+from lib.observability import Logger
 
 from .config import NO_AGENT, AgentConfig, DefaultsConfig, resolve_selection
 from .entities import (
@@ -33,8 +33,6 @@ from .entities import (
 )
 from .exceptions import UnroutableError
 from .routing_context import render_routing_state, routing_state
-
-logger = logging.getLogger(__name__)
 
 _ROUTER_MAX_TOKENS = 32
 _WORD = re.compile(r'[\w-]+')
@@ -110,6 +108,7 @@ def _rejection(
 
 
 class Router:
+    logger: Logger
     agents: Mapping[str, AgentConfig]
     llm: LLMContract
     defaults: DefaultsConfig
@@ -123,7 +122,10 @@ class Router:
         prompt: str | None = None,
         decisions: DecisionContract | None = None,
         shadows: TaskSupervisorContract | None = None,
+        *,
+        logger: Logger,
     ) -> None:
+        self.logger = logger.bind(component='router')
         self.agents = agents
         self.llm = llm
         self.defaults = defaults or DefaultsConfig()
@@ -145,7 +147,7 @@ class Router:
             message = RoutingContext(current=(TurnPrompt(text=message, actor=''),))
         routable = self._routable(policy)
         if policy.agent is not None:
-            logger.info(
+            self.logger.info(
                 'Routed chat %s to agent %r via channel default',
                 chat_id,
                 policy.agent,
@@ -202,7 +204,7 @@ class Router:
     ) -> str:
         candidates = self._candidates(selection, routable)
         decision = await self.decide(selection, context, candidates)
-        logger.info(
+        self.logger.info(
             'Router engine=%s choice=%s confidence=%s margin=%s elapsed_ms=%.1f '
             'model=%s upstream=%s fallback=%s reason=%s chat=%s',
             selection.engine,
@@ -259,7 +261,7 @@ class Router:
             context,
             candidates,
         )
-        logger.info(
+        self.logger.info(
             'Router shadow engine=decision choice=%s primary=%s agree=%s '
             'confidence=%s margin=%s elapsed_ms=%.1f model=%s upstream=%s reason=%s '
             'chat=%s',
@@ -293,14 +295,14 @@ class Router:
                     type(error).__name__,
                     model=selection.model,
                 )
-                logger.warning(
+                self.logger.warning(
                     'Decision router failed (%s); using fallback',
                     type(error).__name__,
                 )
             except Exception as error:
                 # NOTE: only the type is logged; a gateway error can echo the private
                 # state it was sent
-                logger.error(
+                self.logger.error(
                     'Decision router failed unexpectedly (%s)',
                     type(error).__name__,
                 )
@@ -378,7 +380,10 @@ class Router:
         ref = resolve_selection(selection.provider, selection.model, self.defaults)
         client = self.llm.client_for(ref)
         if client is None:
-            logger.warning('Router model %r has no provider; using fallback', ref.model)
+            self.logger.warning(
+                'Router model %r has no provider; using fallback',
+                ref.model,
+            )
             return None
 
         request = CompletionRequest(
@@ -396,7 +401,7 @@ class Router:
         try:
             reply = await _collect_text(client.stream(request))
         except Exception:
-            logger.exception('Router LLM call failed; using fallback')
+            self.logger.exception('Router LLM call failed; using fallback')
             return None
 
         return _parse_choice(reply, routable)

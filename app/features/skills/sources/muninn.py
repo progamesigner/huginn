@@ -1,5 +1,4 @@
 import json
-import logging
 from collections.abc import Mapping
 from typing import override
 
@@ -9,8 +8,7 @@ from pydantic import JsonValue
 from app.features.skills.entities import Skill, SkillMeta
 from app.features.skills.sources.contracts import SkillSource
 from lib.mcp import MCPClientContract
-
-logger = logging.getLogger(__name__)
+from lib.observability import Logger
 
 
 def _split(content: str) -> tuple[Mapping[str, object], str]:
@@ -29,7 +27,7 @@ def _name_from_path(path: str) -> str:
     return parts[-2] if len(parts) >= 2 else path
 
 
-def _meta(path: str, content: str) -> SkillMeta:
+def _meta(path: str, content: str, *, logger: Logger) -> SkillMeta:
     front, _ = _split(content)
     name = str(front.get('name') or _name_from_path(path))
     description = front.get('description')
@@ -40,6 +38,7 @@ def _meta(path: str, content: str) -> SkillMeta:
 
 
 class MuninnSkillSource(SkillSource):
+    logger: Logger
     client: MCPClientContract
     server: str
     glob: str
@@ -49,7 +48,10 @@ class MuninnSkillSource(SkillSource):
         client: MCPClientContract,
         server: str,
         glob: str,
+        *,
+        logger: Logger,
     ) -> None:
+        self.logger = logger.bind(component='skills')
         self.client = client
         self.server = server
         self.glob = glob
@@ -64,13 +66,19 @@ class MuninnSkillSource(SkillSource):
             'list_memory_notes',
             {'glob': self.glob, **scope},
         )
-        metas = [_meta(path, await self._read(path, scope)) for path in _paths(raw)]
+        metas = [
+            _meta(path, await self._read(path, scope), logger=self.logger)
+            for path in _paths(raw)
+        ]
         return tuple(metas)
 
     @override
     async def load(self, path: str, scope: Mapping[str, JsonValue]) -> Skill:
         content = await self._read(path, scope)
-        return Skill(meta=_meta(path, content), body=_split(content)[1])
+        return Skill(
+            meta=_meta(path, content, logger=self.logger),
+            body=_split(content)[1],
+        )
 
     async def _read(self, path: str, scope: Mapping[str, JsonValue]) -> str:
         raw = await self.client.call_tool(

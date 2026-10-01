@@ -1,5 +1,4 @@
 import hashlib
-import logging
 from collections.abc import Iterator
 from typing import Annotated
 
@@ -13,11 +12,10 @@ from app.contracts.channels import (
     InboundMessage,
 )
 from app.core.dependencies import Provide
+from lib.observability import Logger
 from lib.router import Depends, Header, Request, Response, Router
 
 from .types import MEDIA, WEBHOOK, Message, Update, select_photo
-
-logger = logging.getLogger(__name__)
 
 _KIND = 'telegram'
 _COMMAND_ENTITY = 'bot_command'
@@ -28,7 +26,7 @@ _DIGEST_WIDTH = 12
 router = Router()
 
 
-def _attachments(message: Message) -> Iterator[InboundAttachment]:
+def _attachments(message: Message, *, logger: Logger) -> Iterator[InboundAttachment]:
     if (photo := select_photo(message.photo)) is not None:
         yield InboundAttachment(
             kind='image',
@@ -92,7 +90,7 @@ def _digest(body: bytes) -> str:
     return hashlib.sha256(body).hexdigest()[:_DIGEST_WIDTH]
 
 
-def _inbound(channel: str, body: bytes) -> InboundMessage | None:
+def _inbound(channel: str, body: bytes, *, logger: Logger) -> InboundMessage | None:
     try:
         update = Update.model_validate_json(body)
     except ValidationError as error:
@@ -117,7 +115,7 @@ def _inbound(channel: str, body: bytes) -> InboundMessage | None:
         id=str(message.message_id),
         kind=_KIND,
         text=message.text or message.caption or '',
-        attachments=tuple(_attachments(message)),
+        attachments=tuple(_attachments(message, logger=logger)),
         command=_command(message),
         user=None if message.from_ is None else str(message.from_.id),
     )
@@ -134,6 +132,7 @@ async def telegram_webhook(
         ChannelMessageHandlerContract,
         Depends(Provide(ChannelMessageHandlerContract)),
     ],
+    logger: Annotated[Logger, Depends(Provide(Logger))],
     secret: Annotated[
         str | None,
         Header(alias=WEBHOOK.signature_header),
@@ -151,7 +150,7 @@ async def telegram_webhook(
         _digest(body),
     )
 
-    if (message := _inbound(channel, body)) is not None:
+    if (message := _inbound(channel, body, logger=logger)) is not None:
         await handler.handle(message)
 
     return Response(status_code=WEBHOOK.ack_status)

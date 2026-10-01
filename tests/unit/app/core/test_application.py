@@ -15,6 +15,7 @@ from app.features.tools.registry import ToolKind, ToolRegistry
 from lib.container import ContainerContract, ProviderContract
 from lib.llm import LLMContract
 from lib.observability import Logger
+from tests.helpers.logging import make_logger
 
 
 def test_build_registers_dependencies_first() -> None:
@@ -140,10 +141,12 @@ def test_build_logs_each_provider(caplog: pytest.LogCaptureFixture) -> None:
         def __call__(self, container: ContainerContract) -> None:
             pass
 
-    with caplog.at_level('INFO', logger='app.core.application'):
-        App().build(Settings())
+    application = App()
+    application.bind(Logger, instance=make_logger())
+    with caplog.at_level('INFO', logger='tests'):
+        application.build(Settings())
 
-    assert any('Settings' in message for message in caplog.messages)
+    assert 'Registered provider Settings' in caplog.messages
 
 
 def test_provider_is_callable() -> None:

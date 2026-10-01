@@ -1,25 +1,26 @@
 import asyncio
-import logging
 from collections.abc import Coroutine
 from datetime import timedelta
 from typing import Any, override
 
+from structlog.stdlib import BoundLogger
+
 from .contracts import TaskSupervisorContract
 from .exceptions import ConcurrencyError
-
-logger = logging.getLogger(__name__)
 
 _GRACE = timedelta(seconds=30)
 
 
 class TaskSupervisor(TaskSupervisorContract):
     grace: timedelta
+    logger: BoundLogger
     slots: asyncio.Semaphore | None
     tasks: set[asyncio.Task[None]]
 
     def __init__(
         self,
         *,
+        logger: BoundLogger,
         limit: int | None = None,
         grace: timedelta = _GRACE,
     ) -> None:
@@ -30,6 +31,7 @@ class TaskSupervisor(TaskSupervisorContract):
             raise ConcurrencyError('drain grace must not be negative')
 
         self.grace = grace
+        self.logger = logger
         self.slots = None if limit is None else asyncio.Semaphore(limit)
         self.tasks = set()
 
@@ -48,7 +50,7 @@ class TaskSupervisor(TaskSupervisorContract):
         if not pending:
             return True
 
-        logger.warning(
+        self.logger.warning(
             'Cancelling %d task(s) still running after the drain',
             len(pending),
         )
@@ -72,7 +74,7 @@ class TaskSupervisor(TaskSupervisorContract):
             return
 
         if (error := task.exception()) is not None:
-            logger.error('Background task failed', exc_info=error)
+            self.logger.error('Background task failed', exc_info=error)
 
     async def _run(self, coro: Coroutine[Any, Any, None]) -> None:
         if self.slots is None:

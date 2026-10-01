@@ -21,6 +21,7 @@ from lib.decision import (
     DecisionTimeoutError,
 )
 from lib.llm import TextChunk
+from tests.helpers.logging import make_logger
 
 from .test_agent_router import FakeClient, FakeLLM
 
@@ -64,12 +65,13 @@ async def test_the_shadow_never_holds_up_the_live_route(
         await released.wait()
         return _answer('a')
 
-    shadows = TaskSupervisor()
+    shadows = TaskSupervisor(logger=make_logger())
     router = Router(
         _agents(),
         _llm_choosing('a'),
         decisions=_jev(AsyncMock(side_effect=slow)),
         shadows=shadows,
+        logger=make_logger(),
     )
 
     routed = await router.resolve(_SHADOWED, 'chat-1', _CONTEXT)
@@ -89,7 +91,8 @@ async def test_a_disagreeing_shadow_is_logged_against_the_live_choice(
         _agents(),
         _llm_choosing('a'),
         decisions=_jev(AsyncMock(return_value=_answer('b'))),
-        shadows=TaskSupervisor(),
+        shadows=TaskSupervisor(logger=make_logger()),
+        logger=make_logger(),
     )
 
     with caplog.at_level('INFO'):
@@ -111,7 +114,8 @@ async def test_a_failing_shadow_leaves_the_live_route_alone(
         _agents(),
         _llm_choosing('a'),
         decisions=_jev(AsyncMock(side_effect=DecisionTimeoutError('private'))),
-        shadows=TaskSupervisor(),
+        shadows=TaskSupervisor(logger=make_logger()),
+        logger=make_logger(),
     )
 
     with caplog.at_level('INFO'):
@@ -131,6 +135,7 @@ async def test_a_router_without_a_shadow_never_asks_the_decision_engine() -> Non
         _llm_choosing('a'),
         decisions=_jev(decide),
         shadows=shadows,
+        logger=make_logger(),
     )
     policy = RoutingPolicy(selection=SelectionPolicy(fallback='b', model='chat'))
 
