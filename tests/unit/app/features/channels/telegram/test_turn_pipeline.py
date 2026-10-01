@@ -79,7 +79,11 @@ class FakeIdentities(IdentityResolverContract):
         realm: str,
         external_user_id: str,
     ) -> Principal:
-        return AnonymousPrincipal(provider, realm, external_user_id)
+        return AnonymousPrincipal(
+            provider=provider,
+            realm=realm,
+            external_user_id=external_user_id,
+        )
 
 
 def update(update_id: int) -> dict[str, object]:

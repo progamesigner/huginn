@@ -2,7 +2,6 @@ import asyncio
 import time
 from base64 import b64decode, b64encode
 from collections.abc import AsyncIterator, Sequence
-from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from typing import Annotated, override
 
@@ -11,18 +10,16 @@ from pydantic import Field, JsonValue
 from structlog.contextvars import bound_contextvars, get_contextvars
 
 from app.contracts.channels import AttachmentKind
+from app.features.agents.contracts import ToolOutput, ToolParams, TypedTool
 from app.features.agents.entities import (
     PromptAttachment,
-    ToolOutput,
-    ToolParams,
-    ToolSet,
     TurnBudget,
     TurnInput,
     TurnPrompt,
-    TypedTool,
 )
 from app.features.agents.exceptions import MalformedToolCallError
 from app.features.agents.services import AgentRunner
+from app.features.agents.tooling import ToolSet
 from lib.llm import (
     CompletionChunk,
     CompletionRequest,
@@ -874,7 +871,9 @@ async def test_a_model_without_vision_gets_the_image_hint(
 
     with caplog.at_level('INFO'):
         await runner.run(
-            replace(make_turn(prompts=(prompt,)), capabilities=ModelCapabilities()),
+            make_turn(prompts=(prompt,)).model_copy(
+                update={'capabilities': ModelCapabilities()},
+            ),
             discard(),
         )
 
@@ -891,18 +890,20 @@ async def test_a_pdf_reaches_the_model_as_a_document_only_when_it_reads_them(
 ) -> None:
     llm = answering()
     runner = AgentRunner(llm, make_toolset(), ClockManager())
-    pdf = replace(
-        attachment('document', data=b'%PDF', mime='application/pdf', hint='[pdf]'),
-        name='report.pdf',
-        transcript='[pdf] (1 pages)\nfirst words',
+    pdf = attachment(
+        'document',
+        data=b'%PDF',
+        mime='application/pdf',
+        hint='[pdf]',
+    ).model_copy(
+        update={'name': 'report.pdf', 'transcript': '[pdf] (1 pages)\nfirst words'},
     )
     prompt = TurnPrompt(text='', actor='user:1', attachments=(pdf,))
 
     with caplog.at_level('INFO'):
         await runner.run(
-            replace(
-                make_turn(prompts=(prompt,)),
-                capabilities=ModelCapabilities(documents=documents),
+            make_turn(prompts=(prompt,)).model_copy(
+                update={'capabilities': ModelCapabilities(documents=documents)},
             ),
             discard(),
         )
@@ -928,7 +929,7 @@ async def test_a_transcribed_voice_note_arrives_as_what_it_said() -> None:
     prompt = TurnPrompt(
         text='',
         actor='user:1',
-        attachments=(replace(voice, transcript='remind me at six'),),
+        attachments=(voice.model_copy(update={'transcript': 'remind me at six'}),),
     )
 
     await runner.run(make_turn(prompts=(prompt,)), discard())

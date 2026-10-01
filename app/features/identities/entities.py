@@ -1,73 +1,69 @@
 from collections.abc import Mapping
-from dataclasses import dataclass, field
 from datetime import datetime
+from typing import Annotated
 from uuid import UUID
 
-from pydantic import JsonValue
+from pydantic import Field, JsonValue
+
+from app.core.schema import AppEntity, AppValue
 
 
-@dataclass(frozen=True)
-class User:
-    id: UUID
-    handle: str
-    display_name: str
-    created_at: datetime | None = None
-    updated_at: datetime | None = None
+class User(AppEntity):
+    id: Annotated[UUID, Field()]
+    handle: Annotated[str, Field()]
+    display_name: Annotated[str, Field()]
+    created_at: Annotated[datetime | None, Field()] = None
+    updated_at: Annotated[datetime | None, Field()] = None
 
 
-@dataclass(frozen=True)
-class ExternalIdentity:
-    id: UUID
-    user_id: UUID
-    provider: str
-    realm: str
-    external_user_id: str
-    profile: Mapping[str, JsonValue] = field(default_factory=dict)
-    linked_at: datetime | None = None
-    updated_at: datetime | None = None
+class ExternalIdentity(AppEntity):
+    id: Annotated[UUID, Field()]
+    user_id: Annotated[UUID, Field()]
+    provider: Annotated[str, Field()]
+    realm: Annotated[str, Field()]
+    external_user_id: Annotated[str, Field()]
+    profile: Annotated[Mapping[str, JsonValue], Field()] = Field(default_factory=dict)
+    linked_at: Annotated[datetime | None, Field()] = None
+    updated_at: Annotated[datetime | None, Field()] = None
 
 
-@dataclass(frozen=True)
-class IdentityAuditEvent:
-    id: UUID
-    event_type: str
-    provider: str
-    realm: str
-    user_id: UUID | None = None
-    external_identity_id: UUID | None = None
-    metadata: Mapping[str, JsonValue] = field(default_factory=dict)
-    occurred_at: datetime | None = None
+class IdentityAuditEvent(AppEntity):
+    id: Annotated[UUID, Field()]
+    event_type: Annotated[str, Field()]
+    provider: Annotated[str, Field()]
+    realm: Annotated[str, Field()]
+    user_id: Annotated[UUID | None, Field()] = None
+    external_identity_id: Annotated[UUID | None, Field()] = None
+    metadata: Annotated[Mapping[str, JsonValue], Field()] = Field(default_factory=dict)
+    occurred_at: Annotated[datetime | None, Field()] = None
 
 
-@dataclass(frozen=True)
-class IdentityLinkInvite:
-    id: UUID
-    user_id: UUID
-    provider: str
-    realm: str
-    expires_at: datetime
-    created_by: str
-    consumed_at: datetime | None = None
-    revoked_at: datetime | None = None
-    created_at: datetime | None = None
+class IdentityLinkInvite(AppEntity):
+    id: Annotated[UUID, Field()]
+    user_id: Annotated[UUID, Field()]
+    provider: Annotated[str, Field()]
+    realm: Annotated[str, Field()]
+    expires_at: Annotated[datetime, Field()]
+    created_by: Annotated[str, Field()]
+    consumed_at: Annotated[datetime | None, Field()] = None
+    revoked_at: Annotated[datetime | None, Field()] = None
+    created_at: Annotated[datetime | None, Field()] = None
 
 
-@dataclass(frozen=True)
-class LinkedPrincipal:
-    user_id: UUID
-    external_identity_id: UUID
-    handle: str
+class LinkedPrincipal(AppValue):
+    user_id: Annotated[UUID, Field()]
+    external_identity_id: Annotated[UUID, Field()]
+    handle: Annotated[str, Field()]
 
     @property
     def stable_key(self) -> str:
         return f'user:{self.user_id}'
 
 
-@dataclass(frozen=True)
-class AnonymousPrincipal:
-    provider: str
-    realm: str
-    external_user_id: str
+class AnonymousPrincipal(AppValue):
+    provider: Annotated[str, Field()]
+    realm: Annotated[str, Field()]
+    external_user_id: Annotated[str, Field()]
 
     @property
     def stable_key(self) -> str:
@@ -79,8 +75,7 @@ class AnonymousPrincipal:
 type Principal = LinkedPrincipal | AnonymousPrincipal
 
 
-@dataclass(frozen=True)
-class IssuedIdentityLinkInvite:
-    token: str = field(repr=False)
-    short_code: str = field(repr=False)
-    expires_at: datetime
+class IssuedIdentityLinkInvite(AppValue):
+    token: Annotated[str, Field(repr=False)]
+    short_code: Annotated[str, Field(repr=False)]
+    expires_at: Annotated[datetime, Field()]

@@ -7,7 +7,8 @@ import pytest
 from pydantic import JsonValue
 
 from app.features.agents.config import AgentConfig, SkillsConfig
-from app.features.agents.entities import ToolSet, TurnScope
+from app.features.agents.entities import TurnScope
+from app.features.agents.tooling import ToolSet
 from app.features.skills.config import SkillsSourceConfig
 from app.features.skills.entities import Skill, SkillMeta
 from app.features.skills.repositories import SkillRepository

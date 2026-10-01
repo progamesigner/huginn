@@ -578,4 +578,4 @@ def test_a_key_router_carries_its_shadow_to_the_turn() -> None:
     selection = _policy(None, client).selection
 
     assert selection is not None
-    assert selection.shadow == ShadowPolicy('jev', 'gateway')
+    assert selection.shadow == ShadowPolicy(model='jev', provider='gateway')

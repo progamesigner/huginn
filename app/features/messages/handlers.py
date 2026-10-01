@@ -6,17 +6,7 @@ from lib.guid import GUIDContract
 from lib.router import EventSourceResponse
 from lib.temporal import ClockContract
 
-from .entities import (
-    ChatRequest,
-    CompatibleMessage,
-    CompatibleRequest,
-    Completion,
-    CompletionChoice,
-    CompletionMessage,
-    ErrorEvent,
-    MessageContent,
-    TextEvent,
-)
+from .entities import ErrorEvent, TextEvent
 from .exceptions import TurnFailedError
 from .presenters import (
     AnthropicPresenter,
@@ -24,6 +14,15 @@ from .presenters import (
     OpenAIPresenter,
     Presenter,
     encode,
+)
+from .schemas import (
+    ChatRequest,
+    CompatibleMessage,
+    CompatibleRequest,
+    Completion,
+    CompletionChoice,
+    CompletionMessage,
+    MessageContent,
 )
 from .services import ChatService, PreparedTurn
 

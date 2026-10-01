@@ -47,7 +47,6 @@ from .entities import (
     RoutingContext,
     Step,
     ToolExecution,
-    ToolSet,
     TurnInput,
     TurnOutput,
     TurnPrompt,
@@ -57,6 +56,7 @@ from .entities import (
 )
 from .exceptions import MalformedToolCallError, UnservableModelError
 from .router import Router
+from .tooling import ToolSet
 
 logger = logging.getLogger(__name__)
 
@@ -436,7 +436,11 @@ class TurnHandler(TurnHandlerContract):
                 request.chat,
                 selection.history_limit,
             )
-            context = RoutingContext(request.prompts, turns, summary)
+            context = RoutingContext(
+                current=request.prompts,
+                turns=turns,
+                summary=summary,
+            )
 
         agent = await self.router.resolve(
             request.policy,

@@ -42,8 +42,8 @@ def test_secret_requires_256_bits() -> None:
 
 def test_invite_repr_redacts_both_credentials() -> None:
     invite = IssuedIdentityLinkInvite(
-        'deep-secret',
-        'short-secret',
+        token='deep-secret',  # noqa: S106
+        short_code='short-secret',
         expires_at=datetime(2026, 1, 1, tzinfo=UTC),
     )
 

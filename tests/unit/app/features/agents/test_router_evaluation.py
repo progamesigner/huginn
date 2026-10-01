@@ -29,11 +29,11 @@ def _sample(identifier: str = '1'):
     now = datetime(2026, 9, 25, tzinfo=UTC)
     return make_sample(
         RoutingHistory(
-            identifier,
-            'a',
-            RoutingContext((TurnPrompt('continue', ''),)),
-            now,
-            now - timedelta(minutes=1),
+            id=identifier,
+            historical_agent='a',
+            context=RoutingContext(current=(TurnPrompt(text='continue', actor=''),)),
+            created_at=now,
+            previous_at=now - timedelta(minutes=1),
         ),
         'channels.test',
         {'a': 'A', 'b': 'B'},
@@ -72,9 +72,9 @@ async def test_three_variants_and_report_do_not_include_state() -> None:
         router,
         samples,
         {
-            'llm': SelectionPolicy('a'),
-            'llm+history': SelectionPolicy('a'),
-            'decision': SelectionPolicy('a', engine='decision'),
+            'llm': SelectionPolicy(fallback='a'),
+            'llm+history': SelectionPolicy(fallback='a'),
+            'decision': SelectionPolicy(fallback='a', engine='decision'),
         },
         {'decision': TokenPrices(input_per_million=0.05)},
     )
@@ -107,9 +107,9 @@ async def test_agreement_audit_and_inferred_labels_are_separate() -> None:
     router.decide = AsyncMock(return_value=RoutingDecision('a'))
     selections = dict[Variant, SelectionPolicy](
         {
-            'llm': SelectionPolicy('a'),
-            'llm+history': SelectionPolicy('a'),
-            'decision': SelectionPolicy('a', engine='decision'),
+            'llm': SelectionPolicy(fallback='a'),
+            'llm+history': SelectionPolicy(fallback='a'),
+            'decision': SelectionPolicy(fallback='a', engine='decision'),
         },
     )
     results = await evaluate(router, samples, selections)
@@ -138,7 +138,7 @@ async def test_incomplete_comparison_never_infers_labels() -> None:
     results = await evaluate(
         router,
         samples,
-        {'decision': SelectionPolicy('a', engine='decision')},
+        {'decision': SelectionPolicy(fallback='a', engine='decision')},
     )
     assert review_items(samples, results)[0].label_source == 'unlabeled'
 

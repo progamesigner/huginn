@@ -26,24 +26,24 @@ from lib.temporal import ClockContract
 
 def _to_user(record: UserRecord) -> User:
     return User(
-        record.id,
-        record.handle,
-        record.display_name,
-        record.created_at,
-        record.updated_at,
+        id=record.id,
+        handle=record.handle,
+        display_name=record.display_name,
+        created_at=record.created_at,
+        updated_at=record.updated_at,
     )
 
 
 def _to_external(record: ExternalIdentityRecord) -> ExternalIdentity:
     return ExternalIdentity(
-        record.id,
-        record.user_id,
-        record.provider,
-        record.realm,
-        record.external_user_id,
-        cast(Mapping[str, JsonValue], record.profile),
-        record.linked_at,
-        record.updated_at,
+        id=record.id,
+        user_id=record.user_id,
+        provider=record.provider,
+        realm=record.realm,
+        external_user_id=record.external_user_id,
+        profile=cast(Mapping[str, JsonValue], record.profile),
+        linked_at=record.linked_at,
+        updated_at=record.updated_at,
     )
 
 
@@ -128,7 +128,15 @@ class IdentityRepository:
             )
         )
         row = (await self.session.execute(query)).one_or_none()
-        return None if row is None else LinkedPrincipal(row.user_id, row.id, row.handle)
+        return (
+            None
+            if row is None
+            else LinkedPrincipal(
+                user_id=row.user_id,
+                external_identity_id=row.id,
+                handle=row.handle,
+            )
+        )
 
     async def find_external(
         self,

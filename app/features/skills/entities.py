@@ -1,14 +1,16 @@
-from dataclasses import dataclass
+from typing import Annotated
+
+from pydantic import Field
+
+from app.core.schema import AppValue
 
 
-@dataclass(frozen=True)
-class SkillMeta:
-    name: str
-    description: str
-    path: str
+class SkillMeta(AppValue):
+    name: Annotated[str, Field()]
+    description: Annotated[str, Field()]
+    path: Annotated[str, Field()]
 
 
-@dataclass(frozen=True)
-class Skill:
-    meta: SkillMeta
-    body: str
+class Skill(AppValue):
+    meta: Annotated[SkillMeta, Field()]
+    body: Annotated[str, Field()]

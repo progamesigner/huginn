@@ -34,10 +34,10 @@ class ReplayState(EvalValue):
             current=tuple(TurnPrompt(text=text, actor='') for text in self.current),
             turns=tuple(
                 RoutingTurn(
-                    turn.handled_by,
-                    turn.user,
-                    turn.assistant,
-                    turn.attachments,
+                    agent=turn.handled_by,
+                    user=turn.user,
+                    answer=turn.assistant,
+                    attachments=turn.attachments,
                 )
                 for turn in self.previous_turns
             )

@@ -2,14 +2,9 @@ from typing import Annotated, Any, cast, override
 
 from pydantic import Field
 
-from app.features.agents.entities import (
-    Tool,
-    ToolOutput,
-    ToolParams,
-    ToolSet,
-    TurnScope,
-    TypedTool,
-)
+from app.features.agents.contracts import Tool, ToolOutput, ToolParams, TypedTool
+from app.features.agents.entities import TurnScope
+from app.features.agents.tooling import ToolSet
 from app.features.tools.binding import ConfiguredTool, build_bound_tool
 from app.features.tools.config import ToolConfig
 from app.features.tools.registry import ToolKind, ToolRegistry

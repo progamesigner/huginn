@@ -91,6 +91,6 @@ async def test_find_linked_reads_the_principal_with_its_handle(
     linked = await identities.link(user.id, 'telegram', 'primary', '77')
 
     assert await identities.find_linked('telegram', 'primary', '77') == (
-        LinkedPrincipal(user.id, linked.id, 'carol')
+        LinkedPrincipal(user_id=user.id, external_identity_id=linked.id, handle='carol')
     )
     assert await identities.find_linked('telegram', 'primary', '78') is None

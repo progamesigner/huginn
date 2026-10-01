@@ -2,22 +2,18 @@ from abc import ABC, abstractmethod
 from collections.abc import AsyncIterator, Callable, Iterable, Sequence
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Protocol
+from typing import Protocol, override
+
+from pydantic import BaseModel, ConfigDict, JsonValue
 
 from app.contracts.channels import ChannelReplyContract, ToolPhase
 from lib.llm import Message, ModelRef
 
 from .config import AgentConfig
-from .entities import (
-    RoutingHistory,
-    RoutingTurn,
-    Tool,
-    TurnPrompt,
-    TurnRequest,
-    TurnScope,
-)
+from .entities import RoutingHistory, RoutingTurn, TurnPrompt, TurnRequest, TurnScope
 
 type NamedTool = tuple[str, Tool]
+type ToolOutput = str
 type ToolSourceCollector = Callable[[], Iterable[ToolSource]]
 
 
@@ -27,6 +23,36 @@ class TurnStream(Protocol):
     async def on_text(self, fragment: str) -> None: ...
 
     async def on_tool(self, name: str, phase: ToolPhase) -> None: ...
+
+
+class ToolParams(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+
+
+class Tool(ABC):
+    name: str
+    description: str
+
+    @abstractmethod
+    async def invoke(self, arguments: str) -> ToolOutput: ...
+
+    @abstractmethod
+    def schema(self) -> JsonValue: ...
+
+
+class TypedTool[P: ToolParams](Tool):
+    params: type[P]
+
+    @abstractmethod
+    async def run(self, params: P) -> ToolOutput: ...
+
+    @override
+    async def invoke(self, arguments: str) -> ToolOutput:
+        return await self.run(self.params.model_validate_json(arguments))
+
+    @override
+    def schema(self) -> JsonValue:
+        return self.params.model_json_schema()
 
 
 @dataclass(frozen=True)

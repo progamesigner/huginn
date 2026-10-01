@@ -62,7 +62,11 @@ class IdentityLinkingService:
             user_id=user_id,
             metadata={'invite_id': str(invite.id), 'created_by': created_by},
         )
-        return IssuedIdentityLinkInvite(token, short_code, invite.expires_at)
+        return IssuedIdentityLinkInvite(
+            token=token,
+            short_code=short_code,
+            expires_at=invite.expires_at,
+        )
 
     async def complete(
         self,
@@ -275,4 +279,8 @@ class IdentityResolver:
     ) -> Principal:
         linked = await self.repository.find_linked(provider, realm, external_user_id)
 
-        return linked or AnonymousPrincipal(provider, realm, external_user_id)
+        return linked or AnonymousPrincipal(
+            provider=provider,
+            realm=realm,
+            external_user_id=external_user_id,
+        )

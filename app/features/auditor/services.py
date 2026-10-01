@@ -22,4 +22,9 @@ class RedisAuditor:
                         bifrost_cache += 1
                     case 'other':
                         other.append(render_key(key))
-        return AuditReport(total, legacy_sessions, bifrost_cache, tuple(sorted(other)))
+        return AuditReport(
+            total=total,
+            legacy_sessions=legacy_sessions,
+            bifrost_cache=bifrost_cache,
+            other=tuple(sorted(other)),
+        )

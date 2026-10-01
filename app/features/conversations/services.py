@@ -58,7 +58,12 @@ def routing_turn(turn: Turn) -> RoutingTurn:
                 attachments.append(part.kind)
         elif part.role == 'assistant' and part.kind == 'text' and isinstance(text, str):
             answer.append(text)
-    return RoutingTurn(turn.agent, tuple(user), '\n'.join(answer), tuple(attachments))
+    return RoutingTurn(
+        agent=turn.agent,
+        user=tuple(user),
+        answer='\n'.join(answer),
+        attachments=tuple(attachments),
+    )
 
 
 _TEXT = 'text'
@@ -288,14 +293,14 @@ class ConversationTranscriptStore(TranscriptStoreContract):
                 # NOTE: a summary is rewritten in place, so today's says nothing about
                 # what the router saw back then
                 yield RoutingHistory(
-                    str(turn.id),
-                    turn.agent,
-                    RoutingContext(
-                        prompts,
-                        tuple(routing_turn(prior) for prior in preceding),
+                    id=str(turn.id),
+                    historical_agent=turn.agent,
+                    context=RoutingContext(
+                        current=prompts,
+                        turns=tuple(routing_turn(prior) for prior in preceding),
                     ),
-                    turn.created_at,
-                    preceding[-1].created_at if preceding else None,
+                    created_at=turn.created_at,
+                    previous_at=preceding[-1].created_at if preceding else None,
                 )
 
     @override

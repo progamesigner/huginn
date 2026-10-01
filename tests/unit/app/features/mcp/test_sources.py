@@ -181,8 +181,8 @@ def _turn(account: str, handle: str) -> TurnRequest:
         policy=RoutingPolicy(agent='scout'),
         prompts=(
             TurnPrompt(
-                'what did I plan?',
-                f'user:{account}',
+                text='what did I plan?',
+                actor=f'user:{account}',
                 account=account,
                 handle=handle,
             ),

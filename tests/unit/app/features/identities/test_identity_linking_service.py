@@ -79,11 +79,11 @@ async def test_issue_invite_persists_only_digest_and_audits() -> None:
 async def test_complete_links_and_consumes_invite() -> None:
     repo = repository()
     linked = ExternalIdentity(
-        _IDENTITY_ID,
-        _USER_ID,
-        'telegram',
-        'primary',
-        '42',
+        id=_IDENTITY_ID,
+        user_id=_USER_ID,
+        provider='telegram',
+        realm='primary',
+        external_user_id='42',
     )
     repo.lock_invite.return_value = stored_invite()
     repo.link.return_value = linked
@@ -144,11 +144,11 @@ async def test_a_chat_owned_by_another_account_is_refused() -> None:
     repo = repository()
     repo.lock_invite.return_value = stored_invite()
     repo.find_external.return_value = ExternalIdentity(
-        _IDENTITY_ID,
-        UUID(int=9),
-        'telegram',
-        'primary',
-        '42',
+        id=_IDENTITY_ID,
+        user_id=UUID(int=9),
+        provider='telegram',
+        realm='primary',
+        external_user_id='42',
     )
     linking = service(repo)
 
@@ -177,11 +177,11 @@ async def test_a_chat_claimed_by_a_racing_link_is_refused() -> None:
 async def test_consumed_invite_is_idempotent_for_the_same_identity() -> None:
     repo = repository()
     linked = ExternalIdentity(
-        _IDENTITY_ID,
-        _USER_ID,
-        'telegram',
-        'primary',
-        '42',
+        id=_IDENTITY_ID,
+        user_id=_USER_ID,
+        provider='telegram',
+        realm='primary',
+        external_user_id='42',
     )
     repo.lock_invite.return_value = stored_invite(consumed_at=_NOW)
     repo.find_external.return_value = linked
@@ -239,11 +239,11 @@ async def test_issue_invite_rejects_non_positive_ttl() -> None:
 async def test_unlink_removes_identity_and_audits_revocation() -> None:
     repo = repository()
     linked = ExternalIdentity(
-        _IDENTITY_ID,
-        _USER_ID,
-        'telegram',
-        'primary',
-        '42',
+        id=_IDENTITY_ID,
+        user_id=_USER_ID,
+        provider='telegram',
+        realm='primary',
+        external_user_id='42',
     )
     linking = service(repo)
 

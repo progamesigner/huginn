@@ -5,14 +5,14 @@ from typing import Annotated, override
 from pydantic import Field, JsonValue
 
 from app.features.agents.config import AgentConfig
-from app.features.agents.contracts import ToolHarvest, ToolSource
-from app.features.agents.entities import (
+from app.features.agents.contracts import (
+    ToolHarvest,
     ToolOutput,
     ToolParams,
-    TurnScope,
+    ToolSource,
     TypedTool,
-    resolve_bindings,
 )
+from app.features.agents.entities import TurnScope, resolve_bindings
 
 from .config import SkillsSourceConfig
 from .entities import SkillMeta

@@ -102,9 +102,17 @@ class FakeIdentities(IdentityResolverContract):
     ) -> Principal:
         self.calls.append((provider, realm, external_user_id))
         if external_user_id in self.linked:
-            return LinkedPrincipal(_LINKED, _LINKED, 'alice')
+            return LinkedPrincipal(
+                user_id=_LINKED,
+                external_identity_id=_LINKED,
+                handle='alice',
+            )
 
-        return AnonymousPrincipal(provider, realm, external_user_id)
+        return AnonymousPrincipal(
+            provider=provider,
+            realm=realm,
+            external_user_id=external_user_id,
+        )
 
 
 class FakeTurns(TurnHandlerContract):
@@ -274,7 +282,11 @@ async def test_a_prompt_carries_the_resolved_principal_of_its_sender() -> None:
     actors = [prompt.actor for prompt in prompts]
     assert actors == [
         f'user:{_LINKED}',
-        AnonymousPrincipal('telegram', 'support_bot', '88').stable_key,
+        AnonymousPrincipal(
+            provider='telegram',
+            realm='support_bot',
+            external_user_id='88',
+        ).stable_key,
     ]
     assert prompts[0].account == str(_LINKED)
     assert prompts[0].handle == 'alice'

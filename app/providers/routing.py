@@ -17,7 +17,7 @@ from lib.container import ContainerContract, ProviderContract
 def _targets(container: ContainerContract) -> RoutingTargets:
     config = container.resolve(HuginnConfig)
     entries = {
-        f'channels.{name}': RoutingTarget(name, routing_policy(channel))
+        f'channels.{name}': RoutingTarget(channel=name, policy=routing_policy(channel))
         for name, channel in config.section(CHANNELS).root.items()
     }
     for name, key in config.section(API_KEYS).root.items():
@@ -34,14 +34,14 @@ def _targets(container: ContainerContract) -> RoutingTargets:
             )
         )
         entries[f'api_keys.{name}'] = RoutingTarget(
-            name,
-            RoutingPolicy(
+            channel=name,
+            policy=RoutingPolicy(
                 agent=key.agent,
                 selection=selection,
                 allowed=frozenset(key.agents),
             ),
         )
-    return RoutingTargets(entries)
+    return RoutingTargets(entries=entries)
 
 
 class RoutingCommandProvider(ProviderContract):

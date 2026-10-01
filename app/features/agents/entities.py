@@ -1,48 +1,38 @@
-import logging
 import re
-from abc import ABC, abstractmethod
 from collections.abc import Mapping
-from dataclasses import dataclass, field
 from datetime import datetime
-from typing import override
+from typing import Annotated
 
-from pydantic import BaseModel, ConfigDict, JsonValue, ValidationError
+from pydantic import Field, JsonValue
 
 from app.contracts.auth import RouterEngine
 from app.contracts.channels import AttachmentKind, TurnEnding
-from lib.llm import Message, ModelCapabilities, ToolCallSegment, ToolResultSegment
+from app.core.schema import AppEntity, AppValue
+from lib.llm import Message, ModelCapabilities
 
 from .config import AgentConfig, BindingSource, DefaultsConfig, RouterConfig
-from .exceptions import DuplicateToolNameError
-
-logger = logging.getLogger(__name__)
 
 _DEFAULT_MAX_ITERATIONS = 10
 _DEFAULT_TURN_TIMEOUT = 300.0
 _DEFAULT_TOOL_TIMEOUT = 60.0
 _DEFAULT_MIN_ITERATION_BUDGET = 15.0
 
-type Instances = dict[str, Tool]
-type ToolOutput = str
+
+class ShadowPolicy(AppValue):
+    model: Annotated[str, Field()]
+    provider: Annotated[str | None, Field()] = None
 
 
-@dataclass(frozen=True)
-class ShadowPolicy:
-    model: str
-    provider: str | None = None
-
-
-@dataclass(frozen=True)
-class SelectionPolicy:
-    fallback: str
-    engine: RouterEngine = 'llm'
-    history_turns: int | None = None
-    model: str | None = None
-    provider: str | None = None
-    allowed: frozenset[str] = field(default_factory=frozenset)
-    min_confidence: float | None = None
-    min_margin: float | None = None
-    shadow: ShadowPolicy | None = None
+class SelectionPolicy(AppValue):
+    fallback: Annotated[str, Field()]
+    engine: Annotated[RouterEngine, Field()] = 'llm'
+    history_turns: Annotated[int | None, Field()] = None
+    model: Annotated[str | None, Field()] = None
+    provider: Annotated[str | None, Field()] = None
+    allowed: Annotated[frozenset[str], Field()] = frozenset()
+    min_confidence: Annotated[float | None, Field()] = None
+    min_margin: Annotated[float | None, Field()] = None
+    shadow: Annotated[ShadowPolicy | None, Field()] = None
 
     @property
     def history_limit(self) -> int:
@@ -64,80 +54,75 @@ def selection_policy(router: RouterConfig) -> SelectionPolicy:
         shadow=(
             None
             if router.shadow is None
-            else ShadowPolicy(router.shadow.model, router.shadow.provider)
+            else ShadowPolicy(
+                model=router.shadow.model,
+                provider=router.shadow.provider,
+            )
         ),
     )
 
 
-@dataclass(frozen=True)
-class RoutingPolicy:
-    agent: str | None = None
-    selection: SelectionPolicy | None = None
-    allowed: frozenset[str] = field(default_factory=frozenset)
+class RoutingPolicy(AppValue):
+    agent: Annotated[str | None, Field()] = None
+    selection: Annotated[SelectionPolicy | None, Field()] = None
+    allowed: Annotated[frozenset[str], Field()] = frozenset()
 
 
-@dataclass(frozen=True)
-class RoutedAgent:
-    name: str
-    config: AgentConfig
+class RoutedAgent(AppValue):
+    name: Annotated[str, Field()]
+    config: Annotated[AgentConfig, Field()]
 
 
-@dataclass(frozen=True)
-class PromptAttachment:
-    kind: AttachmentKind
-    mime: str
-    reference: str
-    unique: str
-    data: bytes
-    hint: str
-    name: str | None = None
-    transcript: str | None = None
-    document_text: str | None = None
+class PromptAttachment(AppValue):
+    kind: Annotated[AttachmentKind, Field()]
+    mime: Annotated[str, Field()]
+    reference: Annotated[str, Field()]
+    unique: Annotated[str, Field()]
+    data: Annotated[bytes, Field()]
+    hint: Annotated[str, Field()]
+    name: Annotated[str | None, Field()] = None
+    transcript: Annotated[str | None, Field()] = None
+    document_text: Annotated[str | None, Field()] = None
 
 
-@dataclass(frozen=True)
-class TurnPrompt:
-    text: str
-    actor: str
-    attachments: tuple[PromptAttachment, ...] = ()
-    account: str | None = None
-    handle: str | None = None
+class TurnPrompt(AppValue):
+    text: Annotated[str, Field()]
+    actor: Annotated[str, Field()]
+    attachments: Annotated[tuple[PromptAttachment, ...], Field()] = ()
+    account: Annotated[str | None, Field()] = None
+    handle: Annotated[str | None, Field()] = None
 
 
-@dataclass(frozen=True)
-class RoutingTurn:
-    agent: str
-    user: tuple[str, ...]
-    answer: str
-    attachments: tuple[str, ...] = ()
+class RoutingTurn(AppValue):
+    agent: Annotated[str, Field()]
+    user: Annotated[tuple[str, ...], Field()]
+    answer: Annotated[str, Field()]
+    attachments: Annotated[tuple[str, ...], Field()] = ()
 
 
-@dataclass(frozen=True)
-class RoutingContext:
-    current: tuple[TurnPrompt, ...]
-    turns: tuple[RoutingTurn, ...] = ()
-    summary: str | None = None
+class RoutingContext(AppValue):
+    current: Annotated[tuple[TurnPrompt, ...], Field()]
+    turns: Annotated[tuple[RoutingTurn, ...], Field()] = ()
+    summary: Annotated[str | None, Field()] = None
 
 
-@dataclass(frozen=True)
-class TurnRequest:
-    channel: str
-    chat: str
-    policy: RoutingPolicy
-    prompts: tuple[TurnPrompt, ...]
-    denied_tools: frozenset[str] = field(default_factory=frozenset)
-    max_completion_tokens: int | None = None
+class TurnRequest(AppValue):
+    channel: Annotated[str, Field()]
+    chat: Annotated[str, Field()]
+    policy: Annotated[RoutingPolicy, Field()]
+    prompts: Annotated[tuple[TurnPrompt, ...], Field()]
+    denied_tools: Annotated[frozenset[str], Field()] = frozenset()
+    max_completion_tokens: Annotated[int | None, Field()] = None
 
 
-@dataclass(frozen=True)
-class TurnScope:
-    actor: str
-    agent: str
-    channel: str
-    chat: str
-    account: str | None = None
-    handle: str | None = None
-    document_blobs: frozenset[str] = field(default_factory=frozenset)
+class TurnScope(AppValue):
+    actor: Annotated[str, Field()]
+    agent: Annotated[str, Field()]
+    channel: Annotated[str, Field()]
+    chat: Annotated[str, Field()]
+    account: Annotated[str | None, Field()] = None
+    handle: Annotated[str | None, Field()] = None
+    document_blobs: Annotated[frozenset[str], Field()] = frozenset()
 
 
 _SAFE_BOUND_VALUE = re.compile(r'^[A-Za-z0-9._:-]+$')
@@ -157,24 +142,21 @@ def resolve_bindings(
     return resolved
 
 
-@dataclass(frozen=True)
-class ToolExecution:
-    name: str
-    duration: float
-    ok: bool
+class ToolExecution(AppValue):
+    name: Annotated[str, Field()]
+    duration: Annotated[float, Field()]
+    ok: Annotated[bool, Field()]
 
 
-@dataclass(frozen=True)
-class Step:
-    tools: tuple[ToolExecution, ...] = ()
+class Step(AppValue):
+    tools: Annotated[tuple[ToolExecution, ...], Field()] = ()
 
 
-@dataclass(frozen=True)
-class TurnBudget:
-    max_iterations: int = _DEFAULT_MAX_ITERATIONS
-    turn_timeout: float = _DEFAULT_TURN_TIMEOUT
-    tool_timeout: float = _DEFAULT_TOOL_TIMEOUT
-    min_iteration_budget: float = _DEFAULT_MIN_ITERATION_BUDGET
+class TurnBudget(AppValue):
+    max_iterations: Annotated[int, Field()] = _DEFAULT_MAX_ITERATIONS
+    turn_timeout: Annotated[float, Field()] = _DEFAULT_TURN_TIMEOUT
+    tool_timeout: Annotated[float, Field()] = _DEFAULT_TOOL_TIMEOUT
+    min_iteration_budget: Annotated[float, Field()] = _DEFAULT_MIN_ITERATION_BUDGET
 
 
 def resolve_budget(agent: AgentConfig, defaults: DefaultsConfig) -> TurnBudget:
@@ -190,129 +172,40 @@ def resolve_budget(agent: AgentConfig, defaults: DefaultsConfig) -> TurnBudget:
     )
 
 
-@dataclass(frozen=True)
-class TurnInput:
-    instructions: str
-    prompts: tuple[TurnPrompt, ...]
-    model: str
-    now: datetime
-    channel: str
-    capabilities: ModelCapabilities
-    prior_turns: tuple[Message, ...] = ()
-    max_completion_tokens: int | None = None
-    budget: TurnBudget = field(default_factory=TurnBudget)
+class TurnInput(AppValue):
+    instructions: Annotated[str, Field()]
+    prompts: Annotated[tuple[TurnPrompt, ...], Field()]
+    model: Annotated[str, Field()]
+    now: Annotated[datetime, Field()]
+    channel: Annotated[str, Field()]
+    capabilities: Annotated[ModelCapabilities, Field()]
+    prior_turns: Annotated[tuple[Message, ...], Field()] = ()
+    max_completion_tokens: Annotated[int | None, Field()] = None
+    budget: Annotated[TurnBudget, Field()] = Field(default_factory=TurnBudget)
 
 
-@dataclass(frozen=True)
-class TurnOutput:
-    text: str
-    ending: TurnEnding = 'complete'
-    steps: tuple[Step, ...] = ()
+class TurnOutput(AppValue):
+    text: Annotated[str, Field()]
+    ending: Annotated[TurnEnding, Field()] = 'complete'
+    steps: Annotated[tuple[Step, ...], Field()] = ()
 
     @property
     def completed(self) -> bool:
         return self.ending == 'complete'
 
 
-class ToolParams(BaseModel):
-    model_config = ConfigDict(extra='forbid')
+class RoutingHistory(AppEntity):
+    id: Annotated[str, Field()]
+    historical_agent: Annotated[str, Field()]
+    context: Annotated[RoutingContext, Field()]
+    created_at: Annotated[datetime | None, Field()] = None
+    previous_at: Annotated[datetime | None, Field()] = None
 
 
-class Tool(ABC):
-    name: str
-    description: str
-
-    @abstractmethod
-    async def invoke(self, arguments: str) -> ToolOutput: ...
-
-    @abstractmethod
-    def schema(self) -> JsonValue: ...
+class RoutingTarget(AppValue):
+    channel: Annotated[str, Field()]
+    policy: Annotated[RoutingPolicy, Field()]
 
 
-class TypedTool[P: ToolParams](Tool):
-    params: type[P]
-
-    @abstractmethod
-    async def run(self, params: P) -> ToolOutput: ...
-
-    @override
-    async def invoke(self, arguments: str) -> ToolOutput:
-        return await self.run(self.params.model_validate_json(arguments))
-
-    @override
-    def schema(self) -> JsonValue:
-        return self.params.model_json_schema()
-
-
-class ToolSet:
-    tools: Instances
-
-    def __init__(self, tools: Mapping[str, Tool] | None = None) -> None:
-        self.tools = dict(tools or {})
-
-    def add(self, name: str, tool: Tool) -> None:
-        if name in self.tools:
-            raise DuplicateToolNameError(f'tool {name!r} is already in the set')
-
-        self.tools[name] = tool
-
-    def schemas(self) -> tuple[JsonValue, ...]:
-        return tuple(
-            {
-                'type': 'function',
-                'function': {
-                    'name': name,
-                    'description': tool.description,
-                    'parameters': tool.schema(),
-                },
-            }
-            for name, tool in self.tools.items()
-        )
-
-    async def execute(self, call: ToolCallSegment) -> ToolResultSegment:
-        if call.name not in self.tools:
-            available = ', '.join(sorted(self.tools)) or 'none'
-            return ToolResultSegment(
-                tool_call_id=call.id,
-                content=f'unknown tool {call.name!r}; available: {available}',
-                error=True,
-            )
-
-        tool = self.tools[call.name]
-        try:
-            output = await tool.invoke(call.arguments)
-        except ValidationError as error:
-            return ToolResultSegment(
-                tool_call_id=call.id,
-                content=str(error),
-                error=True,
-            )
-        except Exception as error:
-            logger.exception('Tool %s raised while executing', call.name)
-            return ToolResultSegment(
-                tool_call_id=call.id,
-                content=f'tool {call.name!r} failed: {error}',
-                error=True,
-            )
-
-        return ToolResultSegment(tool_call_id=call.id, content=output, error=False)
-
-
-@dataclass(frozen=True)
-class RoutingHistory:
-    id: str
-    historical_agent: str
-    context: RoutingContext
-    created_at: datetime | None = None
-    previous_at: datetime | None = None
-
-
-@dataclass(frozen=True)
-class RoutingTarget:
-    channel: str
-    policy: RoutingPolicy
-
-
-@dataclass(frozen=True)
-class RoutingTargets:
-    entries: Mapping[str, RoutingTarget]
+class RoutingTargets(AppValue):
+    entries: Annotated[Mapping[str, RoutingTarget], Field()]

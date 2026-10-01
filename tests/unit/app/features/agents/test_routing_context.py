@@ -20,7 +20,7 @@ def test_multiple_messages_and_history() -> None:
             TurnPrompt(text='first', actor='u'),
             TurnPrompt(text='second', actor='u'),
         ),
-        turns=(RoutingTurn('coder', ('old',), 'x' * 900),),
+        turns=(RoutingTurn(agent='coder', user=('old',), answer='x' * 900),),
         summary='summary',
     )
     state = routing_state(context)
@@ -31,27 +31,38 @@ def test_multiple_messages_and_history() -> None:
 
 
 def test_budget_drops_oldest_then_truncates_current() -> None:
-    turns = (RoutingTurn('old', ('x' * 600,), ''), RoutingTurn('new', ('hi',), ''))
-    state = routing_state(RoutingContext((TurnPrompt('now', 'u'),), turns), 400)
+    turns = (
+        RoutingTurn(agent='old', user=('x' * 600,), answer=''),
+        RoutingTurn(agent='new', user=('hi',), answer=''),
+    )
+    state = routing_state(
+        RoutingContext(current=(TurnPrompt(text='now', actor='u'),), turns=turns),
+        400,
+    )
     assert 'old' not in json.dumps(state)
     assert 'new' in json.dumps(state)
-    state = routing_state(RoutingContext((TurnPrompt('"' * 10000, 'u'),), turns), 400)
+    state = routing_state(
+        RoutingContext(current=(TurnPrompt(text='"' * 10000, actor='u'),), turns=turns),
+        400,
+    )
     assert len(json.dumps(state, ensure_ascii=False, separators=(',', ':'))) <= 400
     assert '…' in json.dumps(state, ensure_ascii=False)
 
 
 def test_attachment_state_contains_hints_and_transcripts_only() -> None:
     attachment = PromptAttachment(
-        'document',
-        'text/plain',
-        'private-reference',
-        'unique',
-        b'private-bytes',
-        'document',
+        kind='document',
+        mime='text/plain',
+        reference='private-reference',
+        unique='unique',
+        data=b'private-bytes',
+        hint='document',
         name='notes.txt',
         document_text='private-body',
     )
-    context = RoutingContext((TurnPrompt('read this', 'u', (attachment,)),))
+    context = RoutingContext(
+        current=(TurnPrompt(text='read this', actor='u', attachments=(attachment,)),),
+    )
     serialized = json.dumps(routing_state(context))
     assert 'notes.txt' in serialized
     assert 'private' not in serialized

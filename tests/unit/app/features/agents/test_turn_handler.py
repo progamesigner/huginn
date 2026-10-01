@@ -1,5 +1,4 @@
 from collections.abc import Sequence
-from dataclasses import replace
 from datetime import UTC, datetime
 from typing import override
 from unittest.mock import AsyncMock
@@ -9,6 +8,7 @@ import pytest
 from app.features.agents.config import AgentConfig, DefaultsConfig
 from app.features.agents.contracts import (
     NamedTool,
+    Tool,
     ToolHarvest,
     ToolSource,
     ToolSourceRegistry,
@@ -19,7 +19,6 @@ from app.features.agents.entities import (
     RoutingPolicy,
     RoutingTurn,
     SelectionPolicy,
-    Tool,
     TurnBudget,
     TurnPrompt,
     TurnRequest,
@@ -270,16 +269,17 @@ def request(*texts: str) -> TurnRequest:
 
 def test_turn_scope_carries_the_last_prompts_identity() -> None:
     turn = request('hello')
-    turn = replace(
-        turn,
-        prompts=(
-            TurnPrompt(
-                text='hello',
-                actor='user:1',
-                account='account-1',
-                handle='alice',
+    turn = turn.model_copy(
+        update={
+            'prompts': (
+                TurnPrompt(
+                    text='hello',
+                    actor='user:1',
+                    account='account-1',
+                    handle='alice',
+                ),
             ),
-        ),
+        },
     )
 
     assert _turn_scope(turn, 'scout') == TurnScope(
@@ -293,12 +293,23 @@ def test_turn_scope_carries_the_last_prompts_identity() -> None:
 
 
 def test_turn_scope_withholds_identity_when_accounts_are_mixed() -> None:
-    turn = replace(
-        request('first', 'second'),
-        prompts=(
-            TurnPrompt('first', 'user:1', account='account-1', handle='alice'),
-            TurnPrompt('second', 'user:2', account='account-2', handle='bob'),
-        ),
+    turn = request('first', 'second').model_copy(
+        update={
+            'prompts': (
+                TurnPrompt(
+                    text='first',
+                    actor='user:1',
+                    account='account-1',
+                    handle='alice',
+                ),
+                TurnPrompt(
+                    text='second',
+                    actor='user:2',
+                    account='account-2',
+                    handle='bob',
+                ),
+            ),
+        },
     )
 
     scope = _turn_scope(turn, 'scout')
@@ -312,10 +323,15 @@ def test_turn_scope_withholds_identity_when_accounts_are_mixed() -> None:
 def test_turn_scope_withholds_identity_when_an_unlinked_actor_joins(
     linked_last: bool,
 ) -> None:
-    linked = TurnPrompt('mine', 'user:1', account='account-1', handle='alice')
-    unlinked = TurnPrompt('theirs', 'user:2')
+    linked = TurnPrompt(
+        text='mine',
+        actor='user:1',
+        account='account-1',
+        handle='alice',
+    )
+    unlinked = TurnPrompt(text='theirs', actor='user:2')
     prompts = (unlinked, linked) if linked_last else (linked, unlinked)
-    turn = replace(request('first', 'second'), prompts=prompts)
+    turn = request('first', 'second').model_copy(update={'prompts': prompts})
 
     scope = _turn_scope(turn, 'scout')
 
@@ -347,7 +363,7 @@ async def test_request_token_limit_overrides_agent_and_default() -> None:
     )
 
     await handler.handle(
-        replace(request('hello'), max_completion_tokens=4096),
+        request('hello').model_copy(update={'max_completion_tokens': 4096}),
         RecordingReply(),
     )
 
@@ -455,7 +471,7 @@ async def test_a_turn_never_offers_the_model_a_denied_tool() -> None:
     llm = answering()
 
     await handler_with(llm, FakeSource('echo', 'recall')).handle(
-        replace(request('hello'), denied_tools=frozenset({'recall'})),
+        request('hello').model_copy(update={'denied_tools': frozenset({'recall'})}),
         RecordingReply(),
     )
 
@@ -517,11 +533,11 @@ async def test_a_chat_replays_history_after_routing_to_a_different_agent() -> No
     )
 
     await handler.handle(
-        replace(request('first'), policy=RoutingPolicy(agent='quick')),
+        request('first').model_copy(update={'policy': RoutingPolicy(agent='quick')}),
         RecordingReply(),
     )
     await handler.handle(
-        replace(request('second'), policy=RoutingPolicy(agent='deep')),
+        request('second').model_copy(update={'policy': RoutingPolicy(agent='deep')}),
         RecordingReply(),
     )
 
@@ -896,7 +912,10 @@ async def test_routing_context_loads_history_only_when_needed(
 ) -> None:
     store = FakeStore()
     store.recent_turns = AsyncMock(
-        return_value=((RoutingTurn('a', ('before',), 'answer'),), 'summary'),
+        return_value=(
+            (RoutingTurn(agent='a', user=('before',), answer='answer'),),
+            'summary',
+        ),
     )
     router = Router({}, FakeModels(None))
     router.resolve = AsyncMock(side_effect=RuntimeError('stop after routing'))
@@ -907,15 +926,15 @@ async def test_routing_context_loads_history_only_when_needed(
         store,
         ClockManager(),
     )
-    prompts = (TurnPrompt('one', 'u'), TurnPrompt('two', 'u'))
+    prompts = (TurnPrompt(text='one', actor='u'), TurnPrompt(text='two', actor='u'))
     request = TurnRequest(
-        'test',
-        'chat',
-        RoutingPolicy(
+        channel='test',
+        chat='chat',
+        policy=RoutingPolicy(
             agent='a' if fixed else None,
             selection=SelectionPolicy(fallback='a', history_turns=limit),
         ),
-        prompts,
+        prompts=prompts,
     )
     with pytest.raises(RuntimeError, match='stop after routing'):
         await handler.handle(request, RecordingReply())

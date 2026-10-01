@@ -34,7 +34,7 @@ from app.features.agents.config import (
     resolve_selection,
 )
 from app.features.agents.config import build_sections as build_agent_sections
-from app.features.agents.entities import ToolOutput, ToolParams, TypedTool
+from app.features.agents.contracts import ToolOutput, ToolParams, TypedTool
 from app.features.agents.exceptions import (
     AmbiguousInstructionsError,
     AmbiguousModelError,

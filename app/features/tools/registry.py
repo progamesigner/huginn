@@ -3,7 +3,8 @@ from dataclasses import dataclass
 
 from pydantic import BaseModel
 
-from app.features.agents.entities import Tool, TurnScope
+from app.features.agents.contracts import Tool
+from app.features.agents.entities import TurnScope
 
 from .exceptions import DuplicateToolError, UnknownToolError
 

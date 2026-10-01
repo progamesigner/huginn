@@ -21,8 +21,14 @@ from lib.guid import GUIDContract
 from lib.temporal import ClockContract
 
 runner = CliRunner()
-_USER = User(UUID(int=1), 'alice', 'Alice')
-_IDENTITY = ExternalIdentity(UUID(int=2), _USER.id, 'telegram', 'primary', '42')
+_USER = User(id=UUID(int=1), handle='alice', display_name='Alice')
+_IDENTITY = ExternalIdentity(
+    id=UUID(int=2),
+    user_id=_USER.id,
+    provider='telegram',
+    realm='primary',
+    external_user_id='42',
+)
 
 
 class FakeIdentitiesProvider(ProviderContract):
@@ -47,9 +53,9 @@ def dependencies() -> tuple[MagicMock, MagicMock]:
     service = MagicMock()
     service.issue_invite = AsyncMock(
         return_value=IssuedIdentityLinkInvite(
-            'opaque-token',
-            'ABCD-EFGH-IJKL-MNOP-QRST-UVWX-YZ12-3456',
-            datetime(2026, 1, 1, tzinfo=UTC),
+            token='opaque-token',  # noqa: S106
+            short_code='ABCD-EFGH-IJKL-MNOP-QRST-UVWX-YZ12-3456',
+            expires_at=datetime(2026, 1, 1, tzinfo=UTC),
         ),
     )
     service.unlink = AsyncMock(return_value=True)

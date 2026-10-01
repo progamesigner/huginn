@@ -60,15 +60,15 @@ def _prompt(
 ) -> TurnPrompt:
     if isinstance(principal, LinkedPrincipal):
         return TurnPrompt(
-            text,
-            principal.stable_key,
-            attachments,
+            text=text,
+            actor=principal.stable_key,
+            attachments=attachments,
             account=str(principal.user_id),
             handle=principal.handle,
         )
 
     actor = _UNATTRIBUTED if principal is None else principal.stable_key
-    return TurnPrompt(text, actor, attachments)
+    return TurnPrompt(text=text, actor=actor, attachments=attachments)
 
 
 def _hint(attachment: InboundAttachment) -> str:

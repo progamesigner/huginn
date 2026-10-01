@@ -3,7 +3,7 @@ from typing import Annotated, cast, override
 from pydantic import Field
 
 from app.features.agents.config import BindingSource
-from app.features.agents.entities import ToolOutput, ToolParams, TypedTool
+from app.features.agents.contracts import ToolOutput, ToolParams, TypedTool
 from app.features.tools.config import _check_bindings, _check_overlay
 from app.features.tools.registry import ToolKind, ToolRegistry
 

@@ -20,7 +20,11 @@ class FakeIdentityRepository:
         return UUID(int=self.counter)
 
     async def create_user(self, handle: str, display_name: str) -> User:
-        user = User(self.next_id(), handle.strip().lower(), display_name)
+        user = User(
+            id=self.next_id(),
+            handle=handle.strip().lower(),
+            display_name=display_name,
+        )
         self.users[user.handle] = user
         return user
 
@@ -35,11 +39,11 @@ class FakeIdentityRepository:
         external_user_id: str,
     ) -> ExternalIdentity:
         identity = ExternalIdentity(
-            self.next_id(),
-            user.id,
-            provider,
-            realm,
-            external_user_id,
+            id=self.next_id(),
+            user_id=user.id,
+            provider=provider,
+            realm=realm,
+            external_user_id=external_user_id,
         )
         self.identities[(provider, realm, external_user_id)] = identity
         return identity

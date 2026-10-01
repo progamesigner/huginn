@@ -163,13 +163,13 @@ def run_eval(
             'dataset router, fallback or candidates differ from current authorized configuration; export again',
         )
     llm = SelectionPolicy(
-        selection.fallback,
+        fallback=selection.fallback,
         model=llm_model or (selection.model if selection.engine == 'llm' else None),
         provider=llm_provider
         or (selection.provider if selection.engine == 'llm' else None),
     )
     decision = SelectionPolicy(
-        selection.fallback,
+        fallback=selection.fallback,
         engine='decision',
         model=decision_model
         or (selection.model if selection.engine == 'decision' else None),

@@ -268,19 +268,19 @@ async def test_routing_samples_never_include_target_or_future_turns(
             await repository.append_turn(
                 conversation,
                 'scout',
-                [Part('user', 'text', {'text': str(index)})],
+                [Part(role='user', kind='text', payload={'text': str(index)})],
             ),
         )
     await repository.append_turn(
         conversation,
         'scout',
-        [Part('assistant', 'summary', {'summary': 'future summary'})],
+        [Part(role='assistant', kind='summary', payload={'summary': 'future summary'})],
     )
     other = await repository.get_or_create('different', '1')
     await repository.append_turn(
         other,
         'scout',
-        [Part('user', 'text', {'text': 'not in channel'})],
+        [Part(role='user', kind='text', payload={'text': 'not in channel'})],
     )
     samples = [
         sample

@@ -7,7 +7,8 @@ from pydantic import Field
 
 from app.core.config.registry import HuginnConfig
 from app.features.agents.config import AgentConfig, ToolRef
-from app.features.agents.entities import ToolOutput, ToolParams, TurnScope, TypedTool
+from app.features.agents.contracts import ToolOutput, ToolParams, TypedTool
+from app.features.agents.entities import TurnScope
 from app.features.blobs.contracts import BlobStoreContract
 from app.features.blobs.entities import Blob, BlobKind
 from app.features.tools.config import ToolConfig, ToolConfigList
@@ -115,7 +116,14 @@ class DocumentBlobs(BlobStoreContract):
 async def test_document_source_applies_turn_allow_list() -> None:
     blob_id = uuid4()
     blobs = DocumentBlobs(
-        Blob(blob_id, 'hash', 'text/markdown', 5, 'document', data=b'hello'),
+        Blob(
+            id=blob_id,
+            sha256='hash',
+            mime='text/markdown',
+            size=5,
+            kind='document',
+            data=b'hello',
+        ),
     )
     registry = ToolRegistry(
         [

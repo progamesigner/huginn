@@ -2,7 +2,8 @@ from typing import Annotated, override
 
 from pydantic import Field
 
-from app.features.agents.entities import ToolOutput, ToolParams, ToolSet, TypedTool
+from app.features.agents.contracts import ToolOutput, ToolParams, TypedTool
+from app.features.agents.tooling import ToolSet
 from lib.llm import ToolCallSegment
 
 

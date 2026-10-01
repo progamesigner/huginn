@@ -31,7 +31,11 @@ class DatasetStore(FakeStore):
     @override
     async def routing_samples(self, channel, since, history_turns):
         sample = _sample()
-        yield RoutingHistory(sample.id, sample.historical_agent, sample.state.context())
+        yield RoutingHistory(
+            id=sample.id,
+            historical_agent=sample.historical_agent,
+            context=sample.state.context(),
+        )
 
 
 def test_export_evaluate_review_and_report(tmp_path: Path) -> None:
@@ -63,11 +67,14 @@ def test_export_evaluate_review_and_report(tmp_path: Path) -> None:
     container.bind(
         RoutingTargets,
         instance=RoutingTargets(
-            {
+            entries={
                 'channels.test': RoutingTarget(
-                    'test',
-                    RoutingPolicy(
-                        selection=SelectionPolicy('a', allowed=frozenset(('a', 'b'))),
+                    channel='test',
+                    policy=RoutingPolicy(
+                        selection=SelectionPolicy(
+                            fallback='a',
+                            allowed=frozenset(('a', 'b')),
+                        ),
                     ),
                 ),
             },

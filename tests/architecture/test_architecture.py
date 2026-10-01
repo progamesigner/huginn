@@ -573,6 +573,32 @@ def test_contribution_check_sees_attribute_calls() -> None:
     assert list(_contribution_calls('contribute = 1')) == []
 
 
+def test_feature_entities_build_on_the_app_bases() -> None:
+    from app.core.schema import AppEntity, AppValue
+
+    root = _features_dir()
+    classes = [
+        value
+        for path in sorted(root.rglob('entities.py'))
+        for value in vars(
+            import_module(f'{_package_of(path, root, FEATURES_PACKAGE)}.entities'),
+        ).values()
+        if inspect.isclass(value)
+        and value.__module__.startswith(FEATURES_PACKAGE)
+        and value.__module__.endswith('.entities')
+    ]
+    violations = [
+        f'{value.__module__}.{value.__qualname__}'
+        for value in classes
+        if not issubclass(value, (AppEntity, AppValue))
+    ]
+
+    assert classes, 'no entity found; the check would pass vacuously'
+    assert not violations, 'entities outside AppEntity/AppValue:\n' + '\n'.join(
+        violations,
+    )
+
+
 def test_every_package_carries_an_init_module() -> None:
     # NOTE: grimp does not walk namespace packages, so a directory without an
     # __init__.py silently shrinks what the layers contract checks rather than

@@ -1,4 +1,3 @@
-from dataclasses import replace
 from unittest.mock import AsyncMock, Mock
 
 import pytest
@@ -51,13 +50,13 @@ async def test_decision_only_receives_authorized_candidates(
     }
     router = Router(agents, FakeLLM(), decisions=decisions)
     policy = RoutingPolicy(
-        selection=SelectionPolicy('fallback', engine='decision', model='jev'),
+        selection=SelectionPolicy(fallback='fallback', engine='decision', model='jev'),
         allowed=frozenset(('scout', 'fallback')),
     )
     routed = await router.resolve(
         policy,
         'chat',
-        RoutingContext((TurnPrompt('hello', 'u'),)),
+        RoutingContext(current=(TurnPrompt(text='hello', actor='u'),)),
     )
     assert routed.name == expected
     request = client.decide.call_args.args[0]
@@ -85,7 +84,7 @@ async def test_decision_failure_falls_back_without_logging_state(
         FakeLLM(),
         decisions=decisions,
     )
-    selection = SelectionPolicy('a', engine='decision', model='jev')
+    selection = SelectionPolicy(fallback='a', engine='decision', model='jev')
     assert (
         await router.resolve(
             RoutingPolicy(selection=selection),
@@ -104,8 +103,8 @@ async def test_zero_one_and_missing_client() -> None:
         FakeLLM(),
         decisions=decisions,
     )
-    selection = SelectionPolicy('a', engine='decision', model='jev')
-    context = RoutingContext((TurnPrompt('hi', 'u'),))
+    selection = SelectionPolicy(fallback='a', engine='decision', model='jev')
+    context = RoutingContext(current=(TurnPrompt(text='hi', actor='u'),))
     assert (
         await router.decide(selection, context, {})
     ).fallback_reason == 'no_candidates'
@@ -118,7 +117,7 @@ async def test_zero_one_and_missing_client() -> None:
         await router.decide(selection, context, router.agents)
     ).fallback_reason == 'missing_client'
     assert selection.history_limit == 6
-    assert replace(selection, history_turns=0).history_limit == 0
+    assert selection.model_copy(update={'history_turns': 0}).history_limit == 0
 
 
 def _answering(answer: ChoiceAnswer) -> Mock:
@@ -159,7 +158,7 @@ async def test_a_decision_below_its_threshold_falls_back(
     agents = {name: AgentConfig(description=name) for name in ('a', 'b')}
     router = Router(agents, FakeLLM(), decisions=_answering(answer))
     selection = SelectionPolicy(
-        'b',
+        fallback='b',
         engine='decision',
         model='jev',
         min_confidence=min_confidence,
@@ -168,7 +167,7 @@ async def test_a_decision_below_its_threshold_falls_back(
 
     decision = await router.decide(
         selection,
-        RoutingContext((TurnPrompt('hi', 'u'),)),
+        RoutingContext(current=(TurnPrompt(text='hi', actor='u'),)),
         agents,
     )
 

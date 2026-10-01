@@ -246,14 +246,15 @@ class Router:
         # NOTE: the answer never reaches the user; it is logged against the choice the
         # live router made so the two engines can be compared on real traffic
         decision = await self.decide(
-            replace(
-                selection,
-                engine='decision',
-                model=shadow.model,
-                provider=shadow.provider,
-                min_confidence=None,
-                min_margin=None,
-                shadow=None,
+            selection.model_copy(
+                update={
+                    'engine': 'decision',
+                    'model': shadow.model,
+                    'provider': shadow.provider,
+                    'min_confidence': None,
+                    'min_margin': None,
+                    'shadow': None,
+                },
             ),
             context,
             candidates,

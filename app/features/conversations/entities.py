@@ -1,34 +1,33 @@
 from collections.abc import Mapping
-from dataclasses import dataclass, field
 from datetime import datetime
+from typing import Annotated
 from uuid import UUID
 
-from pydantic import JsonValue
+from pydantic import Field, JsonValue
+
+from app.core.schema import AppEntity, AppValue
 
 
-@dataclass(frozen=True)
-class Conversation:
-    id: UUID
-    channel: str
-    chat_id: str
-    created_at: datetime | None = None
-    updated_at: datetime | None = None
-    compact_version: int = 0
-    summarized_through_turn_id: UUID | None = None
-    reset_through_turn_id: UUID | None = None
+class Conversation(AppEntity):
+    id: Annotated[UUID, Field()]
+    channel: Annotated[str, Field()]
+    chat_id: Annotated[str, Field()]
+    created_at: Annotated[datetime | None, Field()] = None
+    updated_at: Annotated[datetime | None, Field()] = None
+    compact_version: Annotated[int, Field()] = 0
+    summarized_through_turn_id: Annotated[UUID | None, Field()] = None
+    reset_through_turn_id: Annotated[UUID | None, Field()] = None
 
 
-@dataclass(frozen=True)
-class Part:
-    role: str
-    kind: str
-    payload: Mapping[str, JsonValue] = field(default_factory=dict)
+class Part(AppValue):
+    role: Annotated[str, Field()]
+    kind: Annotated[str, Field()]
+    payload: Annotated[Mapping[str, JsonValue], Field()] = Field(default_factory=dict)
 
 
-@dataclass(frozen=True)
-class Turn:
-    id: UUID
-    agent: str
-    parts: tuple[Part, ...] = ()
-    usage: Mapping[str, JsonValue] = field(default_factory=dict)
-    created_at: datetime | None = None
+class Turn(AppEntity):
+    id: Annotated[UUID, Field()]
+    agent: Annotated[str, Field()]
+    parts: Annotated[tuple[Part, ...], Field()] = ()
+    usage: Annotated[Mapping[str, JsonValue], Field()] = Field(default_factory=dict)
+    created_at: Annotated[datetime | None, Field()] = None

@@ -6,16 +6,28 @@ from app.features.conversations.services import routing_turn
 
 def test_routing_history_excludes_tools_and_keeps_transcripts() -> None:
     turn = Turn(
-        UUID(int=1),
-        'coder',
-        (
-            Part('user', 'text', {'text': 'question'}),
-            Part('user', 'audio', {'text': 'spoken question', 'blob': 'secret'}),
-            Part('user', 'document', {'text': 'document hint'}),
-            Part('assistant', 'text', {'text': 'final'}),
-            Part('assistant', 'tool_call', {'text': 'private tool arguments'}),
-            Part('tool', 'tool_result', {'text': 'private tool results'}),
-            Part('assistant', 'summary', {'text': 'not a reply'}),
+        id=UUID(int=1),
+        agent='coder',
+        parts=(
+            Part(role='user', kind='text', payload={'text': 'question'}),
+            Part(
+                role='user',
+                kind='audio',
+                payload={'text': 'spoken question', 'blob': 'secret'},
+            ),
+            Part(role='user', kind='document', payload={'text': 'document hint'}),
+            Part(role='assistant', kind='text', payload={'text': 'final'}),
+            Part(
+                role='assistant',
+                kind='tool_call',
+                payload={'text': 'private tool arguments'},
+            ),
+            Part(
+                role='tool',
+                kind='tool_result',
+                payload={'text': 'private tool results'},
+            ),
+            Part(role='assistant', kind='summary', payload={'text': 'not a reply'}),
         ),
     )
     context = routing_turn(turn)

@@ -1,5 +1,4 @@
 from collections.abc import Mapping, Sequence
-from dataclasses import replace
 from typing import cast
 from uuid import UUID
 
@@ -137,10 +136,11 @@ class FakeConversationRepository:
         )
         self.turns[conversation.id].append(summary_turn)
 
-        updated = replace(
-            conversation,
-            compact_version=conversation.compact_version + 1,
-            summarized_through_turn_id=boundary.id,
+        updated = conversation.model_copy(
+            update={
+                'compact_version': conversation.compact_version + 1,
+                'summarized_through_turn_id': boundary.id,
+            },
         )
         key = (conversation.channel, conversation.chat_id)
         self.conversations[key] = updated

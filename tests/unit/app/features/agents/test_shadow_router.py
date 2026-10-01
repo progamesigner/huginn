@@ -24,12 +24,12 @@ from lib.llm import TextChunk
 
 from .test_agent_router import FakeClient, FakeLLM
 
-_CONTEXT = RoutingContext((TurnPrompt('hello', 'u'),))
+_CONTEXT = RoutingContext(current=(TurnPrompt(text='hello', actor='u'),))
 _SHADOWED = RoutingPolicy(
     selection=SelectionPolicy(
-        'b',
+        fallback='b',
         model='chat',
-        shadow=ShadowPolicy('jev', 'gateway'),
+        shadow=ShadowPolicy(model='jev', provider='gateway'),
     ),
 )
 
@@ -132,7 +132,7 @@ async def test_a_router_without_a_shadow_never_asks_the_decision_engine() -> Non
         decisions=_jev(decide),
         shadows=shadows,
     )
-    policy = RoutingPolicy(selection=SelectionPolicy('b', model='chat'))
+    policy = RoutingPolicy(selection=SelectionPolicy(fallback='b', model='chat'))
 
     assert (await router.resolve(policy, 'chat-1', _CONTEXT)).name == 'a'
 

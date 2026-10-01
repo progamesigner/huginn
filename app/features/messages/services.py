@@ -59,8 +59,8 @@ def _policy(agent: str | None, client: ApiClient) -> RoutingPolicy:
                     None
                     if client.routing.shadow_model is None
                     else ShadowPolicy(
-                        client.routing.shadow_model,
-                        client.routing.shadow_provider,
+                        model=client.routing.shadow_model,
+                        provider=client.routing.shadow_provider,
                     )
                 ),
             )

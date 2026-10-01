@@ -4,7 +4,8 @@ from uuid import UUID, uuid4
 
 import pytest
 
-from app.features.agents.entities import ToolSet, TurnScope
+from app.features.agents.entities import TurnScope
+from app.features.agents.tooling import ToolSet
 from app.features.blobs.contracts import BlobStoreContract
 from app.features.blobs.entities import Blob, BlobKind
 from app.features.tools.document.config import DocumentToolConfig
@@ -42,7 +43,14 @@ class Blobs(BlobStoreContract):
 
 
 def _text(id_: UUID, data: bytes, mime: str = 'text/markdown') -> Blob:
-    return Blob(id_, 'hash', mime, len(data), 'document', data=data)
+    return Blob(
+        id=id_,
+        sha256='hash',
+        mime=mime,
+        size=len(data),
+        kind='document',
+        data=data,
+    )
 
 
 def _tool(

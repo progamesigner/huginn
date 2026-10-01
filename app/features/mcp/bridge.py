@@ -4,7 +4,7 @@ from typing import override
 
 from pydantic import JsonValue
 
-from app.features.agents.entities import Tool, ToolOutput
+from app.features.agents.contracts import Tool, ToolOutput
 from lib.mcp import MCPClientContract, MCPToolInfo
 
 

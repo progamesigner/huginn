@@ -1,6 +1,5 @@
 import asyncio
 import json
-from dataclasses import asdict
 from pathlib import Path
 from typing import Annotated
 
@@ -20,7 +19,7 @@ def redis(
         return await resolve(RedisAuditor).run()
 
     result = asyncio.run(run())
-    output = json.dumps(asdict(result), indent=2, sort_keys=True)
+    output = json.dumps(result.model_dump(), indent=2, sort_keys=True)
     echo(output)
     if report is not None:
         report.write_text(f'{output}\n')

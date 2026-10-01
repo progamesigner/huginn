@@ -49,7 +49,9 @@ async def evaluate(
         }
         for variant, selection in selections.items():
             context = (
-                RoutingContext((TurnPrompt(sample.legacy_message, ''),))
+                RoutingContext(
+                    current=(TurnPrompt(text=sample.legacy_message, actor=''),),
+                )
                 if variant == 'llm'
                 else sample.state.context()
             )
