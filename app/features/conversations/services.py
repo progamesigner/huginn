@@ -1,8 +1,9 @@
 import logging
-from collections.abc import AsyncIterator, Sequence
+from collections.abc import AsyncIterator, Collection, Sequence
 from contextlib import asynccontextmanager
 from datetime import datetime
 from typing import override
+from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -22,7 +23,11 @@ from app.features.agents.types import (
     TurnPrompt,
 )
 from app.features.blobs.config import BLOBS, RetentionConfig
-from app.features.blobs.contracts import BlobStoreContract, BlobStoreFactoryContract
+from app.features.blobs.contracts import (
+    BlobReferenceContract,
+    BlobStoreContract,
+    BlobStoreFactoryContract,
+)
 from lib.database import DatabaseContract
 from lib.guid import GUIDContract
 from lib.llm import LLMContract, Message, ModelRef
@@ -376,3 +381,22 @@ class ConversationTranscriptStore(TranscriptStoreContract):
 
     def _repository(self, session: AsyncSession) -> ConversationRepository:
         return ConversationRepository(session, self.guid, self.clock)
+
+
+class ConversationBlobReferences(BlobReferenceContract):
+    clock: ClockContract
+    guid: GUIDContract
+
+    def __init__(self, guid: GUIDContract, clock: ClockContract) -> None:
+        self.clock = clock
+        self.guid = guid
+
+    @override
+    async def referenced(
+        self,
+        session: AsyncSession,
+        ids: Collection[UUID],
+    ) -> frozenset[UUID]:
+        return await ConversationRepository(session, self.guid, self.clock).referenced(
+            ids,
+        )

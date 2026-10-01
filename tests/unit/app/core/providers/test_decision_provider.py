@@ -7,6 +7,7 @@ from app.core.config.decision import DecisionProviderConfig
 from app.core.config.llm import ProviderConfig
 from app.core.config.providers import ProviderConfigList
 from app.core.providers.decision import DecisionProvider
+from app.providers.contributions import CoreContributions
 from lib.decision import DecisionContract, DecisionRef
 from tests.helpers.settings import app_with, make_settings
 
@@ -25,7 +26,10 @@ def test_decision_container(tmp_path: Path, configured: bool) -> None:
         if configured
         else '{}',
     )
-    container = app_with(make_settings(config_file=path)).build(DecisionProvider())
+    container = app_with(make_settings(config_file=path)).build(
+        DecisionProvider(),
+        CoreContributions(),
+    )
     manager = container.resolve(DecisionContract)
     provider = manager.provider_for(DecisionRef(model='jev'))
     assert (provider is not None) == configured

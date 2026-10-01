@@ -209,10 +209,7 @@ def offered(llm: FakeLLM) -> list[str]:
 
 
 def _registry(source: ToolSource) -> ToolSourceRegistry:
-    sources = ToolSourceRegistry()
-    sources.register(lambda: source)
-
-    return sources
+    return ToolSourceRegistry(lambda: (source,))
 
 
 def handler_with(llm: FakeLLM, source: ToolSource) -> TurnHandler:
@@ -251,9 +248,7 @@ def configured_handler(
     **overrides: object,
 ) -> TurnHandler:
     agent = agents()['scout'].model_copy(update=overrides)
-    sources = ToolSourceRegistry()
-    if source is not None:
-        sources.register(lambda: source)
+    sources = ToolSourceRegistry(lambda: () if source is None else (source,))
 
     return TurnHandler(
         llm=FakeModels(llm),

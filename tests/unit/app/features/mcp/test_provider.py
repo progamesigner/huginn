@@ -11,6 +11,11 @@ from mcp.shared.memory import create_connected_server_and_client_session
 from app.core.application import App
 from app.features.mcp.config import MCPServerConfigList
 from app.features.mcp.providers import MCPProvider, _build_servers
+from app.providers.contributions import (
+    AgentContributions,
+    CoreContributions,
+    MCPContributions,
+)
 from lib.mcp import MCPClientContract, MCPServer, MCPTransport, UnknownMCPServerError
 from tests.helpers.settings import app_with, make_settings
 
@@ -79,7 +84,9 @@ async def test_provider_connects_configured_servers(tmp_path: Path) -> None:
     config.write_text(_CONFIG)
 
     container = _with_memory(app_with(make_settings(config_file=config))).build(
-        MCPProvider(),
+        AgentContributions(),
+        CoreContributions(),
+        MCPContributions(),
     )
 
     async with container:

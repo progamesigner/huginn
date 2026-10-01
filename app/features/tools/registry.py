@@ -1,4 +1,5 @@
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
+from dataclasses import dataclass
 
 from pydantic import BaseModel
 
@@ -12,6 +13,13 @@ type Configs = dict[str, type[BaseModel]]
 type Tools = dict[str, type[Tool]]
 
 
+@dataclass(frozen=True)
+class ToolKind:
+    tool: type[Tool]
+    config: type[BaseModel] | None = None
+    builder: ToolBuilder | None = None
+
+
 class ToolRegistry:
     builders: Builders
     configs: Configs
@@ -21,24 +29,22 @@ class ToolRegistry:
     def config_models(self) -> dict[str, type[BaseModel] | None]:
         return {kind: self.configs.get(kind) for kind in self.tools}
 
-    def __init__(self) -> None:
+    def __init__(self, kinds: Iterable[ToolKind] = ()) -> None:
         self.builders = {}
         self.configs = {}
         self.tools = {}
+        for kind in kinds:
+            self._add(kind)
 
-    def register(
-        self,
-        tool: type[Tool],
-        config: type[BaseModel] | None = None,
-        builder: ToolBuilder | None = None,
-    ) -> None:
+    def _add(self, kind: ToolKind) -> None:
+        tool = kind.tool
         if tool.name in self.tools:
             raise DuplicateToolError(f'tool {tool.name!r} is already registered')
 
         self.tools[tool.name] = tool
-        self.builders[tool.name] = builder or (lambda _config, _scope: tool())
-        if config is not None:
-            self.configs[tool.name] = config
+        self.builders[tool.name] = kind.builder or (lambda _config, _scope: tool())
+        if kind.config is not None:
+            self.configs[tool.name] = kind.config
 
     def build(self, kind: str, config: BaseModel, scope: TurnScope) -> Tool:
         self.get(kind)

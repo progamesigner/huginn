@@ -111,15 +111,13 @@ def make_handlers(
     linking: FakeLinking | None = None,
     control: FakeControl | None = None,
 ) -> tuple[CommandHandlers, CommandRegistry]:
-    registry = CommandRegistry()
     handlers = CommandHandlers(
         lambda: identities or FakeIdentities(),
         lambda: linking or FakeLinking(),
         lambda: control or FakeControl(),
-        registry,
+        lambda: registry,
     )
-    for name, description, handler in handlers.commands():
-        registry.register(name, description, handler)
+    registry = CommandRegistry(handlers.commands())
 
     return handlers, registry
 

@@ -1,4 +1,4 @@
-from collections.abc import Callable, Iterator
+from collections.abc import Callable, Iterable, Iterator
 from dataclasses import dataclass
 from functools import cached_property
 from typing import cast
@@ -17,16 +17,15 @@ type Specs = dict[str, SectionSpec[BaseModel]]
 class SectionRegistry:
     specs: Specs
 
-    def __init__(self) -> None:
+    def __init__(self, specs: Iterable[SectionSpec[BaseModel]] = ()) -> None:
         self.specs = {}
+        for spec in specs:
+            if spec.key in self.specs:
+                raise DuplicateSectionError(
+                    f'config section {spec.key!r} is already registered',
+                )
 
-    def register(self, spec: SectionSpec[BaseModel]) -> None:
-        if spec.key in self.specs:
-            raise DuplicateSectionError(
-                f'config section {spec.key!r} is already registered',
-            )
-
-        self.specs[spec.key] = spec
+            self.specs[spec.key] = spec
 
     def schema(self) -> dict[str, JsonValue]:
         return {

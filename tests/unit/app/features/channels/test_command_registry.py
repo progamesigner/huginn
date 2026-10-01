@@ -2,7 +2,7 @@ import pytest
 
 from app.contracts.channels import InboundCommand, InboundMessage
 from app.features.channels.exceptions import DuplicateCommandError
-from app.features.channels.registry import CommandRegistry
+from app.features.channels.registry import Command, CommandRegistry
 
 
 def command(name: str, args: str = '') -> InboundCommand:
@@ -25,11 +25,7 @@ def registry(*names: str) -> CommandRegistry:
     async def echo(given: InboundCommand, message: InboundMessage) -> str:
         return f'{given.name}:{given.args}:{message.chat}'
 
-    built = CommandRegistry()
-    for name in names:
-        built.register(name, f'Do {name}.', echo)
-
-    return built
+    return CommandRegistry(Command(name, f'Do {name}.', echo) for name in names)
 
 
 async def test_dispatch_routes_to_the_handler_of_the_command() -> None:
@@ -63,7 +59,10 @@ def test_registering_a_command_twice_is_refused() -> None:
     async def other(given: InboundCommand, message: InboundMessage) -> str:
         return 'other'
 
-    built = registry('new')
+    async def echo(given: InboundCommand, message: InboundMessage) -> str:
+        return 'echo'
 
     with pytest.raises(DuplicateCommandError, match='new'):
-        built.register('new', 'Do it again.', other)
+        CommandRegistry(
+            [Command('new', 'Do it.', echo), Command('new', 'Do it again.', other)],
+        )

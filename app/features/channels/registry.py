@@ -1,4 +1,4 @@
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Iterable
 from dataclasses import dataclass
 
 from pydantic import BaseModel
@@ -33,8 +33,15 @@ def _unknown(name: str, known: tuple[str, ...]) -> str:
 class CommandRegistry:
     commands: dict[str, Command]
 
-    def __init__(self) -> None:
+    def __init__(self, commands: Iterable[Command] = ()) -> None:
         self.commands = {}
+        for command in commands:
+            if command.name in self.commands:
+                raise DuplicateCommandError(
+                    f'command {command.name!r} is already registered',
+                )
+
+            self.commands[command.name] = command
 
     async def dispatch(self, command: InboundCommand, message: InboundMessage) -> str:
         registered = self.commands.get(command.name)
@@ -49,26 +56,25 @@ class CommandRegistry:
     def names(self) -> tuple[str, ...]:
         return tuple(sorted(self.commands))
 
-    def register(self, name: str, description: str, handler: CommandHandler) -> None:
-        if name in self.commands:
-            raise DuplicateCommandError(f'command {name!r} is already registered')
 
-        self.commands[name] = Command(name, description, handler)
+@dataclass(frozen=True)
+class ChannelKind:
+    kind: str
+    config: type[BaseModel]
 
 
 class ChannelRegistry:
     config_models: dict[str, type[BaseModel]]
 
-    def __init__(self) -> None:
+    def __init__(self, kinds: Iterable[ChannelKind] = ()) -> None:
         self.config_models = {}
+        for kind in kinds:
+            if kind.kind in self.config_models:
+                raise DuplicateChannelKindError(
+                    f'channel kind {kind.kind!r} is already registered',
+                )
 
-    def register(self, kind: str, config: type[BaseModel]) -> None:
-        if kind in self.config_models:
-            raise DuplicateChannelKindError(
-                f'channel kind {kind!r} is already registered',
-            )
-
-        self.config_models[kind] = config
+            self.config_models[kind.kind] = kind.config
 
     def get(self, kind: str) -> type[BaseModel]:
         if kind not in self.config_models:

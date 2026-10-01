@@ -12,7 +12,7 @@ from app.features.agents.types import (
     TypedTool,
 )
 from app.features.tools.exceptions import DuplicateToolError, UnknownToolError
-from app.features.tools.registry import ToolRegistry
+from app.features.tools.registry import ToolKind, ToolRegistry
 
 _SCOPE = TurnScope(actor='user:1', agent='scout', channel='support_bot', chat='1')
 
@@ -36,24 +36,22 @@ class GreetConfig(BaseModel):
 
 
 def test_register_declares_tool_by_kind() -> None:
-    registry = ToolRegistry()
-
-    registry.register(GreetTool)
+    registry = ToolRegistry([ToolKind(GreetTool)])
 
     assert registry.get('greet') is GreetTool
 
 
 def test_register_rejects_duplicate_kind() -> None:
-    registry = ToolRegistry()
-    registry.register(GreetTool)
-
     with pytest.raises(DuplicateToolError, match='greet'):
-        registry.register(GreetTool)
+        ToolRegistry([ToolKind(GreetTool), ToolKind(GreetTool)])
 
 
 def test_get_reports_unknown_kind_with_available_list() -> None:
-    registry = ToolRegistry()
-    registry.register(GreetTool)
+    registry = ToolRegistry(
+        [
+            ToolKind(GreetTool),
+        ],
+    )
 
     with pytest.raises(UnknownToolError, match='greet'):
         registry.get('missing')
@@ -67,8 +65,11 @@ def test_build_constructs_through_registered_builder() -> None:
         built.append(config)
         return GreetTool()
 
-    registry = ToolRegistry()
-    registry.register(GreetTool, builder=builder)
+    registry = ToolRegistry(
+        [
+            ToolKind(GreetTool, builder=builder),
+        ],
+    )
 
     tool = registry.build('greet', GreetConfig(greeting='hi'), _SCOPE)
 
@@ -77,8 +78,11 @@ def test_build_constructs_through_registered_builder() -> None:
 
 
 def test_build_defaults_to_argless_construction() -> None:
-    registry = ToolRegistry()
-    registry.register(GreetTool)
+    registry = ToolRegistry(
+        [
+            ToolKind(GreetTool),
+        ],
+    )
 
     assert isinstance(
         registry.build('greet', GreetConfig(greeting='hi'), _SCOPE),
@@ -94,15 +98,21 @@ def test_build_rejects_unknown_kind() -> None:
 
 
 def test_register_records_config_model() -> None:
-    registry = ToolRegistry()
-    registry.register(GreetTool, GreetConfig)
+    registry = ToolRegistry(
+        [
+            ToolKind(GreetTool, GreetConfig),
+        ],
+    )
 
     assert registry.config_models == {'greet': GreetConfig}
 
 
 def test_config_models_maps_configless_tools_to_none() -> None:
-    registry = ToolRegistry()
-    registry.register(GreetTool)
+    registry = ToolRegistry(
+        [
+            ToolKind(GreetTool),
+        ],
+    )
 
     assert registry.config_models == {'greet': None}
 
@@ -116,8 +126,11 @@ def test_toolset_add_rejects_duplicate_name() -> None:
 
 
 def test_params_model_returns_typed_tool_params() -> None:
-    registry = ToolRegistry()
-    registry.register(GreetTool)
+    registry = ToolRegistry(
+        [
+            ToolKind(GreetTool),
+        ],
+    )
 
     assert registry.params_model('greet') is GreetParams
 

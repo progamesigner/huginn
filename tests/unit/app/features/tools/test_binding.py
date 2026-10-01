@@ -12,7 +12,7 @@ from app.features.agents.types import (
 )
 from app.features.tools.binding import ConfiguredTool, build_bound_tool
 from app.features.tools.config import ToolConfig
-from app.features.tools.registry import ToolRegistry
+from app.features.tools.registry import ToolKind, ToolRegistry
 
 _SCOPE = TurnScope(actor='user:1', agent='scout', channel='support_bot', chat='1')
 
@@ -45,8 +45,11 @@ def _schema(tool: Tool) -> dict[str, Any]:
 
 
 def _registry() -> ToolRegistry:
-    registry = ToolRegistry()
-    registry.register(SearchTool)
+    registry = ToolRegistry(
+        [
+            ToolKind(SearchTool),
+        ],
+    )
     return registry
 
 

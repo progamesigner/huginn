@@ -7,7 +7,7 @@ from app.core.config.exceptions import MissingConfigFileError
 from app.core.config.registry import HuginnConfig
 from app.core.settings import HuginnSettings
 from app.features.agents.config import AGENTS
-from app.features.agents.providers import AgentProvider
+from app.providers.contributions import AgentContributions, CoreContributions
 from tests.helpers.settings import app_with, make_settings
 
 _MINIMAL = """
@@ -32,7 +32,7 @@ def build_app(
     settings = settings or HuginnSettings()
     if path is not None:
         settings = settings.model_copy(update={'config_file': path})
-    return app_with(settings).build(AgentProvider())
+    return app_with(settings).build(AgentContributions(), CoreContributions())
 
 
 def test_provider_loads_config_from_explicit_path(tmp_path: Path) -> None:

@@ -28,7 +28,7 @@ def prune(
                 clock,
             ).prune(
                 clock.now(),
-                resolve(BlobReferenceRegistry).for_session(transaction),
+                resolve(BlobReferenceRegistry).references,
                 dry_run=dry_run,
             )
 

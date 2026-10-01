@@ -15,7 +15,7 @@ from app.features.agents.contracts import TurnHandlerContract
 from app.features.agents.types import TurnRequest
 from app.features.channels.contracts import TranscriptionContract
 from app.features.channels.exceptions import TranscriptionUnavailableError
-from app.features.channels.registry import CommandRegistry
+from app.features.channels.registry import Command, CommandRegistry
 from app.features.channels.telegram.config import TelegramChannelConfig
 from app.features.channels.telegram.turns import TelegramTurnProcessor
 from app.features.identities.contracts import IdentityResolverContract
@@ -208,8 +208,11 @@ def registry(answer: str = 'done') -> CommandRegistry:
     async def handle(command: InboundCommand, message: InboundMessage) -> str:
         return f'{answer}:{command.name}'
 
-    built = CommandRegistry()
-    built.register('new', 'Start over.', handle)
+    built = CommandRegistry(
+        [
+            Command('new', 'Start over.', handle),
+        ],
+    )
 
     return built
 
@@ -607,8 +610,11 @@ async def test_a_failed_command_reports_on_its_own_message_and_nothing_else() ->
     async def raising(command: InboundCommand, message: InboundMessage) -> str:
         raise RuntimeError('the service is down')
 
-    commands = CommandRegistry()
-    commands.register('new', 'Start over.', raising)
+    commands = CommandRegistry(
+        [
+            Command('new', 'Start over.', raising),
+        ],
+    )
     gateway = FakeGateway()
     turns = FakeTurns()
 

@@ -6,7 +6,12 @@ from app.features.blobs.services import BlobService
 from app.features.conversations.config import COMPACTION
 from app.features.conversations.providers import ConversationProvider
 from app.features.conversations.repositories import ConversationRepository
-from lib.database import DatabaseContract
+from app.features.conversations.services import ConversationBlobReferences
+from app.providers.contributions import (
+    AgentContributions,
+    ConversationContributions,
+    CoreContributions,
+)
 from tests.helpers.settings import app_with, make_settings
 
 _URL = 'postgresql+asyncpg://user:pass@localhost/huginn'
@@ -46,14 +51,13 @@ async def test_the_blob_store_resolves_without_a_transaction() -> None:
 
 async def test_conversations_answer_which_blobs_they_still_reference() -> None:
     settings = make_settings(database_url=_URL)
-    container = app_with(settings).build(ConversationProvider())
+    container = app_with(settings).build(ConversationContributions())
 
-    async with container.resolve(DatabaseContract).session() as session:
-        references = container.resolve(BlobReferenceRegistry).for_session(session)
+    references = container.resolve(BlobReferenceRegistry).references
 
-        assert [type(reference) for reference in references] == [
-            ConversationRepository,
-        ]
+    assert [type(reference) for reference in references] == [
+        ConversationBlobReferences,
+    ]
 
     await container.dispose()
 
@@ -65,7 +69,9 @@ async def test_conversations_config_provider_threads_a_configured_summary_prompt
     path.write_text(_COMPACTION_OVERLAY)
     settings = make_settings(database_url=_URL)
     container = app_with(settings.model_copy(update={'config_file': path})).build(
-        ConversationProvider(),
+        AgentContributions(),
+        ConversationContributions(),
+        CoreContributions(),
     )
 
     config = container.resolve(HuginnConfig)

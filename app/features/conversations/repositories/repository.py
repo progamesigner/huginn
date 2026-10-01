@@ -1,6 +1,6 @@
 from collections.abc import AsyncIterator, Collection, Mapping, Sequence
 from datetime import datetime
-from typing import cast, override
+from typing import cast
 from uuid import UUID
 
 from pydantic import JsonValue
@@ -8,7 +8,6 @@ from sqlalchemy import or_, select, tuple_, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.features.blobs.contracts import BlobReferenceContract
 from app.features.conversations.exceptions import NoTurnsToCompactError
 from app.features.conversations.schemas.sqlalchemy import (
     ConversationRecord,
@@ -51,7 +50,7 @@ def _to_turn(record: TurnRecord) -> Turn:
     )
 
 
-class ConversationRepository(BlobReferenceContract):
+class ConversationRepository:
     clock: ClockContract
     guid: GUIDContract
     session: AsyncSession
@@ -255,7 +254,6 @@ class ConversationRepository(BlobReferenceContract):
 
         return tuple(_to_turn(record) for record in records)
 
-    @override
     async def referenced(self, ids: Collection[UUID]) -> frozenset[UUID]:
         keys = [str(id_) for id_ in ids]
         if not keys:

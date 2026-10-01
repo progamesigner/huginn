@@ -1,7 +1,7 @@
 from datetime import timedelta
 from typing import override
 
-from app.core.config.registry import HuginnConfig, SectionRegistry
+from app.core.config.registry import HuginnConfig
 from app.core.providers.command import CommandProvider
 from app.core.providers.config import ConfigProvider
 from app.core.providers.decision import DecisionProvider
@@ -14,8 +14,9 @@ from lib.decision import DecisionContract
 from lib.llm import LLMContract
 from lib.temporal import ClockContract
 
-from .config import AGENTS, DEFAULTS, DefaultsConfig, build_sections
+from .config import AGENTS, DEFAULTS, DefaultsConfig
 from .contracts import (
+    ToolSource,
     ToolSourceRegistry,
     TranscriptStoreContract,
     TurnHandlerContract,
@@ -64,12 +65,12 @@ class AgentProvider(ProviderContract):
 
     @override
     def __call__(self, container: ContainerContract) -> None:
-        container.bind(ToolSourceRegistry, instance=ToolSourceRegistry())
+        container.bind(
+            ToolSourceRegistry,
+            factory=lambda c: ToolSourceRegistry(lambda: c.collect(ToolSource)),
+            shared=True,
+        )
         container.bind(Router, factory=_router, shared=True)
-
-        sections = container.resolve(SectionRegistry)
-        for spec in build_sections():
-            sections.register(spec)
 
 
 class TurnProvider(ProviderContract):

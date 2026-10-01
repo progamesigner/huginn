@@ -1,11 +1,9 @@
 from typing import override
 
 from app.core.config.exceptions import MissingConfigFileError
-from app.core.config.registry import HuginnConfig, SectionRegistry
+from app.core.config.registry import HuginnConfig
 from app.core.providers.config import ConfigProvider
 from app.core.providers.http import HTTPClientProvider
-from app.features.agents.contracts import ToolSourceRegistry
-from app.features.agents.providers import AgentProvider
 from lib.container import ContainerContract, ProviderContract
 from lib.http import HTTPClientContract
 from lib.mcp import (
@@ -17,7 +15,6 @@ from lib.mcp import (
 )
 
 from .config import MCP_SERVERS, MCPServerConfig, MCPServerConfigList
-from .sources import MCPToolSource
 
 
 def _build_servers(config: MCPServerConfigList) -> list[MCPServer]:
@@ -40,16 +37,8 @@ def _transport(container: ContainerContract) -> MCPTransport:
     )
 
 
-class MCPConfigProvider(ProviderContract):
-    dependencies = (AgentProvider, ConfigProvider)
-
-    @override
-    def __call__(self, container: ContainerContract) -> None:
-        container.resolve(SectionRegistry).register(MCP_SERVERS)
-
-
 class MCPProvider(ProviderContract):
-    dependencies = (HTTPClientProvider, MCPConfigProvider)
+    dependencies = (ConfigProvider, HTTPClientProvider)
 
     @override
     def __call__(self, container: ContainerContract) -> None:
@@ -61,9 +50,6 @@ class MCPProvider(ProviderContract):
             factory=self._build,
             shared=True,
             eager=True,
-        )
-        container.resolve(ToolSourceRegistry).register(
-            lambda: MCPToolSource(container.resolve(MCPClientContract)),
         )
 
     def _build(self, container: ContainerContract) -> MCPManager:

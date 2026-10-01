@@ -11,7 +11,7 @@ from app.core.application import App
 from app.core.config.registry import HuginnConfig
 from app.core.providers.command import CommandProvider
 from app.features.channels.config import ChannelConfig, ChannelConfigList
-from app.features.channels.registry import CommandRegistry
+from app.features.channels.registry import Command, CommandRegistry
 from app.features.channels.telegram.commands import cli
 from app.features.channels.telegram.config import TelegramChannelConfig
 from lib.command import CommandContract
@@ -71,9 +71,12 @@ def registry() -> CommandRegistry:
     async def handle(command: InboundCommand, message: InboundMessage) -> str:
         return 'done'
 
-    built = CommandRegistry()
-    built.register('new', 'Start over.', handle)
-    built.register('help', 'List the commands.', handle)
+    built = CommandRegistry(
+        [
+            Command('new', 'Start over.', handle),
+            Command('help', 'List the commands.', handle),
+        ],
+    )
 
     return built
 

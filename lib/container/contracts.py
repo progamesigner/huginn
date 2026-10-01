@@ -31,6 +31,18 @@ class ContainerContract(ABC):
     @abstractmethod
     def bound[T](self, binding: type[T]) -> bool: ...
 
+    # NOTE: many providers contribute to one binding; whoever owns it collects them,
+    # and every factory runs at collection time, never while providers register
+    @abstractmethod
+    def contribute[T](
+        self,
+        binding: type[T],
+        factory: Callable[[ContainerContract], T],
+    ) -> None: ...
+
+    @abstractmethod
+    def collect[T](self, binding: type[T]) -> tuple[T, ...]: ...
+
     @abstractmethod
     def resolve[T](self, binding: type[T]) -> T: ...
 

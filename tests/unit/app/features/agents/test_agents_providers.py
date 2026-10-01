@@ -9,13 +9,15 @@ from app.features.agents.providers import AgentProvider
 from app.features.agents.router import Router
 from app.features.channels.providers import ChannelProvider
 from app.features.tools.exceptions import InvalidToolOverlayError
-from app.features.tools.providers import (
-    ToolProvider,
-    ToolRegistryProvider,
-    ToolsConfigProvider,
-)
+from app.features.tools.providers import ToolProvider, ToolRegistryProvider
 from app.features.tools.registry import ToolRegistry
 from app.features.tools.websearch.repositories import WebSearchRepository
+from app.providers.contributions import (
+    AgentContributions,
+    ChannelContributions,
+    CoreContributions,
+    ToolContributions,
+)
 from lib.concurrency import TaskSupervisor
 from tests.helpers.settings import app_with, make_settings
 
@@ -76,48 +78,51 @@ def test_tool_provider_binds_repository() -> None:
     assert app.bound(WebSearchRepository)
 
 
-def test_tool_provider_registers_websearch_kind() -> None:
-    app = App().build(ToolProvider())
+def test_tool_contributions_register_websearch_kind() -> None:
+    app = App().build(ToolContributions())
 
     assert 'websearch' in app.resolve(ToolRegistry).tools
 
 
-def test_tool_provider_registers_read_document_kind() -> None:
-    app = App().build(ToolProvider())
+def test_tool_contributions_register_read_document_kind() -> None:
+    app = App().build(ToolContributions())
 
     assert 'read_document' in app.resolve(ToolRegistry).tools
 
 
-def test_tools_config_provider_contributes_tools_on_top_of_agents() -> None:
-    app = App().build(ToolsConfigProvider())
+def test_tool_contributions_add_only_the_tools_section() -> None:
+    app = App().build(ToolContributions())
 
     keys = {spec.key for spec in app.resolve(SectionRegistry)}
 
-    assert keys == {'agents', 'defaults', 'providers', 'tools'}
+    assert keys == {'tools'}
 
 
-def test_agent_provider_contributes_only_its_own_sections() -> None:
+def test_feature_providers_contribute_no_sections_themselves() -> None:
     app = App().build(AgentProvider(), ChannelProvider())
 
+    assert {spec.key for spec in app.resolve(SectionRegistry)} == set()
+
+
+def test_section_contributions_add_up_to_their_own_sections() -> None:
+    app = App().build(
+        AgentContributions(),
+        ChannelContributions(),
+        CoreContributions(),
+    )
+
     keys = {spec.key for spec in app.resolve(SectionRegistry)}
 
-    assert keys == {
-        'agents',
-        'blobs',
-        'channels',
-        'compaction',
-        'defaults',
-        'providers',
-        'transcription',
-    }
+    assert keys == {'agents', 'channels', 'defaults', 'providers', 'transcription'}
 
 
 def test_agents_config_provider_accepts_valid_tool_overlay(tmp_path: Path) -> None:
     path = tmp_path / 'huginn.yaml'
     path.write_text(_VALID_OVERLAY)
     app = app_with(make_settings(config_file=path)).build(
-        ToolProvider(),
-        AgentProvider(),
+        AgentContributions(),
+        CoreContributions(),
+        ToolContributions(),
     )
 
     config = app.resolve(HuginnConfig)
@@ -129,8 +134,9 @@ def test_agents_config_provider_rejects_invalid_tool_overlay(tmp_path: Path) -> 
     path = tmp_path / 'huginn.yaml'
     path.write_text(_INVALID_OVERLAY)
     app = app_with(make_settings(config_file=path)).build(
-        ToolProvider(),
-        AgentProvider(),
+        AgentContributions(),
+        CoreContributions(),
+        ToolContributions(),
     )
 
     with pytest.raises(InvalidToolOverlayError):
@@ -142,7 +148,10 @@ def test_agent_provider_threads_a_configured_router_prompt_into_the_router(
 ) -> None:
     path = tmp_path / 'huginn.yaml'
     path.write_text(_ROUTER_PROMPT_OVERLAY)
-    app = app_with(make_settings(config_file=path)).build(AgentProvider())
+    app = app_with(make_settings(config_file=path)).build(
+        AgentContributions(),
+        CoreContributions(),
+    )
 
     router = app.resolve(Router)
 
@@ -155,8 +164,9 @@ def test_agent_provider_leaves_the_router_prompt_unset_without_configuration(
     path = tmp_path / 'huginn.yaml'
     path.write_text(_VALID_OVERLAY)
     app = app_with(make_settings(config_file=path)).build(
-        ToolProvider(),
-        AgentProvider(),
+        AgentContributions(),
+        CoreContributions(),
+        ToolContributions(),
     )
 
     router = app.resolve(Router)
@@ -170,8 +180,9 @@ async def test_one_router_keeps_the_shadows_and_drains_them_on_dispose(
     path = tmp_path / 'huginn.yaml'
     path.write_text(_VALID_OVERLAY)
     app = app_with(make_settings(config_file=path)).build(
-        ToolProvider(),
-        AgentProvider(),
+        AgentContributions(),
+        CoreContributions(),
+        ToolContributions(),
     )
 
     router = app.resolve(Router)

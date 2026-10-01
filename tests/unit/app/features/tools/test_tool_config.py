@@ -5,7 +5,7 @@ from pydantic import Field
 from app.features.agents.config import BindingSource
 from app.features.agents.types import ToolOutput, ToolParams, TypedTool
 from app.features.tools.config import _check_bindings, _check_overlay
-from app.features.tools.registry import ToolRegistry
+from app.features.tools.registry import ToolKind, ToolRegistry
 
 
 class SearchParams(ToolParams):
@@ -24,8 +24,11 @@ class SearchTool(TypedTool[SearchParams]):
 
 
 def _registry() -> ToolRegistry:
-    registry = ToolRegistry()
-    registry.register(SearchTool)
+    registry = ToolRegistry(
+        [
+            ToolKind(SearchTool),
+        ],
+    )
     return registry
 
 

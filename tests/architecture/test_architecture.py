@@ -547,6 +547,37 @@ def test_providers_take_no_construction_arguments() -> None:
     assert not violations, 'providers taking arguments:\n' + '\n'.join(violations)
 
 
+def _contribution_calls(source: str) -> Iterator[int]:
+    for node in ast.walk(ast.parse(source)):
+        if (
+            isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Attribute)
+            and node.func.attr == 'contribute'
+        ):
+            yield node.lineno
+
+
+def test_only_the_composition_root_contributes_to_a_registry() -> None:
+    # NOTE: a feature filling another's registry is an import of that feature in
+    # disguise; the root sees every side, so it is the one place that may do it
+    root = _source_root('app')
+    violations = [
+        f'{path.relative_to(root)}:{line}'
+        for path in sorted(root.rglob('*.py'))
+        if path.relative_to(root).parts[0] != 'providers'
+        for line in _contribution_calls(path.read_text())
+    ]
+
+    assert not violations, 'contributions outside app/providers:\n' + '\n'.join(
+        violations,
+    )
+
+
+def test_contribution_check_sees_attribute_calls() -> None:
+    assert list(_contribution_calls('container.contribute(X, f)')) == [1]
+    assert list(_contribution_calls('contribute = 1')) == []
+
+
 def test_every_package_carries_an_init_module() -> None:
     # NOTE: grimp does not walk namespace packages, so a directory without an
     # __init__.py silently shrinks what the layers contract checks rather than

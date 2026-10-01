@@ -8,7 +8,7 @@ from lib.http import HTTPClientContract
 from lib.llm import LLMContract, LLMManager
 from lib.llm import ProviderConfig as LLMProviderConfig
 
-from .config import ProvidersConfigProvider
+from .config import ConfigProvider
 from .http import HTTPClientProvider
 from .settings import SettingsProvider
 
@@ -32,7 +32,7 @@ def _build_providers(
 
 
 class LLMProvider(ProviderContract):
-    dependencies = (SettingsProvider, HTTPClientProvider, ProvidersConfigProvider)
+    dependencies = (SettingsProvider, HTTPClientProvider, ConfigProvider)
 
     @override
     def __call__(self, container: ContainerContract) -> None:

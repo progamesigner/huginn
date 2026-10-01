@@ -1,4 +1,4 @@
-from collections.abc import Iterator, Mapping
+from collections.abc import Callable, Iterator, Mapping
 from dataclasses import replace
 from functools import reduce
 from operator import or_
@@ -235,11 +235,13 @@ def _validate_channels(config: HuginnConfig, registry: ChannelRegistry) -> None:
             )
 
 
-def build_sections(registry: ChannelRegistry) -> Iterator[SectionSpec[BaseModel]]:
+def build_sections(
+    registry: Callable[[], ChannelRegistry],
+) -> Iterator[SectionSpec[BaseModel]]:
     yield replace(
         CHANNELS,
-        thunk=lambda: _build_channels_config(registry),
-        validate=lambda config: _validate_channels(config, registry),
+        thunk=lambda: _build_channels_config(registry()),
+        validate=lambda config: _validate_channels(config, registry()),
     )
     yield TRANSCRIPTION
 

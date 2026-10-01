@@ -1,4 +1,4 @@
-from typing import Annotated, override
+from typing import Annotated, cast, override
 
 import pytest
 
@@ -360,3 +360,44 @@ def test_constructor_binding_resolves_use_overrides() -> None:
 
     with container.use(Greeter, Greeter('fake')):
         assert container.resolve(Farewell).greeter.name == 'fake'
+
+
+def test_collect_runs_each_contribution_in_order() -> None:
+    container = Container()
+    container.bind(Greeter, instance=Greeter('shared'))
+    container.contribute(Greeting, lambda c: Greeter(f'{c.resolve(Greeter).name}-a'))
+    container.contribute(Greeting, lambda _: Greeter('b'))
+
+    collected = container.collect(Greeting)
+
+    assert [cast(Greeter, item).name for item in collected] == ['shared-a', 'b']
+
+
+def test_collect_without_contributions_is_empty() -> None:
+    assert Container().collect(Greeting) == ()
+
+
+def test_contributions_wait_for_collection() -> None:
+    container = Container()
+    calls = []
+
+    def factory(_: ContainerContract) -> Greeting:
+        calls.append(1)
+        return Greeting()
+
+    container.contribute(Greeting, factory)
+
+    assert calls == []
+    container.collect(Greeting)
+    assert calls == [1]
+
+
+def test_to_copies_contributions() -> None:
+    container = Container()
+    container.contribute(Greeting, lambda _: Greeting())
+
+    copied = container.to(Container)
+    copied.contribute(Greeting, lambda _: Greeting())
+
+    assert len(container.collect(Greeting)) == 1
+    assert len(copied.collect(Greeting)) == 2

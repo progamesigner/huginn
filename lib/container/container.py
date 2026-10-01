@@ -7,6 +7,7 @@ from typing import Annotated, cast, get_args, get_origin, override
 from .contracts import ContainerContract, Disposable, Startable
 from .exceptions import BindingError, ResolutionError
 
+type Contributions = dict[type[object], list[Callable[[ContainerContract], object]]]
 type Instances = dict[type[object], object]
 type Registry = dict[type[object], Registration]
 type Resolving = list[type[object]]
@@ -51,12 +52,14 @@ def wire[T](constructor: type[T]) -> Callable[[ContainerContract], T]:
 
 
 class Container(ContainerContract):
+    contributions: Contributions
     instances: Instances
     overrides: Instances
     registry: Registry
     resolving: Resolving
 
     def __init__(self) -> None:
+        self.contributions = {}
         self.instances = {}
         self.overrides = {}
         self.registry = {}
@@ -107,6 +110,20 @@ class Container(ContainerContract):
         return binding in self.overrides or binding in self.registry
 
     @override
+    def contribute[T](
+        self,
+        binding: type[T],
+        factory: Callable[[ContainerContract], T],
+    ) -> None:
+        self.contributions.setdefault(binding, []).append(factory)
+
+    @override
+    def collect[T](self, binding: type[T]) -> tuple[T, ...]:
+        return tuple(
+            cast(T, factory(self)) for factory in self.contributions.get(binding, ())
+        )
+
+    @override
     def resolve[T](self, binding: type[T]) -> T:
         if binding in self.overrides:
             return cast(T, self.overrides[binding])
@@ -152,6 +169,10 @@ class Container(ContainerContract):
         if not isinstance(container, Container):
             raise BindingError(f'{constructor.__qualname__} is not a Container')
 
+        container.contributions = {
+            binding: list(factories)
+            for binding, factories in self.contributions.items()
+        }
         container.registry = dict(self.registry)
         return container
 

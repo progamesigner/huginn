@@ -1,8 +1,7 @@
 from typing import override
 
 from app.core.config.loader import load_config
-from app.core.config.providers import PROVIDERS
-from app.core.config.registry import HuginnConfig, SectionRegistry
+from app.core.config.registry import HuginnConfig, SectionRegistry, SectionSpec
 from app.core.settings import HuginnSettings
 from lib.command import CommandContract
 from lib.container import ContainerContract, ProviderContract
@@ -16,7 +15,11 @@ class ConfigProvider(ProviderContract):
 
     @override
     def __call__(self, container: ContainerContract) -> None:
-        container.bind(SectionRegistry, instance=SectionRegistry())
+        container.bind(
+            SectionRegistry,
+            factory=lambda c: SectionRegistry(c.collect(SectionSpec)),
+            shared=True,
+        )
         container.bind(HuginnConfig, factory=self.build_config, shared=True)
 
     def build_config(self, container: ContainerContract) -> HuginnConfig:
@@ -24,14 +27,6 @@ class ConfigProvider(ProviderContract):
             container.resolve(HuginnSettings).config_file,
             container.resolve(SectionRegistry),
         )
-
-
-class ProvidersConfigProvider(ProviderContract):
-    dependencies = (ConfigProvider,)
-
-    @override
-    def __call__(self, container: ContainerContract) -> None:
-        container.resolve(SectionRegistry).register(PROVIDERS)
 
 
 class ConfigCommandProvider(ProviderContract):

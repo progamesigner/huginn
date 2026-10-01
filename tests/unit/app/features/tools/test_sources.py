@@ -13,7 +13,7 @@ from app.features.blobs.types import Blob, BlobKind
 from app.features.tools.config import ToolConfig, ToolConfigList
 from app.features.tools.document.config import DocumentToolConfig
 from app.features.tools.document.tool import ReadDocumentTool, build_read_document
-from app.features.tools.registry import ToolRegistry
+from app.features.tools.registry import ToolKind, ToolRegistry
 from app.features.tools.sources import ConfiguredToolSource
 
 
@@ -33,8 +33,11 @@ class EchoTool(TypedTool[EchoParams]):
 
 
 def _source() -> ConfiguredToolSource:
-    registry = ToolRegistry()
-    registry.register(EchoTool)
+    registry = ToolRegistry(
+        [
+            ToolKind(EchoTool),
+        ],
+    )
     config = HuginnConfig(
         sections={'tools': ToolConfigList({'echo': ToolConfig(kind='echo')})},
     )
@@ -114,11 +117,14 @@ async def test_document_source_applies_turn_allow_list() -> None:
     blobs = DocumentBlobs(
         Blob(blob_id, 'hash', 'text/markdown', 5, 'document', data=b'hello'),
     )
-    registry = ToolRegistry()
-    registry.register(
-        ReadDocumentTool,
-        DocumentToolConfig,
-        builder=lambda config, scope: build_read_document(blobs, config, scope),
+    registry = ToolRegistry(
+        [
+            ToolKind(
+                ReadDocumentTool,
+                DocumentToolConfig,
+                builder=lambda config, scope: build_read_document(blobs, config, scope),
+            ),
+        ],
     )
     config = HuginnConfig(
         sections={

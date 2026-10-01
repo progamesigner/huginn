@@ -15,6 +15,7 @@ from app.features.conversations.repositories import (
 from app.features.conversations.schemas.sqlalchemy import (
     ConversationRecord,
 )
+from app.features.conversations.services import ConversationBlobReferences
 from app.features.conversations.types import Part
 from lib.guid import GUIDManager
 from lib.temporal import ClockManager
@@ -161,7 +162,7 @@ async def test_prune_keeps_expired_blobs_that_a_part_still_references(
         ],
     )
     later = ClockManager().now() + 2 * day
-    references = (_conversations(session),)
+    references = (ConversationBlobReferences(GUIDManager(), ClockManager()),)
 
     assert await blobs.prune(later, references, dry_run=True) == 1
     assert await blobs.prune(later, references) == 1

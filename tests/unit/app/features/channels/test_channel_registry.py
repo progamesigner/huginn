@@ -8,7 +8,7 @@ from app.features.channels.config import (
     ChannelConfigList,
     _build_channels_config,
 )
-from app.features.channels.registry import ChannelRegistry
+from app.features.channels.registry import ChannelKind, ChannelRegistry
 from app.features.channels.telegram.config import TelegramChannelConfig
 
 
@@ -18,9 +18,12 @@ class DiscordChannelConfig(ChannelConfig):
 
 
 def test_registered_channel_kind_extends_channels_schema() -> None:
-    registry = ChannelRegistry()
-    registry.register('telegram', TelegramChannelConfig)
-    registry.register('discord', DiscordChannelConfig)
+    registry = ChannelRegistry(
+        [
+            ChannelKind('telegram', TelegramChannelConfig),
+            ChannelKind('discord', DiscordChannelConfig),
+        ],
+    )
     model = _build_channels_config(registry)
 
     channels = cast(
@@ -40,8 +43,11 @@ def test_registered_channel_kind_extends_channels_schema() -> None:
 
 
 def test_unregistered_channel_kind_fails_schema_validation() -> None:
-    registry = ChannelRegistry()
-    registry.register('telegram', TelegramChannelConfig)
+    registry = ChannelRegistry(
+        [
+            ChannelKind('telegram', TelegramChannelConfig),
+        ],
+    )
     model = _build_channels_config(registry)
 
     with pytest.raises(ValidationError, match='discord'):

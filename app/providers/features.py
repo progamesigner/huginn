@@ -14,6 +14,18 @@ from app.features.skills.providers import SkillsProvider
 from app.features.tools.providers import ToolProvider
 from lib.container import ContainerContract, ProviderContract
 
+from .contributions import (
+    AgentContributions,
+    AuthContributions,
+    BlobContributions,
+    ChannelContributions,
+    ConversationContributions,
+    CoreContributions,
+    MCPContributions,
+    SkillContributions,
+    ToolContributions,
+)
+
 
 class HuginnProvider(ProviderContract):
     dependencies = (
@@ -29,6 +41,15 @@ class HuginnProvider(ProviderContract):
         SkillsProvider,
         TelegramProvider,
         ToolProvider,
+        AgentContributions,
+        AuthContributions,
+        BlobContributions,
+        ChannelContributions,
+        ConversationContributions,
+        CoreContributions,
+        MCPContributions,
+        SkillContributions,
+        ToolContributions,
     )
 
     @override

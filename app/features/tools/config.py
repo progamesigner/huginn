@@ -1,4 +1,4 @@
-from collections.abc import Iterator, Mapping
+from collections.abc import Callable, Iterator, Mapping
 from dataclasses import replace
 from functools import reduce
 from operator import or_
@@ -174,12 +174,14 @@ def _validate_tool_section(config: HuginnConfig, registry: ToolRegistry) -> None
     _validate_agent_tool_refs(config, registry)
 
 
-def build_sections(registry: ToolRegistry) -> Iterator[SectionSpec[BaseModel]]:
-    # NOTE: the thunk and validator need the runtime registry using replace()
+def build_sections(
+    registry: Callable[[], ToolRegistry],
+) -> Iterator[SectionSpec[BaseModel]]:
+    # NOTE: the thunk and validator read the registry lazily, once it is collected
     yield replace(
         TOOLS,
-        thunk=lambda: _build_tools_config(registry),
-        validate=lambda config: _validate_tool_section(config, registry),
+        thunk=lambda: _build_tools_config(registry()),
+        validate=lambda config: _validate_tool_section(config, registry()),
     )
 
 

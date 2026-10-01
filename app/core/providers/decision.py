@@ -7,7 +7,7 @@ from lib.container import ContainerContract, ProviderContract
 from lib.decision import DecisionContract, DecisionManager, DecisionProviderConfig
 from lib.http import HTTPClientContract
 
-from .config import ProvidersConfigProvider
+from .config import ConfigProvider
 from .http import HTTPClientProvider
 from .settings import SettingsProvider
 
@@ -29,7 +29,7 @@ def _build_providers(
 
 
 class DecisionProvider(ProviderContract):
-    dependencies = (SettingsProvider, HTTPClientProvider, ProvidersConfigProvider)
+    dependencies = (SettingsProvider, HTTPClientProvider, ConfigProvider)
 
     @override
     def __call__(self, container: ContainerContract) -> None:

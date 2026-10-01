@@ -55,7 +55,7 @@ from app.features.channels.exceptions import (
     DuplicateChannelSecretError,
     IncompleteChannelRoutingError,
 )
-from app.features.channels.registry import ChannelRegistry
+from app.features.channels.registry import ChannelKind, ChannelRegistry
 from app.features.channels.telegram.config import TelegramChannelConfig
 from app.features.mcp.config import (
     MCP_SERVERS,
@@ -78,7 +78,7 @@ from app.features.tools.exceptions import (
     UnknownToolKindError,
     UnknownToolReferenceError,
 )
-from app.features.tools.registry import ToolRegistry
+from app.features.tools.registry import ToolKind, ToolRegistry
 from app.features.tools.websearch.config import WebSearchToolConfig
 from lib.llm import ModelRef
 
@@ -118,30 +118,36 @@ class FakeToolConfig(ToolConfig):
 
 
 def build_tool_registry() -> ToolRegistry:
-    registry = ToolRegistry()
-    registry.register(WebSearchTool, WebSearchToolConfig)
-    registry.register(ReadDocumentTool, DocumentToolConfig)
+    registry = ToolRegistry(
+        [
+            ToolKind(WebSearchTool, WebSearchToolConfig),
+            ToolKind(ReadDocumentTool, DocumentToolConfig),
+        ],
+    )
     return registry
 
 
 def build_channel_registry() -> ChannelRegistry:
-    registry = ChannelRegistry()
-    registry.register('telegram', TelegramChannelConfig)
+    registry = ChannelRegistry(
+        [
+            ChannelKind('telegram', TelegramChannelConfig),
+        ],
+    )
     return registry
 
 
 def build_section_registry(tools: ToolRegistry | None = None) -> SectionRegistry:
-    registry = SectionRegistry()
     tool_registry = tools or build_tool_registry()
-    for spec in build_tool_sections(tool_registry):
-        registry.register(spec)
-    for spec in build_agent_sections():
-        registry.register(spec)
-    for spec in build_channel_sections(build_channel_registry()):
-        registry.register(spec)
-    registry.register(MCP_SERVERS)
-    registry.register(PROVIDERS)
-    return registry
+    channel_registry = build_channel_registry()
+    return SectionRegistry(
+        [
+            *build_tool_sections(lambda: tool_registry),
+            *build_agent_sections(),
+            *build_channel_sections(lambda: channel_registry),
+            MCP_SERVERS,
+            PROVIDERS,
+        ],
+    )
 
 
 def build_agent(**overrides: object) -> AgentConfig:
@@ -441,9 +447,12 @@ def test_load_config_resolves_env_and_value_from_then_validates(
 def test_new_tool_kind_parses_and_schemas_without_touching_config_module(
     tmp_path: Path,
 ) -> None:
-    registry = ToolRegistry()
-    registry.register(WebSearchTool, WebSearchToolConfig)
-    registry.register(FakeTool, FakeToolConfig)
+    registry = ToolRegistry(
+        [
+            ToolKind(WebSearchTool, WebSearchToolConfig),
+            ToolKind(FakeTool, FakeToolConfig),
+        ],
+    )
     section_registry = build_section_registry(registry)
 
     config_file = tmp_path / 'huginn.yaml'
@@ -469,9 +478,12 @@ def test_new_tool_kind_parses_and_schemas_without_touching_config_module(
 
 
 def test_configless_tool_kind_parses_as_base_tool_config(tmp_path: Path) -> None:
-    registry = ToolRegistry()
-    registry.register(WebSearchTool, WebSearchToolConfig)
-    registry.register(FakeTool)
+    registry = ToolRegistry(
+        [
+            ToolKind(WebSearchTool, WebSearchToolConfig),
+            ToolKind(FakeTool),
+        ],
+    )
     section_registry = build_section_registry(registry)
 
     config_file = tmp_path / 'huginn.yaml'

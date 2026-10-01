@@ -11,7 +11,7 @@ from app.core.settings import HuginnSettings
 from app.features.agents.types import ToolOutput, ToolParams, TypedTool
 from app.features.tools.exceptions import DuplicateToolError
 from app.features.tools.providers import ToolRegistryProvider
-from app.features.tools.registry import ToolRegistry
+from app.features.tools.registry import ToolKind, ToolRegistry
 from lib.container import ContainerContract, ProviderContract
 from lib.llm import LLMContract
 from lib.observability import Logger
@@ -205,17 +205,22 @@ def test_build_fails_when_two_providers_register_the_same_tool_name() -> None:
 
         @override
         def __call__(self, container: ContainerContract) -> None:
-            container.resolve(ToolRegistry).register(Echo)
+            container.contribute(ToolKind, lambda _: ToolKind(Echo))
 
     class RivalEchoProvider(ProviderContract):
         dependencies = (ToolRegistryProvider,)
 
         @override
         def __call__(self, container: ContainerContract) -> None:
-            container.resolve(ToolRegistry).register(Echo)
+            container.contribute(ToolKind, lambda _: ToolKind(Echo))
 
+    application = App().build(
+        ToolRegistryProvider(),
+        EchoProvider(),
+        RivalEchoProvider(),
+    )
     with pytest.raises(DuplicateToolError, match='echo'):
-        App().build(ToolRegistryProvider(), EchoProvider(), RivalEchoProvider())
+        application.resolve(ToolRegistry)
 
 
 def test_running_in_mode_matches_any_given_mode() -> None:

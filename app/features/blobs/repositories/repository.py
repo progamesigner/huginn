@@ -117,7 +117,10 @@ class BlobRepository(BlobStoreContract):
             ),
         )
         kept = frozenset[UUID]().union(
-            *[await reference.referenced(expired) for reference in references],
+            *[
+                await reference.referenced(self.session, expired)
+                for reference in references
+            ],
         )
         doomed = expired - kept
         if doomed and not dry_run:

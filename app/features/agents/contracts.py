@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from collections.abc import AsyncIterator, Callable, Sequence
+from collections.abc import AsyncIterator, Callable, Iterable, Sequence
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Protocol
@@ -11,7 +11,7 @@ from .config import AgentConfig
 from .types import RoutingHistory, RoutingTurn, Tool, TurnPrompt, TurnRequest, TurnScope
 
 type NamedTool = tuple[str, Tool]
-type ToolSourceFactory = Callable[[], ToolSource]
+type ToolSourceCollector = Callable[[], Iterable[ToolSource]]
 
 
 class TurnStream(Protocol):
@@ -90,13 +90,11 @@ class TurnHandlerContract(ABC):
 
 
 class ToolSourceRegistry:
-    factories: list[ToolSourceFactory]
+    collect: ToolSourceCollector
 
-    def __init__(self) -> None:
-        self.factories = []
-
-    def register(self, factory: ToolSourceFactory) -> None:
-        self.factories.append(factory)
+    # NOTE: sources are collected per turn, so each one sees the config of the moment
+    def __init__(self, collect: ToolSourceCollector = tuple) -> None:
+        self.collect = collect
 
     def sources(self) -> tuple[ToolSource, ...]:
-        return tuple(factory() for factory in self.factories)
+        return tuple(self.collect())

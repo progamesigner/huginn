@@ -14,7 +14,7 @@ from app.features.channels.exceptions import (
     IncompleteTranscriptionError,
     UnknownChannelKindError,
 )
-from app.features.channels.registry import ChannelRegistry
+from app.features.channels.registry import ChannelKind, ChannelRegistry
 from app.features.channels.telegram.config import TelegramChannelConfig
 
 
@@ -58,8 +58,11 @@ def test_telegram_channel_requires_token() -> None:
 
 
 def test_channel_registry_rejects_unknown_kind() -> None:
-    registry = ChannelRegistry()
-    registry.register('telegram', TelegramChannelConfig)
+    registry = ChannelRegistry(
+        [
+            ChannelKind('telegram', TelegramChannelConfig),
+        ],
+    )
 
     with pytest.raises(UnknownChannelKindError, match='discord'):
         registry.get('discord')

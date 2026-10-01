@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from collections.abc import Callable, Collection
+from collections.abc import Collection, Iterable
 from datetime import timedelta
 from uuid import UUID
 
@@ -34,20 +34,15 @@ class BlobStoreFactoryContract(ABC):
 
 class BlobReferenceContract(ABC):
     @abstractmethod
-    async def referenced(self, ids: Collection[UUID]) -> frozenset[UUID]: ...
-
-
-type BlobReferenceFactory = Callable[[AsyncSession], BlobReferenceContract]
+    async def referenced(
+        self,
+        session: AsyncSession,
+        ids: Collection[UUID],
+    ) -> frozenset[UUID]: ...
 
 
 class BlobReferenceRegistry:
-    factories: list[BlobReferenceFactory]
+    references: tuple[BlobReferenceContract, ...]
 
-    def __init__(self) -> None:
-        self.factories = []
-
-    def register(self, factory: BlobReferenceFactory) -> None:
-        self.factories.append(factory)
-
-    def for_session(self, session: AsyncSession) -> tuple[BlobReferenceContract, ...]:
-        return tuple(factory(session) for factory in self.factories)
+    def __init__(self, references: Iterable[BlobReferenceContract] = ()) -> None:
+        self.references = tuple(references)

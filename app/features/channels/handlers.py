@@ -9,10 +9,11 @@ from app.features.identities.contracts import (
 from app.features.identities.exceptions import InvalidIdentityLinkError
 from app.features.identities.types import AnonymousPrincipal, LinkedPrincipal
 
-from .registry import CommandHandler, CommandRegistry
+from .registry import Command, CommandRegistry
 
 type ControlFactory = Callable[[], ConversationControlContract]
 type LinkerFactory = Callable[[], IdentityLinkingContract]
+type RegistryFactory = Callable[[], CommandRegistry]
 type ResolverFactory = Callable[[], IdentityResolverContract]
 
 _LINK_PREFIX = 'link_'
@@ -44,27 +45,27 @@ class CommandHandlers:
     conversations: ControlFactory
     identities: ResolverFactory
     linking: LinkerFactory
-    registry: CommandRegistry
+    registry: RegistryFactory
 
     def __init__(
         self,
         identities: ResolverFactory,
         linking: LinkerFactory,
         conversations: ControlFactory,
-        registry: CommandRegistry,
+        registry: RegistryFactory,
     ) -> None:
         self.conversations = conversations
         self.identities = identities
         self.linking = linking
         self.registry = registry
 
-    def commands(self) -> Iterator[tuple[str, str, CommandHandler]]:
-        yield 'compact', _COMPACT, self.compact
-        yield 'help', _HELP, self.help
-        yield 'new', _NEW, self.new
-        yield 'identity', _IDENTITY, self.identity
-        yield 'register', _REGISTER, self.register
-        yield 'start', _START, self.start
+    def commands(self) -> Iterator[Command]:
+        yield Command('compact', _COMPACT, self.compact)
+        yield Command('help', _HELP, self.help)
+        yield Command('new', _NEW, self.new)
+        yield Command('identity', _IDENTITY, self.identity)
+        yield Command('register', _REGISTER, self.register)
+        yield Command('start', _START, self.start)
 
     async def compact(self, command: InboundCommand, message: InboundMessage) -> str:
         folded = await self.conversations().compact(message.channel, message.chat)
@@ -74,7 +75,7 @@ class CommandHandlers:
     async def help(self, command: InboundCommand, message: InboundMessage) -> str:
         lines = (
             f'/{registered.name} — {registered.description}'
-            for registered in self.registry.listing()
+            for registered in self.registry().listing()
         )
 
         return '\n'.join(('Here is what I understand:', *lines))

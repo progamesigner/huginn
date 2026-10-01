@@ -2,7 +2,6 @@ from typing import override
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.config.registry import SectionRegistry
 from app.core.providers.command import CommandProvider
 from app.core.providers.config import ConfigProvider
 from app.core.providers.database import DatabaseProvider
@@ -13,8 +12,8 @@ from lib.container import ContainerContract, ProviderContract
 from lib.guid import GUIDContract
 from lib.temporal import ClockContract
 
-from .config import BLOBS
 from .contracts import (
+    BlobReferenceContract,
     BlobReferenceRegistry,
     BlobStoreContract,
     BlobStoreFactoryContract,
@@ -33,17 +32,9 @@ class BlobStoreFactory(BlobStoreFactoryContract):
         return BlobRepository(session, self.guid, self.clock)
 
 
-class BlobsConfigProvider(ProviderContract):
-    dependencies = (ConfigProvider,)
-
-    @override
-    def __call__(self, container: ContainerContract) -> None:
-        container.resolve(SectionRegistry).register(BLOBS)
-
-
 class BlobProvider(ProviderContract):
     dependencies = (
-        BlobsConfigProvider,
+        ConfigProvider,
         ClockProvider,
         DatabaseProvider,
         GUIDProvider,
@@ -57,7 +48,11 @@ class BlobProvider(ProviderContract):
             constructor=BlobStoreFactory,
             shared=True,
         )
-        container.bind(BlobReferenceRegistry, instance=BlobReferenceRegistry())
+        container.bind(
+            BlobReferenceRegistry,
+            factory=lambda c: BlobReferenceRegistry(c.collect(BlobReferenceContract)),
+            shared=True,
+        )
 
 
 class BlobCommandProvider(ProviderContract):
