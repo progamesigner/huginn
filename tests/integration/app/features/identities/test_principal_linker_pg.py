@@ -122,12 +122,14 @@ async def _aimed_at_a_taken_chat(
 ) -> str:
     # NOTE: the chat already answers to one account, so a second account's invite has
     # nothing left to claim
-    await _linker(database).link(
-        await _prepared(database, realm),
-        'telegram',
-        realm,
-        chat,
-    )
+    (
+        await _linker(database).link(
+            await _prepared(database, realm),
+            'telegram',
+            realm,
+            chat,
+        )
+    ).unwrap()
 
     return await _prepared(database, realm)
 
@@ -169,7 +171,7 @@ async def test_a_refused_attempt_leaves_a_trail(
         credential = await prepare(database, realm, chat)
 
         with pytest.raises(InvalidIdentityLinkError):
-            await _linker(database).link(credential, 'telegram', realm, chat)
+            (await _linker(database).link(credential, 'telegram', realm, chat)).unwrap()
 
         assert await _failures(database, realm) == [
             {'reason': reason, 'external_user_id': chat},
@@ -186,7 +188,7 @@ async def test_a_link_that_goes_through_records_no_failure(
     realm = f'realm-{uuid4().hex}'
     try:
         code, _ = await _invite(database, realm)
-        await _linker(database).link(code, 'telegram', realm, uuid4().hex)
+        (await _linker(database).link(code, 'telegram', realm, uuid4().hex)).unwrap()
 
         assert await _failures(database, realm) == []
     finally:
@@ -205,7 +207,9 @@ async def test_linking_a_chat_commits_and_the_resolver_sees_it(
 
         # NOTE: this is the command path -- the contract owns its own transaction, so
         # a link made here has to be visible to the next round's resolver
-        principal = await _linker(database).link(code, 'telegram', realm, external)
+        principal = (
+            await _linker(database).link(code, 'telegram', realm, external)
+        ).unwrap()
         resolved = await _resolver(database).resolve('telegram', realm, external)
 
         assert isinstance(principal, LinkedPrincipal)
@@ -224,7 +228,14 @@ async def test_a_code_nobody_issued_leaves_the_chat_anonymous(
     external = uuid4().hex
     try:
         with pytest.raises(InvalidIdentityLinkError):
-            await _linker(database).link('NOPE-NOPE-0000', 'telegram', realm, external)
+            (
+                await _linker(database).link(
+                    'NOPE-NOPE-0000',
+                    'telegram',
+                    realm,
+                    external,
+                )
+            ).unwrap()
 
         resolved = await _resolver(database).resolve('telegram', realm, external)
 

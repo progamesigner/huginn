@@ -90,7 +90,7 @@ async def test_concurrent_completion_creates_one_link_and_success_event(
                     '42',
                 )
                 await current.commit()
-                return linked.id
+                return linked.unwrap().id
 
         first, second = await asyncio.gather(complete(), complete())
 

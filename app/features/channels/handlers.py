@@ -7,7 +7,7 @@ from app.features.identities.contracts import (
     IdentityResolutionServiceContract,
 )
 from app.features.identities.entities import AnonymousPrincipal, LinkedPrincipal
-from app.features.identities.exceptions import InvalidIdentityLinkError
+from lib.result import Err
 
 from .registry import Command, CommandRegistry
 
@@ -116,14 +116,13 @@ class CommandHandlers:
         if message.user is None:
             return _UNIDENTIFIED
 
-        try:
-            principal = await self.linking().link(
-                credential,
-                message.kind,
-                message.channel,
-                message.user,
-            )
-        except InvalidIdentityLinkError as error:
-            return str(error)
+        linked = await self.linking().link(
+            credential,
+            message.kind,
+            message.channel,
+            message.user,
+        )
+        if isinstance(linked, Err):
+            return str(linked.error)
 
-        return f'Done. This chat is linked to account {principal.user_id}.'
+        return f'Done. This chat is linked to account {linked.value.user_id}.'

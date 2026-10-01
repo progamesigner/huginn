@@ -1,5 +1,6 @@
 from collections.abc import Callable
 from dataclasses import dataclass
+from typing import Never
 
 type Result[T, E: Exception] = Ok[T] | Err[E]
 
@@ -28,6 +29,9 @@ class Ok[T]:
     def unwrap_or(self, default: T) -> T:
         return self.value
 
+    def unwrap(self) -> T:
+        return self.value
+
 
 @dataclass(frozen=True)
 class Err[E: Exception]:
@@ -49,3 +53,7 @@ class Err[E: Exception]:
 
     def unwrap_or[T](self, default: T) -> T:
         return default
+
+    # NOTE: for a boundary that answers an expected failure by raising it, such as HTTP
+    def unwrap(self) -> Never:
+        raise self.error

@@ -8,6 +8,7 @@ from sqlalchemy.exc import IntegrityError
 
 from lib.database import DatabaseContract
 from lib.guid import GUIDContract
+from lib.result import Err, Ok, Result
 from lib.temporal import ClockContract
 
 from .contracts import IdentityLinkingServiceContract, IdentityResolutionServiceContract
@@ -75,17 +76,17 @@ class IdentityLinkingService:
         realm: str,
         external_user_id: str,
         profile: Mapping[str, JsonValue] | None = None,
-    ) -> ExternalIdentity:
+    ) -> Result[ExternalIdentity, InvalidIdentityLinkError]:
         digest = self.tokens.digest_credential(credential)
         invite = (
             await self.repository.lock_invite(digest) if digest is not None else None
         )
         if invite is None:
-            raise InvalidIdentityLinkError('unknown_token')
+            return Err(InvalidIdentityLinkError('unknown_token'))
 
         reason = self._invalid_reason(invite, provider, realm)
         if reason is not None:
-            raise InvalidIdentityLinkError(reason)
+            return Err(InvalidIdentityLinkError(reason))
 
         existing = await self.repository.find_external(
             provider,
@@ -94,13 +95,13 @@ class IdentityLinkingService:
         )
         if invite.consumed_at is not None:
             if existing is not None and existing.user_id == invite.user_id:
-                return existing
-            raise InvalidIdentityLinkError('consumed')
+                return Ok(existing)
+            return Err(InvalidIdentityLinkError('consumed'))
         if existing is not None:
             if existing.user_id == invite.user_id:
                 await self.repository.consume_invite(invite.id, self.clock.now())
-                return existing
-            raise InvalidIdentityLinkError('identity_conflict')
+                return Ok(existing)
+            return Err(InvalidIdentityLinkError('identity_conflict'))
 
         try:
             async with self.repository.session.begin_nested():
@@ -112,7 +113,7 @@ class IdentityLinkingService:
                     profile,
                 )
         except IntegrityError:
-            raise InvalidIdentityLinkError('identity_conflict') from None
+            return Err(InvalidIdentityLinkError('identity_conflict'))
 
         await self.repository.consume_invite(invite.id, self.clock.now())
         await self.repository.record_audit(
@@ -123,7 +124,7 @@ class IdentityLinkingService:
             external_identity_id=identity.id,
             metadata={'invite_id': str(invite.id)},
         )
-        return identity
+        return Ok(identity)
 
     async def revoke(self, invite_id: UUID) -> bool:
         invite = await self.repository.lock_invite_by_id(invite_id)
@@ -197,28 +198,34 @@ class PrincipalLinker(IdentityLinkingServiceContract):
         provider: str,
         realm: str,
         external_user_id: str,
-    ) -> LinkedPrincipal:
-        try:
-            async with self.database.transaction() as session:
-                repository = IdentityRepository(session, self.guid, self.clock)
-                await IdentityLinkingService(
-                    repository,
-                    self.tokens,
-                    self.clock,
-                ).complete(credential, provider, realm, external_user_id)
-                principal = await repository.find_linked(
-                    provider,
-                    realm,
-                    external_user_id,
-                )
-        except InvalidIdentityLinkError as error:
-            # NOTE: the rejection took its own transaction down with it
-            await self._audit_failure(provider, realm, external_user_id, error.reason)
-            raise
+    ) -> Result[LinkedPrincipal, InvalidIdentityLinkError]:
+        async with self.database.transaction() as session:
+            repository = IdentityRepository(session, self.guid, self.clock)
+            completed = await IdentityLinkingService(
+                repository,
+                self.tokens,
+                self.clock,
+            ).complete(credential, provider, realm, external_user_id)
+            principal = (
+                await repository.find_linked(provider, realm, external_user_id)
+                if completed.ok
+                else None
+            )
 
-        if principal is None:
-            raise LookupError('the completed link is not readable back')
-        return principal
+        if isinstance(completed, Ok):
+            if principal is None:
+                raise LookupError('the completed link is not readable back')
+            return Ok(principal)
+
+        # NOTE: a rejection writes nothing before it returns, so the audit line goes
+        # into a transaction of its own
+        await self._audit_failure(
+            provider,
+            realm,
+            external_user_id,
+            completed.error.reason,
+        )
+        return completed
 
     async def _audit_failure(
         self,

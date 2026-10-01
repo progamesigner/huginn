@@ -15,6 +15,7 @@ from app.features.agents.entities import (
 from lib.guid import GUIDContract
 from lib.observability import Logger
 from lib.redis import RedisContract, RedisLock
+from lib.result import Err, Ok, Result
 
 from .entities import OpenedEvent, TurnEvent
 from .exceptions import (
@@ -24,6 +25,7 @@ from .exceptions import (
 )
 from .streams import QueuedReply, drain
 
+type PrepareError = ConversationBusyError | ForbiddenAgentError | UnroutableRequestError
 _LOCK_TTL = timedelta(seconds=30)
 
 
@@ -97,14 +99,18 @@ class ChatService:
         conversation: str | None = None,
         agent: str | None = None,
         max_completion_tokens: int | None = None,
-    ) -> PreparedTurn:
+    ) -> Result[PreparedTurn, PrepareError]:
         agent = agent or client.agent
         if agent is not None and agent not in client.agents:
-            raise ForbiddenAgentError(f'this key may not route to agent {agent!r}')
+            return Err(
+                ForbiddenAgentError(f'this key may not route to agent {agent!r}'),
+            )
 
         if agent is None and client.routing is None:
-            raise UnroutableRequestError(
-                'this key routes no message on its own; name an agent',
+            return Err(
+                UnroutableRequestError(
+                    'this key routes no message on its own; name an agent',
+                ),
             )
 
         thread = conversation or str(self.guid.generate())
@@ -115,19 +121,23 @@ class ChatService:
             logger=self.logger,
         )
         if not await lock.acquire():
-            raise ConversationBusyError(f'conversation {thread!r} is already answering')
+            return Err(
+                ConversationBusyError(f'conversation {thread!r} is already answering'),
+            )
 
-        return PreparedTurn(
-            conversation=thread,
-            request=TurnRequest(
-                channel=client.key,
-                chat=thread,
-                policy=_policy(agent, client),
-                prompts=(TurnPrompt(text=message, actor=_actor(client)),),
-                denied_tools=client.denied_tools,
-                max_completion_tokens=max_completion_tokens,
+        return Ok(
+            PreparedTurn(
+                conversation=thread,
+                request=TurnRequest(
+                    channel=client.key,
+                    chat=thread,
+                    policy=_policy(agent, client),
+                    prompts=(TurnPrompt(text=message, actor=_actor(client)),),
+                    denied_tools=client.denied_tools,
+                    max_completion_tokens=max_completion_tokens,
+                ),
+                lock=lock,
             ),
-            lock=lock,
         )
 
     async def stream(self, prepared: PreparedTurn) -> AsyncGenerator[TurnEvent]:

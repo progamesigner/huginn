@@ -256,16 +256,26 @@ class IdentityRepository:
         record = (await self.session.execute(query)).scalar_one_or_none()
         return _to_invite(record) if record else None
 
-    async def consume_invite(self, invite_id: UUID, consumed_at: datetime) -> None:
+    async def consume_invite(
+        self,
+        invite_id: UUID,
+        consumed_at: datetime,
+    ) -> IdentityLinkInvite | None:
         record = await self.session.get(IdentityLinkInviteRecord, invite_id)
         if record is None:
-            raise LookupError('identity link invite not found')
+            return None
         record.consumed_at = consumed_at
         await self.session.flush()
+        return _to_invite(record)
 
-    async def revoke_invite(self, invite_id: UUID, revoked_at: datetime) -> None:
+    async def revoke_invite(
+        self,
+        invite_id: UUID,
+        revoked_at: datetime,
+    ) -> IdentityLinkInvite | None:
         record = await self.session.get(IdentityLinkInviteRecord, invite_id)
         if record is None:
-            raise LookupError('identity link invite not found')
+            return None
         record.revoked_at = revoked_at
         await self.session.flush()
+        return _to_invite(record)

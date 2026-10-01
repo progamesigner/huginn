@@ -90,7 +90,7 @@ async def test_complete_links_and_consumes_invite() -> None:
     linking = service(repo)
     token = linking.tokens.issue()[0]
 
-    result = await linking.complete(token, 'telegram', 'primary', '42')
+    result = (await linking.complete(token, 'telegram', 'primary', '42')).unwrap()
 
     assert result == linked
     repo.consume_invite.assert_awaited_once_with(_INVITE_ID, _NOW)
@@ -117,7 +117,7 @@ async def test_complete_rejects_invalid_invite_with_one_public_error(
     token = linking.tokens.issue()[0]
 
     with pytest.raises(InvalidIdentityLinkError) as caught:
-        await linking.complete(token, provider, realm, '42')
+        (await linking.complete(token, provider, realm, '42')).unwrap()
 
     assert str(caught.value) == 'This link is invalid or expired. Ask for a new invite.'
     assert token not in repr(caught.value)
@@ -134,7 +134,14 @@ async def test_a_consumed_invite_is_refused_for_another_chat() -> None:
     linking = service(repo)
 
     with pytest.raises(InvalidIdentityLinkError) as caught:
-        await linking.complete(linking.tokens.issue()[0], 'telegram', 'primary', '42')
+        (
+            await linking.complete(
+                linking.tokens.issue()[0],
+                'telegram',
+                'primary',
+                '42',
+            )
+        ).unwrap()
 
     assert caught.value.reason == 'consumed'
     repo.record_audit.assert_not_awaited()
@@ -153,7 +160,14 @@ async def test_a_chat_owned_by_another_account_is_refused() -> None:
     linking = service(repo)
 
     with pytest.raises(InvalidIdentityLinkError) as caught:
-        await linking.complete(linking.tokens.issue()[0], 'telegram', 'primary', '42')
+        (
+            await linking.complete(
+                linking.tokens.issue()[0],
+                'telegram',
+                'primary',
+                '42',
+            )
+        ).unwrap()
 
     assert caught.value.reason == 'identity_conflict'
     repo.link.assert_not_awaited()
@@ -167,7 +181,14 @@ async def test_a_chat_claimed_by_a_racing_link_is_refused() -> None:
     linking = service(repo)
 
     with pytest.raises(InvalidIdentityLinkError) as caught:
-        await linking.complete(linking.tokens.issue()[0], 'telegram', 'primary', '42')
+        (
+            await linking.complete(
+                linking.tokens.issue()[0],
+                'telegram',
+                'primary',
+                '42',
+            )
+        ).unwrap()
 
     assert caught.value.reason == 'identity_conflict'
     repo.consume_invite.assert_not_awaited()
@@ -187,12 +208,14 @@ async def test_consumed_invite_is_idempotent_for_the_same_identity() -> None:
     repo.find_external.return_value = linked
     linking = service(repo)
 
-    result = await linking.complete(
-        linking.tokens.issue()[0],
-        'telegram',
-        'primary',
-        '42',
-    )
+    result = (
+        await linking.complete(
+            linking.tokens.issue()[0],
+            'telegram',
+            'primary',
+            '42',
+        )
+    ).unwrap()
 
     assert result == linked
     repo.link.assert_not_awaited()
@@ -214,7 +237,7 @@ async def test_unknown_credential_is_redacted_and_named_as_a_reason() -> None:
     credential = 'not-a-valid-credential'
 
     with pytest.raises(InvalidIdentityLinkError) as caught:
-        await linking.complete(credential, 'telegram', 'primary', '42')
+        (await linking.complete(credential, 'telegram', 'primary', '42')).unwrap()
 
     assert credential not in repr(caught.value)
     assert caught.value.reason == 'unknown_token'

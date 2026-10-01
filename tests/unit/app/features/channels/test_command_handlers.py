@@ -15,6 +15,7 @@ from app.features.identities.entities import (
     Principal,
 )
 from app.features.identities.exceptions import InvalidIdentityLinkError
+from lib.result import Err, Ok, Result
 
 _LINKED = UUID('00000000-0000-7000-8000-000000000001')
 _IDENTITY = UUID('00000000-0000-7000-8000-000000000002')
@@ -90,15 +91,17 @@ class FakeLinking(IdentityLinkingServiceContract):
         provider: str,
         realm: str,
         external_user_id: str,
-    ) -> LinkedPrincipal:
+    ) -> Result[LinkedPrincipal, InvalidIdentityLinkError]:
         self.calls.append((credential, provider, realm, external_user_id))
         if self.invalid:
-            raise InvalidIdentityLinkError('unknown_token')
+            return Err(InvalidIdentityLinkError('unknown_token'))
 
-        return LinkedPrincipal(
-            user_id=_LINKED,
-            external_identity_id=_IDENTITY,
-            handle='alice',
+        return Ok(
+            LinkedPrincipal(
+                user_id=_LINKED,
+                external_identity_id=_IDENTITY,
+                handle='alice',
+            ),
         )
 
 

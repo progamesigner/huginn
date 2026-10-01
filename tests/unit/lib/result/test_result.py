@@ -1,3 +1,5 @@
+import pytest
+
 from lib.result import Err, Nothing, Ok, Option, Result, Some
 
 
@@ -110,3 +112,16 @@ def test_match_narrows_some_and_nothing() -> None:
 
     assert describe(Some(1)) == 'some:1'
     assert describe(Nothing()) == 'nothing'
+
+
+def test_unwrap_returns_the_value_of_ok() -> None:
+    assert Ok(3).unwrap() == 3
+
+
+def test_unwrap_raises_the_error_of_err() -> None:
+    error = ValueError('nope')
+
+    with pytest.raises(ValueError, match='nope') as raised:
+        Err(error).unwrap()
+
+    assert raised.value is error

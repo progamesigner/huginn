@@ -66,13 +66,16 @@ class ChatHandlers:
         )
 
     async def native(self, ask: ChatRequest, client: ApiClient) -> EventSourceResponse:
-        prepared = await self.service.prepare(
-            client,
-            ask.message,
-            conversation=ask.conversation,
-            agent=ask.agent,
-            max_completion_tokens=ask.max_completion_tokens,
-        )
+        # NOTE: the HTTP boundary turns an expected failure into the error it answers
+        prepared = (
+            await self.service.prepare(
+                client,
+                ask.message,
+                conversation=ask.conversation,
+                agent=ask.agent,
+                max_completion_tokens=ask.max_completion_tokens,
+            )
+        ).unwrap()
 
         return self._streaming(prepared, NativePresenter())
 
@@ -135,13 +138,15 @@ class ChatHandlers:
         ask: CompatibleRequest,
         client: ApiClient,
     ) -> PreparedTurn:
-        return await self.service.prepare(
-            client,
-            ask.latest(),
-            conversation=ask.thread(),
-            agent=ask.model if ask.model in client.agents else None,
-            max_completion_tokens=ask.max_completion_tokens,
-        )
+        return (
+            await self.service.prepare(
+                client,
+                ask.latest(),
+                conversation=ask.thread(),
+                agent=ask.model if ask.model in client.agents else None,
+                max_completion_tokens=ask.max_completion_tokens,
+            )
+        ).unwrap()
 
     def _streaming(
         self,
