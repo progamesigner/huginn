@@ -6,14 +6,13 @@ from structlog.contextvars import bound_contextvars
 
 from app.contracts.channels import (
     ChannelGatewayContract,
+    ChannelGatewayFactoryContract,
     ChannelMessageHandlerContract,
     InboundMessage,
 )
 from app.core.config.registry import HuginnConfig
-from app.exts.telegram.gateways import build_gateway
 from app.features.channels.config import CHANNELS
 from lib.concurrency import TaskSupervisorContract
-from lib.http import HTTPClientContract
 from lib.redis import RedisContract
 from lib.temporal import ClockContract, Timer
 
@@ -29,7 +28,7 @@ class TelegramMessageHandler(ChannelMessageHandlerContract):
     actor: TelegramChatActor
     clock: ClockContract
     config: HuginnConfig
-    http: HTTPClientContract
+    gateways: ChannelGatewayFactoryContract
     redis: RedisContract
     supervisor: TaskSupervisorContract
 
@@ -37,7 +36,7 @@ class TelegramMessageHandler(ChannelMessageHandlerContract):
         self,
         config: HuginnConfig,
         redis: RedisContract,
-        http: HTTPClientContract,
+        gateways: ChannelGatewayFactoryContract,
         clock: ClockContract,
         actor: TelegramChatActor,
         supervisor: TaskSupervisorContract,
@@ -45,12 +44,12 @@ class TelegramMessageHandler(ChannelMessageHandlerContract):
         self.actor = actor
         self.clock = clock
         self.config = config
-        self.http = http
+        self.gateways = gateways
         self.redis = redis
         self.supervisor = supervisor
 
     def gateway(self, channel: TelegramChannelConfig) -> ChannelGatewayContract:
-        return build_gateway(self.http, channel.token, self.clock)
+        return self.gateways.gateway(channel.token)
 
     @override
     async def handle(self, message: InboundMessage) -> None:

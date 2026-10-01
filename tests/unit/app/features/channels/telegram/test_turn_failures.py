@@ -11,6 +11,7 @@ from structlog.contextvars import get_contextvars
 
 from app.contracts.channels import InboundMessage
 from app.core.config.registry import HuginnConfig
+from app.exts.telegram.gateways import TelegramGatewayFactory
 from app.features.channels.config import ChannelConfigList
 from app.features.channels.telegram.actor import TelegramChatActor
 from app.features.channels.telegram.config import TelegramChannelConfig
@@ -91,7 +92,7 @@ def make_handler(
     return TelegramMessageHandler(
         config=make_config(),
         redis=make_redis(),
-        http=HTTPClientManager(),
+        gateways=TelegramGatewayFactory(HTTPClientManager(), FakeClock()),
         clock=FakeClock(),
         actor=actor,
         supervisor=supervisor,

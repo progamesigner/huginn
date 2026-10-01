@@ -44,14 +44,10 @@ ROOT_PACKAGES = ('app', 'bin', 'lib')
 FEATURES_PACKAGE = 'app.features'
 EXTS_PACKAGE = 'app.exts'
 CONTRACTS_PACKAGE = 'app.contracts'
-# A feature reaches an ext in one of two directions, and the slice it names says which.
-# A data-source ext is pulled: the feature calls the vendor, so a repository owns that
-# call and translates the answer into domain values -- `clients` may only be named from
-# there. A transport ext is pushed: it implements an app.contracts contract and the feature
-# is handed the result, so its `endpoints` and `gateways` may be named at the wiring
-# point. There is no third way, which is why no blanket "always via a repository" rule
-# survives here: it would demand a repository for a vendor that answers no queries.
-EXT_CLIENT_SLICE = 'clients'
+# A feature touches an ext only from a repository or a source. A data-source ext is
+# pulled: the repository owns the call and translates the answer into domain values. A
+# transport ext is pushed: it implements an app.contracts contract and app/providers
+# wires it in, so the feature is handed the result without ever naming the vendor.
 EXT_CLIENT_HOSTS = frozenset({'repositories', 'sources'})
 # Whichever direction it reaches, a feature never names a vendor's payload types. Those
 # are the vendor's own wire shapes: an ext parses them at its edge and hands over the
@@ -188,13 +184,11 @@ def _ext_client_reach(relative: Path, targets: Iterable[str]) -> Iterator[str]:
         if not target.startswith(prefix):
             continue
 
-        slice_ = target[len(prefix) :].partition('.')[2].split('.')[0]
-        if slice_ == EXT_CLIENT_SLICE:
-            yield (
-                f'{target}: only a repository may call a vendor client;'
-                f' move the call into {sorted(EXT_CLIENT_HOSTS)}'
-                f' or reach the vendor through an app.contracts contract instead'
-            )
+        yield (
+            f'{target}: a feature reaches a vendor only from {sorted(EXT_CLIENT_HOSTS)};'
+            f' a transport is wired to it at app/providers through an app.contracts'
+            f' contract instead'
+        )
 
 
 def _vendor_types_reach(targets: Iterable[str]) -> Iterator[str]:
@@ -692,7 +686,7 @@ def test_feature_and_ext_files_avoid_banned_names() -> None:
     assert not violations, 'banned file names:\n' + '\n'.join(violations)
 
 
-def test_features_call_vendor_clients_only_from_a_repository() -> None:
+def test_features_reach_an_ext_only_from_a_repository() -> None:
     root = _features_dir()
     violations = []
 
@@ -706,7 +700,7 @@ def test_features_call_vendor_clients_only_from_a_repository() -> None:
             f'{relative}: {message}' for message in _ext_client_reach(relative, targets)
         )
 
-    assert not violations, 'vendor clients called outside a repository:\n' + '\n'.join(
+    assert not violations, 'ext reached outside a repository:\n' + '\n'.join(
         violations,
     )
 
@@ -739,7 +733,7 @@ def test_vendor_types_check_flags_only_the_vendor_payload_slice() -> None:
     assert list(_vendor_types_reach(('app.exts.telegram.types',)))
 
 
-def test_ext_client_reach_check_separates_data_sources_from_transports() -> None:
+def test_ext_reach_check_allows_only_repositories_and_sources() -> None:
     client = ('app.exts.felo.clients',)
     transport = ('app.exts.telegram.gateways', 'app.exts.telegram.endpoints')
 
@@ -749,11 +743,9 @@ def test_ext_client_reach_check_separates_data_sources_from_transports() -> None
         _ext_client_reach(Path('conversations/repositories/repository.py'), client),
     )
     assert not list(_ext_client_reach(Path('skills/sources/muninn.py'), client))
-    # a transport is handed to the feature through a contract, so wiring may name it
-    assert not list(_ext_client_reach(Path('channels/telegram/service.py'), transport))
-    assert not list(
-        _ext_client_reach(Path('channels/telegram/providers.py'), transport),
-    )
+    # a transport is wired at the root, so not even the feature's own wiring names it
+    assert list(_ext_client_reach(Path('channels/telegram/service.py'), transport))
+    assert list(_ext_client_reach(Path('channels/telegram/providers.py'), transport))
     # our own vocabulary is nobody's business here
     assert not list(_ext_client_reach(Path('tools/websearch/tool.py'), ('lib.http',)))
 

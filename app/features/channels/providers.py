@@ -14,7 +14,6 @@ from .contracts import TranscriptionContract
 from .registry import ChannelKind, ChannelRegistry, Command, CommandRegistry
 from .repositories import TranscriptionRepository
 from .resolver import ChannelSecretResolver
-from .telegram.providers import TelegramEndpointProvider
 
 
 def _resolver(container: ContainerContract) -> ChannelSecretResolver:
@@ -59,7 +58,7 @@ class ChannelProvider(ProviderContract):
 
 
 class ChannelEndpointProvider(ProviderContract):
-    dependencies = (ChannelProvider, TelegramEndpointProvider)
+    dependencies = (ChannelProvider,)
 
     @override
     def __call__(self, container: ContainerContract) -> None:

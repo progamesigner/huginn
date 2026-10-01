@@ -25,6 +25,7 @@ from .contributions import (
     SkillContributions,
     ToolContributions,
 )
+from .telegram import TelegramGatewayProvider
 
 
 class HuginnProvider(ProviderContract):
@@ -50,6 +51,7 @@ class HuginnProvider(ProviderContract):
         MCPContributions,
         SkillContributions,
         ToolContributions,
+        TelegramGatewayProvider,
     )
 
     @override

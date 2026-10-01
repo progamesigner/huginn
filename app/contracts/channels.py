@@ -3,7 +3,7 @@ from collections.abc import Mapping
 from types import MappingProxyType
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, SecretStr
 
 type AttachmentKind = Literal['audio', 'document', 'image']
 ATTACHMENT_LIMITS: Mapping[AttachmentKind, int] = MappingProxyType(
@@ -94,3 +94,9 @@ class ChannelGatewayContract(ABC):
 
     @abstractmethod
     def reply(self, message: InboundMessage) -> ChannelReplyContract: ...
+
+
+# NOTE: a channel holds the credential, the transport knows what to build from it
+class ChannelGatewayFactoryContract(ABC):
+    @abstractmethod
+    def gateway(self, token: SecretStr) -> ChannelGatewayContract: ...

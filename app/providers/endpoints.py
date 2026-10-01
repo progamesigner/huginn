@@ -5,12 +5,15 @@ from app.features.messages.providers import MessageEndpointProvider
 from app.features.probes.providers import ProbesEndpointProvider
 from lib.container import ContainerContract, ProviderContract
 
+from .telegram import TelegramEndpointProvider
+
 
 class HuginnEndpointProvider(ProviderContract):
     dependencies = (
         ChannelEndpointProvider,
         MessageEndpointProvider,
         ProbesEndpointProvider,
+        TelegramEndpointProvider,
     )
 
     @override

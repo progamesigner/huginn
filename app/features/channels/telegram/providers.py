@@ -1,15 +1,16 @@
 from datetime import timedelta
 from typing import override
 
-from app.contracts.channels import ChannelMessageHandlerContract
+from app.contracts.channels import (
+    ChannelGatewayFactoryContract,
+    ChannelMessageHandlerContract,
+)
 from app.core.config.registry import HuginnConfig
 from app.core.providers.command import CommandProvider
 from app.core.providers.config import ConfigProvider
 from app.core.providers.http import HTTPClientProvider
 from app.core.providers.redis import RedisProvider
-from app.core.providers.router import RouterProvider
 from app.core.providers.temporal import ClockProvider
-from app.exts.telegram.gateways import build_gateway
 from app.features.agents.contracts import TurnHandlerContract
 from app.features.agents.providers import TurnProvider
 from app.features.channels.contracts import TranscriptionContract
@@ -20,9 +21,7 @@ from app.features.identities.providers import IdentityProvider
 from lib.command import CommandContract
 from lib.concurrency import TaskSupervisor, TaskSupervisorContract
 from lib.container import ContainerContract, ProviderContract
-from lib.http import HTTPClientContract
 from lib.redis import RedisContract
-from lib.router import RouterContract
 from lib.temporal import ClockContract
 
 from .actor import TelegramChatActor
@@ -41,13 +40,12 @@ def _actor(container: ContainerContract) -> TelegramChatActor:
 
 
 def _turns(container: ContainerContract) -> TelegramTurnProcessor:
-    http = container.resolve(HTTPClientContract)
-    clock = container.resolve(ClockContract)
+    gateways = container.resolve(ChannelGatewayFactoryContract)
     return TelegramTurnProcessor(
         turns=container.resolve(TurnHandlerContract),
         commands=container.resolve(CommandRegistry),
         identities=container.resolve(IdentityResolverContract),
-        gateway=lambda channel: build_gateway(http, channel.token, clock),
+        gateway=lambda channel: gateways.gateway(channel.token),
         transcription=container.resolve(TranscriptionContract),
     )
 
@@ -56,7 +54,7 @@ def _handler(container: ContainerContract) -> TelegramMessageHandler:
     return TelegramMessageHandler(
         config=container.resolve(HuginnConfig),
         redis=container.resolve(RedisContract),
-        http=container.resolve(HTTPClientContract),
+        gateways=container.resolve(ChannelGatewayFactoryContract),
         clock=container.resolve(ClockContract),
         actor=container.resolve(TelegramChatActor),
         supervisor=container.resolve(TaskSupervisorContract),
@@ -94,13 +92,3 @@ class TelegramCommandProvider(ProviderContract):
         from .commands import cli
 
         container.resolve(CommandContract).mount('telegram', cli)
-
-
-class TelegramEndpointProvider(ProviderContract):
-    dependencies = (RouterProvider, TelegramProvider)
-
-    @override
-    def __call__(self, container: ContainerContract) -> None:
-        from app.exts.telegram.endpoints import router
-
-        container.resolve(RouterContract).include(router)

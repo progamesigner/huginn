@@ -11,6 +11,7 @@ from pydantic import SecretStr
 from app.contracts.channels import (
     ATTACHMENT_LIMITS,
     ChannelGatewayContract,
+    ChannelGatewayFactoryContract,
     ChannelReplyContract,
     InboundAttachment,
     InboundMessage,
@@ -259,9 +260,17 @@ class TelegramGateway(ChannelGatewayContract):
         return TelegramReply(self.client, message.chat, self.clock)
 
 
-def build_gateway(
-    http: HTTPClientContract,
-    bot_token: SecretStr,
-    clock: ClockContract,
-) -> ChannelGatewayContract:
-    return TelegramGateway(TelegramClient(http=http, bot_token=bot_token), clock)
+class TelegramGatewayFactory(ChannelGatewayFactoryContract):
+    clock: ClockContract
+    http: HTTPClientContract
+
+    def __init__(self, http: HTTPClientContract, clock: ClockContract) -> None:
+        self.clock = clock
+        self.http = http
+
+    @override
+    def gateway(self, token: SecretStr) -> ChannelGatewayContract:
+        return TelegramGateway(
+            TelegramClient(http=self.http, bot_token=token),
+            self.clock,
+        )
