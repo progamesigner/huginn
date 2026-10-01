@@ -7,9 +7,9 @@ from pydantic import Field
 
 from app.core.config.registry import HuginnConfig
 from app.features.agents.config import AgentConfig, ToolRef
-from app.features.agents.types import ToolOutput, ToolParams, TurnScope, TypedTool
+from app.features.agents.entities import ToolOutput, ToolParams, TurnScope, TypedTool
 from app.features.blobs.contracts import BlobStoreContract
-from app.features.blobs.types import Blob, BlobKind
+from app.features.blobs.entities import Blob, BlobKind
 from app.features.tools.config import ToolConfig, ToolConfigList
 from app.features.tools.document.config import DocumentToolConfig
 from app.features.tools.document.tool import ReadDocumentTool, build_read_document

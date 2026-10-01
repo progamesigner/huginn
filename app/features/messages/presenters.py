@@ -7,7 +7,7 @@ from pydantic import JsonValue
 
 from lib.router import ServerSentEvent, format_sse_event
 
-from .types import (
+from .entities import (
     DoneEvent,
     ErrorEvent,
     OpenedEvent,

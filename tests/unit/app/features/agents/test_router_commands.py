@@ -11,15 +11,15 @@ from app.core.config.registry import HuginnConfig
 from app.core.providers.command import CommandProvider
 from app.features.agents.config import AgentConfigList, DefaultsConfig
 from app.features.agents.contracts import TranscriptStoreContract
-from app.features.agents.router import Router, RoutingDecision
-from app.features.agents.router_commands import cli
-from app.features.agents.types import (
+from app.features.agents.entities import (
     RoutingHistory,
     RoutingPolicy,
     RoutingTarget,
     RoutingTargets,
     SelectionPolicy,
 )
+from app.features.agents.router import Router, RoutingDecision
+from app.features.agents.router_commands import cli
 from lib.command import CommandContract
 
 from .test_agent_router import FakeLLM

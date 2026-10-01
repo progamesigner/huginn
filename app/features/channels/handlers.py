@@ -6,8 +6,8 @@ from app.features.identities.contracts import (
     IdentityLinkingContract,
     IdentityResolverContract,
 )
+from app.features.identities.entities import AnonymousPrincipal, LinkedPrincipal
 from app.features.identities.exceptions import InvalidIdentityLinkError
-from app.features.identities.types import AnonymousPrincipal, LinkedPrincipal
 
 from .registry import Command, CommandRegistry
 

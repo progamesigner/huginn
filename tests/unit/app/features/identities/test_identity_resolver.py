@@ -1,8 +1,8 @@
 from unittest.mock import AsyncMock, MagicMock
 from uuid import UUID
 
+from app.features.identities.entities import AnonymousPrincipal, LinkedPrincipal
 from app.features.identities.services import IdentityResolver
-from app.features.identities.types import AnonymousPrincipal, LinkedPrincipal
 
 _USER_ID = UUID(int=1)
 _IDENTITY_ID = UUID(int=2)

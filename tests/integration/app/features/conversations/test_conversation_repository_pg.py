@@ -5,8 +5,8 @@ import pytest
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.features.conversations.entities import Part
 from app.features.conversations.repositories import ConversationRepository
-from app.features.conversations.types import Part
 from lib.guid import GUIDManager
 from lib.temporal import ClockManager
 

@@ -4,9 +4,9 @@ from uuid import UUID
 import pytest
 
 from app.features.conversations.compaction import CompactionService
+from app.features.conversations.entities import Part, Turn
 from app.features.conversations.exceptions import NoTurnsToCompactError
 from app.features.conversations.repositories import ConversationRepository
-from app.features.conversations.types import Part, Turn
 from lib.llm import (
     FinishChunk,
     LLMClient,

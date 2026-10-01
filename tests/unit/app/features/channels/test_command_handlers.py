@@ -9,12 +9,12 @@ from app.features.identities.contracts import (
     IdentityLinkingContract,
     IdentityResolverContract,
 )
-from app.features.identities.exceptions import InvalidIdentityLinkError
-from app.features.identities.types import (
+from app.features.identities.entities import (
     AnonymousPrincipal,
     LinkedPrincipal,
     Principal,
 )
+from app.features.identities.exceptions import InvalidIdentityLinkError
 
 _LINKED = UUID('00000000-0000-7000-8000-000000000001')
 _IDENTITY = UUID('00000000-0000-7000-8000-000000000002')

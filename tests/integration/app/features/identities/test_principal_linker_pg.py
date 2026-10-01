@@ -5,16 +5,16 @@ from uuid import uuid4
 import pytest
 from sqlalchemy import select
 
+from app.features.identities.entities import AnonymousPrincipal, LinkedPrincipal
 from app.features.identities.exceptions import InvalidIdentityLinkError
 from app.features.identities.repositories import IdentityRepository
-from app.features.identities.schemas.sqlalchemy import IdentityAuditEventRecord
 from app.features.identities.services import (
     IdentityLinkingService,
     PrincipalLinker,
     PrincipalResolver,
 )
+from app.features.identities.sources.sqlalchemy import IdentityAuditEventRecord
 from app.features.identities.tokens import IdentityTokenCodec
-from app.features.identities.types import AnonymousPrincipal, LinkedPrincipal
 from lib.database import DatabaseContract, DatabaseManager
 from lib.guid import GUIDManager
 from lib.temporal import ClockManager

@@ -22,10 +22,10 @@ from app.features.agents.config import (
     RouterConfig,
     validate_router_selection,
 )
+from app.features.agents.entities import RoutingPolicy, selection_policy
 from app.features.agents.exceptions import (
     UnknownAgentReferenceError,
 )
-from app.features.agents.types import RoutingPolicy, selection_policy
 
 from .exceptions import (
     ConflictingChannelAgentError,

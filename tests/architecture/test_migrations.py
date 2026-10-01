@@ -11,7 +11,7 @@ from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
 
 from app.core.records import AppRecord
-from tests.helpers.schemas import mapped_tables
+from tests.helpers.records import mapped_tables
 
 type Constraint = tuple[str, str, str, str]
 

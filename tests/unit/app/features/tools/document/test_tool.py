@@ -4,9 +4,9 @@ from uuid import UUID, uuid4
 
 import pytest
 
-from app.features.agents.types import ToolSet, TurnScope
+from app.features.agents.entities import ToolSet, TurnScope
 from app.features.blobs.contracts import BlobStoreContract
-from app.features.blobs.types import Blob, BlobKind
+from app.features.blobs.entities import Blob, BlobKind
 from app.features.tools.document.config import DocumentToolConfig
 from app.features.tools.document.tool import ReadDocumentTool, build_read_document
 from app.features.tools.exceptions import ToolError

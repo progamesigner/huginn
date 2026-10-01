@@ -1,5 +1,5 @@
 from app.features.agents.config import BindingSource
-from app.features.agents.types import TurnScope, resolve_bindings
+from app.features.agents.entities import TurnScope, resolve_bindings
 
 
 def scope(**changes: str | None) -> TurnScope:

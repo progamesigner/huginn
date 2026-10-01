@@ -10,9 +10,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import defer
 
 from app.features.blobs.contracts import BlobReferenceContract, BlobStoreContract
+from app.features.blobs.entities import Blob, BlobKind
 from app.features.blobs.exceptions import BlobError
-from app.features.blobs.schemas.sqlalchemy import BlobRecord
-from app.features.blobs.types import Blob, BlobKind
+from app.features.blobs.sources.sqlalchemy import BlobRecord
 from lib.guid import GUIDContract
 from lib.temporal import ClockContract
 

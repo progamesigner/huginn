@@ -12,7 +12,7 @@ from sqlalchemy.orm import configure_mappers
 
 from app.core import exceptions
 from lib.container import ProviderContract
-from tests.helpers.schemas import mapped_tables
+from tests.helpers.records import mapped_tables
 
 # Features sit in tiers, outermost first. A feature may only import from a strictly
 # lower tier, which keeps the feature graph a DAG however many features get added; a
@@ -28,16 +28,15 @@ FEATURE_TIERS: tuple[frozenset[str], ...] = (
 )
 # A feature's public face: what it declares and how it is wired, never how it works.
 # There is no exception list; a feature that needs more than this needs a contract on
-# the other side. Schemas are public because a cross-feature query has to name the
-# other feature's tables; its repositories stay private.
+# the other side. Config is public because a section validates its references into
+# another feature's section; schemas and the ORM behind sources stay private.
 SHARED_SLICES = frozenset(
     {
         'config',
         'contracts',
+        'entities',
         'exceptions',
         'providers',
-        'schemas',
-        'types',
     },
 )
 ROOT_PACKAGES = ('app', 'bin', 'lib')
@@ -464,15 +463,9 @@ def test_cross_feature_tier_check_allows_the_public_face_downward() -> None:
     assert _cross_feature_violation('agents', 'lib.llm') is None
     assert _cross_feature_violation('channels', 'app.features.agents.config') is None
     assert _cross_feature_violation('skills', 'app.features.agents.contracts') is None
-    assert _cross_feature_violation('tools', 'app.features.agents.types') is None
+    assert _cross_feature_violation('tools', 'app.features.agents.entities') is None
     assert _cross_feature_violation('mcp', 'app.features.agents.providers') is None
     assert _cross_feature_violation('skills', 'app.features.mcp.providers') is None
-    # a cross-feature query names the other feature's tables
-    turns = 'app.features.conversations.schemas.sqlalchemy'
-    users = 'app.features.identities.schemas.sqlalchemy'
-
-    assert _cross_feature_violation('channels', turns) is None
-    assert _cross_feature_violation('conversations', users) is None
 
 
 def test_cross_feature_tier_check_flags_violations() -> None:
@@ -485,23 +478,31 @@ def test_cross_feature_tier_check_flags_violations() -> None:
         is not None
     )
     # sideways: two adapters in the same tier must not know each other
-    assert _cross_feature_violation('channels', 'app.features.skills.types') is not None
+    assert (
+        _cross_feature_violation('channels', 'app.features.skills.entities') is not None
+    )
     # downward but too deep: services is an implementation slice, not vocabulary
     assert _cross_feature_violation('tools', 'app.features.agents.services') is not None
     # unplaced features are denied outright
-    assert _cross_feature_violation('probes', 'app.features.agents.types') is not None
+    assert (
+        _cross_feature_violation('probes', 'app.features.agents.entities') is not None
+    )
     # agents is the innermost tier: nothing sits below it, so it stays sealed
-    users = 'app.features.identities.schemas.sqlalchemy'
+    users = 'app.features.identities.sources.sqlalchemy'
 
     assert _cross_feature_violation('agents', users) is not None
-    # schemas are public, the repositories that query them are not
+    # the ORM behind sources is as private as the repositories that query it
+    assert (
+        _cross_feature_violation('channels', 'app.features.conversations.sources')
+        is not None
+    )
     assert (
         _cross_feature_violation('channels', 'app.features.conversations.repositories')
         is not None
     )
 
 
-def test_orm_mappers_resolve_once_every_schema_is_imported() -> None:
+def test_orm_mappers_resolve_once_every_record_is_imported() -> None:
     # NOTE: relationship()/back_populates/ForeignKey resolve lazily, so a bad
     # reference or a record module nobody imports raises on the first production
     # query and nowhere else. configure_mappers() forces that resolution here; it
@@ -666,7 +667,7 @@ def test_contract_import_check_flags_app_imports() -> None:
 
     assert list(
         _reaches_the_app(
-            'from app.features.agents.types import Tool\n',
+            'from app.features.agents.entities import Tool\n',
             CONTRACTS_PACKAGE,
         ),
     )
@@ -727,8 +728,8 @@ def test_vendor_types_check_flags_only_the_vendor_payload_slice() -> None:
     assert not list(_vendor_types_reach(('app.exts.telegram.gateways',)))
     assert not list(_vendor_types_reach(('app.exts.felo.clients',)))
     assert not list(_vendor_types_reach(('app.contracts.channels',)))
-    # our own types slice is a feature's own business
-    assert not list(_vendor_types_reach(('app.features.agents.types',)))
+    # our own entities are a feature's own business
+    assert not list(_vendor_types_reach(('app.features.agents.entities',)))
 
     assert list(_vendor_types_reach(('app.exts.telegram.types',)))
 

@@ -1,6 +1,6 @@
 from abc import ABC, abstractmethod
 
-from .types import LinkedPrincipal, Principal
+from .entities import LinkedPrincipal, Principal
 
 
 class IdentityLinkingContract(ABC):

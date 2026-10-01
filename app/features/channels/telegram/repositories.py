@@ -6,7 +6,7 @@ from app.exts.telegram.clients import TelegramClient, webhook_url
 from lib.http import HTTPClientContract
 from lib.temporal import from_epoch
 
-from .types import WebhookStatus
+from .entities import WebhookStatus
 
 
 class TelegramMenuRepository:

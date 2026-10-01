@@ -5,7 +5,7 @@ import pytest
 from pydantic import JsonValue
 
 from app.features.agents.config import AgentConfig, MCPRef
-from app.features.agents.types import (
+from app.features.agents.entities import (
     RoutingPolicy,
     TurnPrompt,
     TurnRequest,

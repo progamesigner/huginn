@@ -5,13 +5,13 @@ from typing import override
 from pydantic import JsonValue
 
 from app.features.agents.config import AgentConfig, SkillsConfig
+from app.features.agents.entities import TurnInput, TurnPrompt, TurnScope
 from app.features.agents.services import AgentRunner, build_tool_set
-from app.features.agents.types import TurnInput, TurnPrompt, TurnScope
 from app.features.skills.config import SkillsSourceConfig
+from app.features.skills.entities import Skill, SkillMeta
 from app.features.skills.repositories import SkillRepository
 from app.features.skills.sources.contracts import SkillSource
 from app.features.skills.tools import SkillToolSource
-from app.features.skills.types import Skill, SkillMeta
 from lib.llm import (
     FinishChunk,
     ModelCapabilities,

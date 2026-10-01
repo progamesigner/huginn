@@ -3,7 +3,7 @@ import json
 import pytest
 from pydantic import ValidationError
 
-from app.features.messages.types import CompatibleRequest
+from app.features.messages.entities import CompatibleRequest
 
 
 def test_the_latest_user_message_is_the_prompt() -> None:

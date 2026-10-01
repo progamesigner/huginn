@@ -7,18 +7,18 @@ from pydantic import JsonValue
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.features.identities.schemas.sqlalchemy import (
-    ExternalIdentityRecord,
-    IdentityAuditEventRecord,
-    IdentityLinkInviteRecord,
-    UserRecord,
-)
-from app.features.identities.types import (
+from app.features.identities.entities import (
     ExternalIdentity,
     IdentityAuditEvent,
     IdentityLinkInvite,
     LinkedPrincipal,
     User,
+)
+from app.features.identities.sources.sqlalchemy import (
+    ExternalIdentityRecord,
+    IdentityAuditEventRecord,
+    IdentityLinkInviteRecord,
+    UserRecord,
 )
 from lib.guid import GUIDContract
 from lib.temporal import ClockContract

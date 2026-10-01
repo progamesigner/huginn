@@ -11,10 +11,7 @@ from lib.guid import GUIDContract
 from lib.temporal import ClockContract
 
 from .contracts import IdentityLinkingContract, IdentityResolverContract
-from .exceptions import InvalidIdentityLinkError
-from .repositories import IdentityRepository
-from .tokens import IdentityTokenCodec
-from .types import (
+from .entities import (
     AnonymousPrincipal,
     ExternalIdentity,
     IdentityLinkInvite,
@@ -22,6 +19,9 @@ from .types import (
     LinkedPrincipal,
     Principal,
 )
+from .exceptions import InvalidIdentityLinkError
+from .repositories import IdentityRepository
+from .tokens import IdentityTokenCodec
 
 
 class IdentityLinkingService:

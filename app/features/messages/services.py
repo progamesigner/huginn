@@ -6,7 +6,7 @@ from datetime import timedelta
 
 from app.contracts.auth import ApiClient
 from app.features.agents.contracts import TurnHandlerContract
-from app.features.agents.types import (
+from app.features.agents.entities import (
     RoutingPolicy,
     SelectionPolicy,
     ShadowPolicy,
@@ -16,13 +16,13 @@ from app.features.agents.types import (
 from lib.guid import GUIDContract
 from lib.redis import RedisContract, RedisLock
 
+from .entities import OpenedEvent, TurnEvent
 from .exceptions import (
     ConversationBusyError,
     ForbiddenAgentError,
     UnroutableRequestError,
 )
 from .streams import QueuedReply, drain
-from .types import OpenedEvent, TurnEvent
 
 logger = logging.getLogger(__name__)
 

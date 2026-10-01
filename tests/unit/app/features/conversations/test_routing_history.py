@@ -1,7 +1,7 @@
 from uuid import UUID
 
+from app.features.conversations.entities import Part, Turn
 from app.features.conversations.services import routing_turn
-from app.features.conversations.types import Part, Turn
 
 
 def test_routing_history_excludes_tools_and_keeps_transcripts() -> None:

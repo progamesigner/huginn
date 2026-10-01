@@ -12,6 +12,7 @@ from lib.command import Exit, Option, Typer, echo, resolve
 
 from .config import AGENTS, NO_AGENT, validate_router_selection
 from .contracts import TranscriptStoreContract
+from .entities import RoutingTarget, RoutingTargets, SelectionPolicy
 from .eval_dataset import json_text, make_sample, read_samples, write_private
 from .eval_report import (
     Label,
@@ -24,7 +25,6 @@ from .eval_report import (
 from .evaluation import EvaluationResult, TokenPrices, Variant, evaluate
 from .router import Router
 from .shadow_report import shadow_records, shadow_report
-from .types import RoutingTarget, RoutingTargets, SelectionPolicy
 
 cli = Typer(no_args_is_help=True, help='Export and evaluate agent routing decisions.')
 dataset_cli = Typer(no_args_is_help=True)

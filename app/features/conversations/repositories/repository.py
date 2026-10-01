@@ -8,13 +8,13 @@ from sqlalchemy import or_, select, tuple_, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from app.features.conversations.entities import Conversation, Part, Turn
 from app.features.conversations.exceptions import NoTurnsToCompactError
-from app.features.conversations.schemas.sqlalchemy import (
+from app.features.conversations.sources.sqlalchemy import (
     ConversationRecord,
     PartRecord,
     TurnRecord,
 )
-from app.features.conversations.types import Conversation, Part, Turn
 from lib.guid import GUIDContract
 from lib.temporal import ClockContract
 

@@ -5,7 +5,7 @@ from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from .types import Blob, BlobKind
+from .entities import Blob, BlobKind
 
 
 class BlobStoreContract(ABC):

@@ -2,7 +2,7 @@ from typing import Annotated, Any, cast, override
 
 from pydantic import Field
 
-from app.features.agents.types import (
+from app.features.agents.entities import (
     Tool,
     ToolOutput,
     ToolParams,

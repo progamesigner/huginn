@@ -15,11 +15,11 @@ from app.contracts.channels import ChannelReplyContract
 from app.core.config.registry import HuginnConfig
 from app.features.agents.config import AgentConfig, AgentConfigList
 from app.features.agents.contracts import TurnHandlerContract
-from app.features.agents.types import TurnRequest
+from app.features.agents.entities import TurnRequest
 from app.features.channels.config import ChannelConfigList, TranscriptionConfig
 from app.features.channels.telegram.config import TelegramChannelConfig
 from app.features.identities.contracts import IdentityResolverContract
-from app.features.identities.types import AnonymousPrincipal, Principal
+from app.features.identities.entities import AnonymousPrincipal, Principal
 from bin.server import build
 from lib.mcp import MCPClientContract
 from lib.redis import RedisContract

@@ -3,7 +3,7 @@ from typing import override
 
 from app.features.agents.config import AgentConfig
 from app.features.agents.contracts import ToolHarvest, ToolSource
-from app.features.agents.types import TurnScope, resolve_bindings
+from app.features.agents.entities import TurnScope, resolve_bindings
 from lib.mcp import MCPClientContract, MCPError
 
 from .bridge import build_mcp_tools

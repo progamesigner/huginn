@@ -11,8 +11,8 @@ from lib.http import HTTPClientContract
 from lib.temporal import isoformat
 
 from .config import TelegramChannelConfig
+from .entities import WebhookStatus
 from .repositories import TelegramMenuRepository, TelegramWebhookRepository
-from .types import WebhookStatus
 
 cli = Typer(help='Administer telegram bots.', no_args_is_help=True)
 

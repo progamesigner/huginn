@@ -9,7 +9,7 @@ from app.core.application import App
 from app.core.providers.command import CommandProvider
 from app.features.identities import commands as identities
 from app.features.identities.commands import cli
-from app.features.identities.types import (
+from app.features.identities.entities import (
     ExternalIdentity,
     IssuedIdentityLinkInvite,
     User,

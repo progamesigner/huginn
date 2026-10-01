@@ -6,16 +6,7 @@ from lib.guid import GUIDContract
 from lib.router import EventSourceResponse
 from lib.temporal import ClockContract
 
-from .exceptions import TurnFailedError
-from .presenters import (
-    AnthropicPresenter,
-    NativePresenter,
-    OpenAIPresenter,
-    Presenter,
-    encode,
-)
-from .services import ChatService, PreparedTurn
-from .types import (
+from .entities import (
     ChatRequest,
     CompatibleMessage,
     CompatibleRequest,
@@ -26,6 +17,15 @@ from .types import (
     MessageContent,
     TextEvent,
 )
+from .exceptions import TurnFailedError
+from .presenters import (
+    AnthropicPresenter,
+    NativePresenter,
+    OpenAIPresenter,
+    Presenter,
+    encode,
+)
+from .services import ChatService, PreparedTurn
 
 _HEADERS = {'Cache-Control': 'no-cache', 'X-Accel-Buffering': 'no'}
 _COMPLETION_PREFIX = 'chatcmpl'

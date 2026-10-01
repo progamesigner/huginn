@@ -1,6 +1,6 @@
 from uuid import UUID
 
-from app.features.identities.types import ExternalIdentity, IdentityAuditEvent, User
+from app.features.identities.entities import ExternalIdentity, IdentityAuditEvent, User
 
 
 class FakeIdentityRepository:

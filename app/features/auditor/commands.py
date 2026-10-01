@@ -6,8 +6,8 @@ from typing import Annotated
 
 from lib.command import Option, Typer, echo, resolve
 
+from .entities import AuditReport
 from .services import RedisAuditor
-from .types import AuditReport
 
 cli = Typer(no_args_is_help=True, help='Audit external data stores.')
 

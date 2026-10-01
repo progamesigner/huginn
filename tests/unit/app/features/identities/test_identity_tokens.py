@@ -3,8 +3,8 @@ from datetime import UTC, datetime
 
 import pytest
 
+from app.features.identities.entities import IssuedIdentityLinkInvite
 from app.features.identities.tokens import IdentityTokenCodec
-from app.features.identities.types import IssuedIdentityLinkInvite
 
 _SECRET = b'x' * 32
 _RAW = bytes(range(16))

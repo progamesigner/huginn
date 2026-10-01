@@ -4,7 +4,7 @@ from typing import override
 
 from pydantic import JsonValue
 
-from app.features.agents.types import Tool, ToolOutput, TurnScope
+from app.features.agents.entities import Tool, ToolOutput, TurnScope
 
 from .config import ToolConfig
 from .registry import ToolRegistry

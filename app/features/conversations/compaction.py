@@ -17,9 +17,9 @@ from lib.llm import (
     TextSegment,
 )
 
+from .entities import Conversation, Part, Turn
 from .exceptions import NoTurnsToCompactError
 from .repositories import ConversationRepository
-from .types import Conversation, Part, Turn
 
 logger = logging.getLogger(__name__)
 

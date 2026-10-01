@@ -1,5 +1,4 @@
-from app.features.messages.presenters import NativePresenter, encode
-from app.features.messages.types import (
+from app.features.messages.entities import (
     DoneEvent,
     ErrorEvent,
     OpenedEvent,
@@ -10,6 +9,7 @@ from app.features.messages.types import (
     TurnEvent,
     UnfinishedEvent,
 )
+from app.features.messages.presenters import NativePresenter, encode
 
 
 def framed(event: TurnEvent) -> str:

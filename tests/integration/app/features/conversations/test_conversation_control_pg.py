@@ -8,12 +8,12 @@ from app.features.agents.config import AgentConfig, AgentConfigList, DefaultsCon
 from app.features.blobs.config import RetentionConfig
 from app.features.blobs.repositories import BlobRepository
 from app.features.conversations.config import CompactionConfig
+from app.features.conversations.entities import Part
 from app.features.conversations.repositories import ConversationRepository
 from app.features.conversations.services import (
     ConversationControl,
     ConversationTranscript,
 )
-from app.features.conversations.types import Part
 from lib.database import DatabaseContract, DatabaseManager
 from lib.guid import GUIDManager
 from lib.llm import (

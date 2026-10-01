@@ -2,8 +2,8 @@ import pytest
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.features.identities.entities import LinkedPrincipal
 from app.features.identities.repositories import IdentityRepository
-from app.features.identities.types import LinkedPrincipal
 from lib.guid import GUIDManager
 from lib.temporal import ClockManager
 

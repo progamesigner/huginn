@@ -4,8 +4,8 @@ from app.contracts.auth import ApiClient
 from app.core.dependencies import Authenticated, Provide
 from lib.router import Depends, EventSourceResponse, Router
 
+from .entities import ChatRequest, CompatibleMessage, CompatibleRequest, Completion
 from .handlers import ChatHandlers
-from .types import ChatRequest, CompatibleMessage, CompatibleRequest, Completion
 
 router = Router()
 

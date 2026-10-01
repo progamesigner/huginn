@@ -7,8 +7,8 @@ from pydantic import JsonValue
 
 from lib.temporal import ClockContract
 
+from .entities import Skill, SkillMeta
 from .sources.contracts import SkillSource
-from .types import Skill, SkillMeta
 
 _DEFAULT_TTL = timedelta(minutes=15)
 

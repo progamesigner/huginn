@@ -2,8 +2,7 @@ import asyncio
 from collections.abc import AsyncIterator
 from contextlib import aclosing
 
-from app.features.messages.streams import QueuedReply, drain
-from app.features.messages.types import (
+from app.features.messages.entities import (
     DoneEvent,
     ErrorEvent,
     PingEvent,
@@ -12,6 +11,7 @@ from app.features.messages.types import (
     ToolEvent,
     TurnEvent,
 )
+from app.features.messages.streams import QueuedReply, drain
 
 
 async def answer(reply: QueuedReply) -> None:

@@ -3,14 +3,14 @@ from typing import Annotated, override
 import pytest
 from pydantic import BaseModel, Field
 
-from app.features.agents.exceptions import DuplicateToolNameError
-from app.features.agents.types import (
+from app.features.agents.entities import (
     ToolOutput,
     ToolParams,
     ToolSet,
     TurnScope,
     TypedTool,
 )
+from app.features.agents.exceptions import DuplicateToolNameError
 from app.features.tools.exceptions import DuplicateToolError, UnknownToolError
 from app.features.tools.registry import ToolKind, ToolRegistry
 

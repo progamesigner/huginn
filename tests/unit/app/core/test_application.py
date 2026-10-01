@@ -8,7 +8,7 @@ from app.core.providers.llm import LLMProvider
 from app.core.providers.logging import LoggingProvider
 from app.core.providers.settings import SettingsProvider
 from app.core.settings import HuginnSettings
-from app.features.agents.types import ToolOutput, ToolParams, TypedTool
+from app.features.agents.entities import ToolOutput, ToolParams, TypedTool
 from app.features.tools.exceptions import DuplicateToolError
 from app.features.tools.providers import ToolRegistryProvider
 from app.features.tools.registry import ToolKind, ToolRegistry

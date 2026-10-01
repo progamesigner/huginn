@@ -4,13 +4,13 @@ from unittest.mock import AsyncMock, Mock
 import pytest
 
 from app.features.agents.config import AgentConfig
-from app.features.agents.router import Router
-from app.features.agents.types import (
+from app.features.agents.entities import (
     RoutingContext,
     RoutingPolicy,
     SelectionPolicy,
     TurnPrompt,
 )
+from app.features.agents.router import Router
 from lib.decision import (
     ChoiceAnswer,
     DecisionContract,

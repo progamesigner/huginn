@@ -12,14 +12,14 @@ from app.contracts.channels import (
     InboundMessage,
 )
 from app.features.agents.contracts import TurnHandlerContract
-from app.features.agents.types import TurnRequest
+from app.features.agents.entities import TurnRequest
 from app.features.channels.contracts import TranscriptionContract
 from app.features.channels.exceptions import TranscriptionUnavailableError
 from app.features.channels.registry import Command, CommandRegistry
 from app.features.channels.telegram.config import TelegramChannelConfig
 from app.features.channels.telegram.turns import TelegramTurnProcessor
 from app.features.identities.contracts import IdentityResolverContract
-from app.features.identities.types import (
+from app.features.identities.entities import (
     AnonymousPrincipal,
     LinkedPrincipal,
     Principal,

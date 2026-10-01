@@ -3,7 +3,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field
 
-from app.features.agents.types import ToolOutput, ToolParams, TurnScope, TypedTool
+from app.features.agents.entities import ToolOutput, ToolParams, TurnScope, TypedTool
 from app.features.blobs.contracts import BlobStoreContract
 from app.features.tools.exceptions import ToolError
 

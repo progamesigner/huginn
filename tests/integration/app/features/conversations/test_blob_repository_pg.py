@@ -8,15 +8,15 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.features.blobs.exceptions import BlobError
 from app.features.blobs.repositories import BlobRepository
-from app.features.blobs.schemas.sqlalchemy import BlobRecord
+from app.features.blobs.sources.sqlalchemy import BlobRecord
+from app.features.conversations.entities import Part
 from app.features.conversations.repositories import (
     ConversationRepository,
 )
-from app.features.conversations.schemas.sqlalchemy import (
+from app.features.conversations.services import ConversationBlobReferences
+from app.features.conversations.sources.sqlalchemy import (
     ConversationRecord,
 )
-from app.features.conversations.services import ConversationBlobReferences
-from app.features.conversations.types import Part
 from lib.guid import GUIDManager
 from lib.temporal import ClockManager
 

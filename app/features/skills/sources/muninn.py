@@ -6,8 +6,8 @@ from typing import override
 import yaml
 from pydantic import JsonValue
 
+from app.features.skills.entities import Skill, SkillMeta
 from app.features.skills.sources.contracts import SkillSource
-from app.features.skills.types import Skill, SkillMeta
 from lib.mcp import MCPClientContract
 
 logger = logging.getLogger(__name__)

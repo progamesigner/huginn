@@ -15,7 +15,7 @@ from app.features.agents.config import (
     resolve_selection,
 )
 from app.features.agents.contracts import TranscriptStoreContract
-from app.features.agents.types import (
+from app.features.agents.entities import (
     PromptAttachment,
     RoutingContext,
     RoutingHistory,
@@ -41,8 +41,8 @@ from .compaction import (
 )
 from .config import COMPACTION
 from .contracts import ConversationControlContract
+from .entities import Conversation, Part, Turn
 from .repositories import ConversationRepository
-from .types import Conversation, Part, Turn
 
 
 def routing_turn(turn: Turn) -> RoutingTurn:

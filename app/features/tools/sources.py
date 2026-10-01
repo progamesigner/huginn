@@ -4,7 +4,7 @@ from typing import override
 from app.core.config.registry import HuginnConfig
 from app.features.agents.config import AgentConfig
 from app.features.agents.contracts import ToolHarvest, ToolSource
-from app.features.agents.types import TurnScope, resolve_bindings
+from app.features.agents.entities import TurnScope, resolve_bindings
 
 from .binding import build_bound_tool
 from .config import TOOLS

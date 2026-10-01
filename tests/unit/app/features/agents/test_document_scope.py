@@ -1,4 +1,4 @@
-from app.features.agents.types import TurnScope
+from app.features.agents.entities import TurnScope
 
 
 def test_document_scope_is_optional_and_defaults_empty() -> None:

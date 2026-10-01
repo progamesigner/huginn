@@ -5,9 +5,9 @@ from typing import override
 
 from pydantic import JsonValue
 
+from app.features.skills.entities import Skill, SkillMeta
 from app.features.skills.repositories import SkillRepository
 from app.features.skills.sources.contracts import SkillSource
-from app.features.skills.types import Skill, SkillMeta
 from tests.helpers.clock import FakeClock
 
 

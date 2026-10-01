@@ -6,13 +6,13 @@ from uuid import UUID
 import pytest
 from sqlalchemy.exc import IntegrityError
 
-from app.features.identities.exceptions import InvalidIdentityLinkError
-from app.features.identities.services import IdentityLinkingService
-from app.features.identities.tokens import IdentityTokenCodec
-from app.features.identities.types import (
+from app.features.identities.entities import (
     ExternalIdentity,
     IdentityLinkInvite,
 )
+from app.features.identities.exceptions import InvalidIdentityLinkError
+from app.features.identities.services import IdentityLinkingService
+from app.features.identities.tokens import IdentityTokenCodec
 from tests.helpers.clock import FakeClock
 
 _NOW = datetime(2026, 1, 1, tzinfo=UTC)

@@ -3,7 +3,7 @@ from collections.abc import Mapping
 
 from pydantic import JsonValue
 
-from app.features.skills.types import Skill, SkillMeta
+from app.features.skills.entities import Skill, SkillMeta
 
 
 class SkillSource(ABC):

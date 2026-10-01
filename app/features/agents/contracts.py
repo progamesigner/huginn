@@ -8,7 +8,14 @@ from app.contracts.channels import ChannelReplyContract, ToolPhase
 from lib.llm import Message, ModelRef
 
 from .config import AgentConfig
-from .types import RoutingHistory, RoutingTurn, Tool, TurnPrompt, TurnRequest, TurnScope
+from .entities import (
+    RoutingHistory,
+    RoutingTurn,
+    Tool,
+    TurnPrompt,
+    TurnRequest,
+    TurnScope,
+)
 
 type NamedTool = tuple[str, Tool]
 type ToolSourceCollector = Callable[[], Iterable[ToolSource]]

@@ -4,9 +4,9 @@ from typing import override
 import pytest
 
 from app.features.agents.config import AgentConfig, DefaultsConfig
+from app.features.agents.entities import RoutingPolicy, SelectionPolicy
 from app.features.agents.exceptions import UnroutableError
 from app.features.agents.router import Router
-from app.features.agents.types import RoutingPolicy, SelectionPolicy
 from lib.llm import (
     CompletionChunk,
     CompletionRequest,

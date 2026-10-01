@@ -9,20 +9,20 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config.registry import HuginnConfig
-from app.features.agents.types import PromptAttachment, TurnPrompt
+from app.features.agents.entities import PromptAttachment, TurnPrompt
 from app.features.blobs.config import BlobsConfig, RetentionConfig
 from app.features.blobs.contracts import BlobStoreContract, BlobStoreFactoryContract
+from app.features.blobs.entities import Blob, BlobKind
 from app.features.blobs.providers import BlobStoreFactory
 from app.features.blobs.repositories import BlobRepository
-from app.features.blobs.schemas.sqlalchemy import BlobRecord
-from app.features.blobs.types import Blob, BlobKind
+from app.features.blobs.sources.sqlalchemy import BlobRecord
 from app.features.conversations.config import CompactionConfig
+from app.features.conversations.entities import Conversation, Part
 from app.features.conversations.repositories import ConversationRepository
 from app.features.conversations.services import (
     ConversationTranscript,
     ConversationTranscriptStore,
 )
-from app.features.conversations.types import Conversation, Part
 from lib.database import DatabaseContract, DatabaseManager
 from lib.guid import GUIDManager
 from lib.llm import (

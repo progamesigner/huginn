@@ -1,6 +1,6 @@
 from lib.redis import RedisContract
 
-from .types import AuditReport, classify_key, render_key
+from .entities import AuditReport, classify_key, render_key
 
 
 class RedisAuditor:

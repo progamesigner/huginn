@@ -1,12 +1,12 @@
 import json
 
-from app.features.agents.routing_context import render_routing_state, routing_state
-from app.features.agents.types import (
+from app.features.agents.entities import (
     PromptAttachment,
     RoutingContext,
     RoutingTurn,
     TurnPrompt,
 )
+from app.features.agents.routing_context import render_routing_state, routing_state
 
 
 def test_legacy_message_is_unchanged() -> None:

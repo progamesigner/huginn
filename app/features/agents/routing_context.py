@@ -2,7 +2,7 @@ import json
 
 from pydantic import JsonValue
 
-from .types import RoutingContext, TurnPrompt
+from .entities import RoutingContext, TurnPrompt
 
 # NOTE: routing sees text and attachment hints only, never media bytes, tool results
 # or reasoning

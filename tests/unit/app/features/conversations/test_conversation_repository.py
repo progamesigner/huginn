@@ -5,8 +5,8 @@ from uuid import UUID
 
 from pydantic import JsonValue
 
+from app.features.conversations.entities import Conversation, Part, Turn
 from app.features.conversations.exceptions import NoTurnsToCompactError
-from app.features.conversations.types import Conversation, Part, Turn
 
 
 class FakeConversationRepository:

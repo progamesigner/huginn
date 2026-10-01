@@ -7,12 +7,12 @@ import pytest
 from pydantic import JsonValue
 
 from app.features.agents.config import AgentConfig, SkillsConfig
-from app.features.agents.types import ToolSet, TurnScope
+from app.features.agents.entities import ToolSet, TurnScope
 from app.features.skills.config import SkillsSourceConfig
+from app.features.skills.entities import Skill, SkillMeta
 from app.features.skills.repositories import SkillRepository
 from app.features.skills.sources.contracts import SkillSource
 from app.features.skills.tools import SkillParams, SkillToolSource, _build_skill_tool
-from app.features.skills.types import Skill, SkillMeta
 from lib.llm import ToolCallSegment
 from tests.helpers.clock import FakeClock
 

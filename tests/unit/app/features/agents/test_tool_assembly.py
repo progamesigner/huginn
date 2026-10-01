@@ -6,9 +6,9 @@ from pydantic import Field
 
 from app.features.agents.config import AgentConfig, SkillsConfig, load_instructions
 from app.features.agents.contracts import NamedTool, ToolHarvest, ToolSource
+from app.features.agents.entities import ToolOutput, ToolParams, TurnScope, TypedTool
 from app.features.agents.exceptions import AgentError, DuplicateToolNameError
 from app.features.agents.services import build_tool_set
-from app.features.agents.types import ToolOutput, ToolParams, TurnScope, TypedTool
 
 _SCOPE = TurnScope(actor='user:1', agent='test', channel='test', chat='1')
 

@@ -5,7 +5,7 @@ from typing import override
 
 from app.contracts.channels import ChannelReplyContract, ToolPhase, TurnEnding
 
-from .types import (
+from .entities import (
     DoneEvent,
     ErrorEvent,
     PingEvent,

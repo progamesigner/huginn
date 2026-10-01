@@ -21,7 +21,7 @@ from app.features.agents.config import (
     RouterConfig,
 )
 from app.features.agents.contracts import TurnHandlerContract
-from app.features.agents.types import ShadowPolicy, TurnRequest
+from app.features.agents.entities import ShadowPolicy, TurnRequest
 from app.features.auth.config import (
     API_KEYS,
     ApiKeyConfig,

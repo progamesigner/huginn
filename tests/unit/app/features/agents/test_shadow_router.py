@@ -4,15 +4,15 @@ from unittest.mock import AsyncMock, Mock
 import pytest
 
 from app.features.agents.config import AgentConfig
-from app.features.agents.router import Router
-from app.features.agents.shadow_report import shadow_records
-from app.features.agents.types import (
+from app.features.agents.entities import (
     RoutingContext,
     RoutingPolicy,
     SelectionPolicy,
     ShadowPolicy,
     TurnPrompt,
 )
+from app.features.agents.router import Router
+from app.features.agents.shadow_report import shadow_records
 from lib.concurrency import TaskSupervisor
 from lib.decision import (
     ChoiceAnswer,

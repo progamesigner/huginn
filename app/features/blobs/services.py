@@ -7,8 +7,8 @@ from lib.guid import GUIDContract
 from lib.temporal import ClockContract
 
 from .contracts import BlobStoreContract
+from .entities import Blob, BlobKind
 from .repositories import BlobRepository
-from .types import Blob, BlobKind
 
 
 # NOTE: each call runs in its own session, for a caller that holds no transaction

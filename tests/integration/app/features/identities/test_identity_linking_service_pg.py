@@ -8,13 +8,13 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from app.features.identities.repositories import IdentityRepository
-from app.features.identities.schemas.sqlalchemy import (
+from app.features.identities.services import IdentityLinkingService
+from app.features.identities.sources.sqlalchemy import (
     ExternalIdentityRecord,
     IdentityAuditEventRecord,
     IdentityLinkInviteRecord,
     UserRecord,
 )
-from app.features.identities.services import IdentityLinkingService
 from app.features.identities.tokens import IdentityTokenCodec
 from lib.guid import GUIDManager
 from lib.temporal import ClockManager

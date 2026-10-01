@@ -6,7 +6,7 @@ from pydantic import Field, JsonValue
 
 from app.features.agents.config import AgentConfig
 from app.features.agents.contracts import ToolHarvest, ToolSource
-from app.features.agents.types import (
+from app.features.agents.entities import (
     ToolOutput,
     ToolParams,
     TurnScope,
@@ -15,8 +15,8 @@ from app.features.agents.types import (
 )
 
 from .config import SkillsSourceConfig
+from .entities import SkillMeta
 from .repositories import SkillRepository
-from .types import SkillMeta
 
 logger = logging.getLogger(__name__)
 

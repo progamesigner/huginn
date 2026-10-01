@@ -6,6 +6,12 @@ from unittest.mock import AsyncMock
 
 import pytest
 
+from app.features.agents.entities import (
+    RoutingContext,
+    RoutingHistory,
+    SelectionPolicy,
+    TurnPrompt,
+)
 from app.features.agents.eval_dataset import make_sample, read_samples, write_private
 from app.features.agents.eval_report import (
     label_item,
@@ -15,12 +21,6 @@ from app.features.agents.eval_report import (
 )
 from app.features.agents.evaluation import TokenPrices, Variant, evaluate
 from app.features.agents.router import Router, RoutingDecision
-from app.features.agents.types import (
-    RoutingContext,
-    RoutingHistory,
-    SelectionPolicy,
-    TurnPrompt,
-)
 
 from .test_agent_router import FakeLLM
 
