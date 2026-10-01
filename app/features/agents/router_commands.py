@@ -8,7 +8,7 @@ from typing import Annotated, Literal
 from typer import Context, prompt
 
 from app.core.config.registry import HuginnConfig
-from lib.command import Exit, Option, Typer, echo, resolve, scoped
+from lib.command import Exit, Option, Typer, echo, resolve
 
 from .config import AGENTS, NO_AGENT, validate_router_selection
 from .contracts import TranscriptStoreContract
@@ -89,23 +89,22 @@ def export(
         # NOTE: exclusive creation, so a slip of the path cannot overwrite private data
         write_private(out, '')
         try:
-            async with scoped() as container:
-                store = container.resolve(TranscriptStoreContract)
-                with out.open('a') as handle:
-                    async for history in store.routing_samples(
-                        target.channel,
-                        since.replace(tzinfo=UTC) if since.tzinfo is None else since,
-                        history_turns,
-                    ):
-                        sample = make_sample(
-                            history,
-                            name,
-                            candidates,
-                            selection.fallback,
-                        )
-                        handle.write(sample.model_dump_json() + '\n')
-                        count += 1
-                        followups += int('follow-up' in sample.tags)
+            store = resolve(TranscriptStoreContract)
+            with out.open('a') as handle:
+                async for history in store.routing_samples(
+                    target.channel,
+                    since.replace(tzinfo=UTC) if since.tzinfo is None else since,
+                    history_turns,
+                ):
+                    sample = make_sample(
+                        history,
+                        name,
+                        candidates,
+                        selection.fallback,
+                    )
+                    handle.write(sample.model_dump_json() + '\n')
+                    count += 1
+                    followups += int('follow-up' in sample.tags)
         except BaseException:
             out.unlink(missing_ok=True)
             raise
@@ -209,13 +208,12 @@ def run_eval(
         raise FileExistsError('result or review output already exists')
 
     async def run() -> tuple[EvaluationResult, ...]:
-        async with scoped() as container:
-            return await evaluate(
-                container.resolve(Router),
-                samples,
-                selections,
-                price_map,
-            )
+        return await evaluate(
+            resolve(Router),
+            samples,
+            selections,
+            price_map,
+        )
 
     results = asyncio.run(run())
     write_private(out, json_text([result.model_dump() for result in results]))

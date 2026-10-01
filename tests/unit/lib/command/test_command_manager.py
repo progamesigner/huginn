@@ -1,8 +1,6 @@
-import asyncio
-
 from typer.testing import CliRunner
 
-from lib.command import CommandManager, Typer, echo, resolve, scoped
+from lib.command import CommandManager, Typer, echo, resolve
 from lib.container import Container
 
 runner = CliRunner()
@@ -73,29 +71,3 @@ def test_resolve_uses_command_container() -> None:
 
     assert result.exit_code == 0
     assert result.output == 'from container\n'
-
-
-def test_scoped_uses_and_disposes_child_container() -> None:
-    container = Container()
-    container.bind(ScopedService, constructor=ScopedService, scoped=True)
-    manager = CommandManager(container)
-    commands = Typer()
-    instances = []
-
-    @commands.command()
-    def show() -> None:
-        async def execute() -> None:
-            async with scoped() as scope:
-                service = scope.resolve(ScopedService)
-                instances.append(service)
-                echo(str(service is scope.resolve(ScopedService)))
-
-        asyncio.run(execute())
-
-    manager.mount('demo', commands)
-
-    result = runner.invoke(manager.app, ['demo', 'show'])
-
-    assert result.exit_code == 0
-    assert result.output == 'True\n'
-    assert instances[0].disposed

@@ -13,7 +13,7 @@ class AuditorProvider(ProviderContract):
 
     @override
     def __call__(self, container: ContainerContract) -> None:
-        container.bind(RedisAuditor, constructor=RedisAuditor, scoped=True)
+        container.bind(RedisAuditor, constructor=RedisAuditor)
 
 
 class AuditCommandProvider(ProviderContract):

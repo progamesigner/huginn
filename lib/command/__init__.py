@@ -1,7 +1,7 @@
 from typer import Argument, Exit, Option, Typer, echo
 
-from .contracts import CommandContract
-from .manager import CommandManager, resolve, scoped
+from .contracts import CommandContract, Resolver
+from .manager import CommandManager, resolve
 
 __all__ = [
     'Argument',
@@ -9,8 +9,8 @@ __all__ = [
     'CommandManager',
     'Exit',
     'Option',
+    'Resolver',
     'Typer',
     'echo',
     'resolve',
-    'scoped',
 ]

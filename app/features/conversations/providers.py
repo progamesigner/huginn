@@ -16,7 +16,6 @@ from lib.guid import GUIDContract
 from lib.llm import LLMContract
 from lib.temporal import ClockContract
 
-from .compaction import CompactionService
 from .config import COMPACTION
 from .contracts import ConversationControlContract
 from .repositories import ConversationRepository
@@ -67,12 +66,6 @@ class ConversationProvider(ProviderContract):
 
     @override
     def __call__(self, container: ContainerContract) -> None:
-        container.bind(
-            ConversationRepository,
-            constructor=ConversationRepository,
-            scoped=True,
-        )
-        container.bind(CompactionService, constructor=CompactionService, scoped=True)
         container.bind(
             ConversationControlContract,
             factory=_control,

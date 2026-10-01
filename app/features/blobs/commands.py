@@ -1,7 +1,9 @@
 import asyncio
 from typing import Annotated
 
-from lib.command import Option, Typer, echo, scoped
+from lib.command import Option, Typer, echo, resolve
+from lib.database import DatabaseContract
+from lib.guid import GUIDContract
 from lib.temporal import ClockContract
 
 from .contracts import BlobReferenceRegistry
@@ -18,17 +20,17 @@ def prune(
     ] = False,
 ) -> None:
     async def run() -> int:
-        async with scoped() as container:
-            repository = container.resolve(BlobRepository)
-            references = container.resolve(BlobReferenceRegistry).for_session(
-                repository.session,
+        clock = resolve(ClockContract)
+        async with resolve(DatabaseContract).transaction() as transaction:
+            return await BlobRepository(
+                transaction,
+                resolve(GUIDContract),
+                clock,
+            ).prune(
+                clock.now(),
+                resolve(BlobReferenceRegistry).for_session(transaction),
+                dry_run=dry_run,
             )
-            async with repository.session.begin():
-                return await repository.prune(
-                    container.resolve(ClockContract).now(),
-                    references,
-                    dry_run=dry_run,
-                )
 
     count = asyncio.run(run())
     action = 'Would prune' if dry_run else 'Pruned'

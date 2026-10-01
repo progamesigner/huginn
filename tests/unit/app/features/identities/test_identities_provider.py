@@ -6,25 +6,17 @@ from app.features.identities.contracts import IdentityLinkingContract
 from app.features.identities.exceptions import IdentityLinkSecretError
 from app.features.identities.providers import IdentityProvider
 from app.features.identities.repositories import IdentityRepository
-from app.features.identities.services import IdentityLinkingService, IdentityResolver
-from lib.container import ResolutionError
+from app.features.identities.tokens import IdentityTokenCodec
 from tests.helpers.settings import make_settings
 
 
-async def test_repository_resolves_scoped() -> None:
+async def test_repositories_are_built_per_transaction_not_bound() -> None:
     settings = make_settings(
         database_url='postgresql+asyncpg://user:pass@localhost/huginn',
     )
     container = App().build(SettingsProvider(settings), IdentityProvider())
 
-    with pytest.raises(ResolutionError, match='scoped'):
-        container.resolve(IdentityRepository)
-
-    async with container.scope() as scope:
-        repository = scope.resolve(IdentityRepository)
-        resolver = scope.resolve(IdentityResolver)
-        assert resolver.repository is repository
-        assert scope.resolve(IdentityRepository) is repository
+    assert not container.bound(IdentityRepository)
 
     await container.dispose()
 
@@ -46,28 +38,27 @@ async def test_the_linking_contract_resolves_without_a_scope() -> None:
     await container.dispose()
 
 
-async def test_linking_service_requires_configured_secret() -> None:
+async def test_token_codec_requires_configured_secret() -> None:
     settings = make_settings(
         database_url='postgresql+asyncpg://user:pass@localhost/huginn',
     )
     container = App().build(SettingsProvider(settings), IdentityProvider())
 
-    async with container.scope() as scope:
-        with pytest.raises(IdentityLinkSecretError, match='not configured'):
-            scope.resolve(IdentityLinkingService)
+    with pytest.raises(IdentityLinkSecretError, match='not configured'):
+        container.resolve(IdentityTokenCodec)
 
     await container.dispose()
 
 
-async def test_linking_service_resolves_scoped_without_exposing_secret() -> None:
+async def test_token_codec_is_shared_once_configured() -> None:
     settings = make_settings(
         database_url='postgresql+asyncpg://user:pass@localhost/huginn',
         identity_link_secret='x' * 32,
     )
     container = App().build(SettingsProvider(settings), IdentityProvider())
 
-    async with container.scope() as scope:
-        linking = scope.resolve(IdentityLinkingService)
-        assert scope.resolve(IdentityLinkingService) is linking
+    assert container.resolve(IdentityTokenCodec) is container.resolve(
+        IdentityTokenCodec,
+    )
 
     await container.dispose()

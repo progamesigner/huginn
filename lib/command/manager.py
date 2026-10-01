@@ -1,18 +1,14 @@
-from collections.abc import AsyncIterator
-from contextlib import asynccontextmanager
 from contextvars import ContextVar
 from typing import override
 
 from typer import Context, Typer
 
-from lib.container import ContainerContract
+from .contracts import CommandContract, Resolver
 
-from .contracts import CommandContract
-
-_container: ContextVar[ContainerContract | None] = ContextVar('container', default=None)
+_container: ContextVar[Resolver | None] = ContextVar('container', default=None)
 
 
-def _current() -> ContainerContract:
+def _current() -> Resolver:
     container = _container.get()
     if container is None:
         raise RuntimeError('command container is not configured')
@@ -23,7 +19,7 @@ def _current() -> ContainerContract:
 class CommandManager(CommandContract):
     application: Typer
 
-    def __init__(self, container: ContainerContract) -> None:
+    def __init__(self, container: Resolver) -> None:
         def initialize(context: Context) -> None:
             token = _container.set(container)
             context.call_on_close(lambda: _container.reset(token))
@@ -46,9 +42,3 @@ class CommandManager(CommandContract):
 
 def resolve[T](binding: type[T]) -> T:
     return _current().resolve(binding)
-
-
-@asynccontextmanager
-async def scoped() -> AsyncIterator[ContainerContract]:
-    async with _current().scope() as container:
-        yield container

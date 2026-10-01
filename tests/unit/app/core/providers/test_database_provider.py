@@ -4,7 +4,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.application import App
 from app.core.providers.database import DatabaseProvider
 from app.core.providers.settings import SettingsProvider
-from lib.container import ResolutionError
 from lib.database import DatabaseContract, DatabaseError, DatabaseManager
 from tests.helpers.settings import make_settings
 
@@ -34,22 +33,7 @@ def test_provider_defers_missing_url_until_resolution() -> None:
         container.resolve(DatabaseContract)
 
 
-def test_session_binding_requires_an_active_scope() -> None:
+def test_sessions_come_from_the_contract_not_the_container() -> None:
     container = _container()
 
-    with pytest.raises(ResolutionError, match='scoped'):
-        container.resolve(AsyncSession)
-
-
-async def test_scope_yields_a_single_session_then_disposes_it() -> None:
-    container = _container()
-
-    async with container.scope() as scope:
-        session = scope.resolve(AsyncSession)
-        assert isinstance(session, AsyncSession)
-        assert scope.resolve(AsyncSession) is session
-
-    async with container.scope() as other:
-        assert other.resolve(AsyncSession) is not session
-
-    await container.dispose()
+    assert not container.bound(AsyncSession)

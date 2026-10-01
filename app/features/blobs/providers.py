@@ -20,6 +20,7 @@ from .contracts import (
     BlobStoreFactoryContract,
 )
 from .repositories import BlobRepository
+from .services import BlobService
 
 
 class BlobStoreFactory(BlobStoreFactoryContract):
@@ -50,12 +51,7 @@ class BlobProvider(ProviderContract):
 
     @override
     def __call__(self, container: ContainerContract) -> None:
-        container.bind(BlobRepository, constructor=BlobRepository, scoped=True)
-        container.bind(
-            BlobStoreContract,
-            constructor=BlobRepository,
-            scoped=True,
-        )
+        container.bind(BlobStoreContract, constructor=BlobService, shared=True)
         container.bind(
             BlobStoreFactoryContract,
             constructor=BlobStoreFactory,

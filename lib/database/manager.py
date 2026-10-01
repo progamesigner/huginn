@@ -2,6 +2,7 @@ from collections.abc import AsyncIterator, Mapping
 from contextlib import asynccontextmanager
 from typing import override
 
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
     AsyncSession,
@@ -11,7 +12,6 @@ from sqlalchemy.ext.asyncio import (
 
 from .contracts import DatabaseContract
 from .exceptions import DatabaseError
-from .session import ScopedSession
 
 
 class DatabaseManager(DatabaseContract):
@@ -27,16 +27,25 @@ class DatabaseManager(DatabaseContract):
         self.session_makers = {}
         self.urls = dict(urls)
 
-    @override
-    def scoped(self, alias: str | None = None) -> ScopedSession:
-        # NOTE: the caller owns the session lifetime
-        return ScopedSession(self._async_session(alias)())
-
     @asynccontextmanager
     @override
     async def session(self, alias: str | None = None) -> AsyncIterator[AsyncSession]:
         async with self._async_session(alias)() as session:
             yield session
+
+    @asynccontextmanager
+    @override
+    async def transaction(
+        self,
+        alias: str | None = None,
+    ) -> AsyncIterator[AsyncSession]:
+        async with self.session(alias) as session, session.begin():
+            yield session
+
+    @override
+    async def ping(self, alias: str | None = None) -> None:
+        async with self.session(alias) as session:
+            await session.execute(text('SELECT 1'))
 
     async def dispose(self) -> None:
         for engine in self.engines.values():
@@ -44,8 +53,7 @@ class DatabaseManager(DatabaseContract):
         self.engines.clear()
         self.session_makers.clear()
 
-    @override
-    def url(self, alias: str | None = None) -> str:
+    def _url(self, alias: str | None = None) -> str:
         if alias not in self.urls:
             raise DatabaseError(f'database alias {alias!r} is not configured')
 
@@ -53,7 +61,7 @@ class DatabaseManager(DatabaseContract):
 
     def _async_session(self, alias: str | None) -> async_sessionmaker[AsyncSession]:
         if alias not in self.session_makers:
-            engine = create_async_engine(self.url(alias))
+            engine = create_async_engine(self._url(alias))
             self.engines[alias] = engine
             self.session_makers[alias] = async_sessionmaker(
                 engine,

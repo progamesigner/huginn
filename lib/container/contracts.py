@@ -1,6 +1,6 @@
 from abc import ABC, abstractmethod
 from collections.abc import Callable
-from contextlib import AbstractAsyncContextManager, AbstractContextManager
+from contextlib import AbstractContextManager
 from types import TracebackType
 from typing import ClassVar, Protocol, Self, runtime_checkable
 
@@ -25,7 +25,6 @@ class ContainerContract(ABC):
         factory: Callable[[ContainerContract], T] | None = None,
         instance: T | None = None,
         shared: bool = False,
-        scoped: bool = False,
         eager: bool = False,
     ) -> None: ...
 
@@ -40,10 +39,6 @@ class ContainerContract(ABC):
 
     @abstractmethod
     def use[T](self, binding: type[T], value: T) -> AbstractContextManager[T]: ...
-
-    # NOTE: a child scope holds its own scoped instances and disposes them on exit
-    @abstractmethod
-    def scope(self) -> AbstractAsyncContextManager[ContainerContract]: ...
 
     @abstractmethod
     async def start(self) -> None: ...

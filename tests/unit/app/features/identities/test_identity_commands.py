@@ -1,15 +1,14 @@
 from datetime import UTC, datetime
 from typing import override
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import UUID
 
 from typer.testing import CliRunner, Result
 
 from app.core.application import App
 from app.core.providers.command import CommandProvider
+from app.features.identities import commands as identities
 from app.features.identities.commands import cli
-from app.features.identities.repositories import IdentityRepository
-from app.features.identities.services import IdentityLinkingService
 from app.features.identities.types import (
     ExternalIdentity,
     IssuedIdentityLinkInvite,
@@ -17,6 +16,9 @@ from app.features.identities.types import (
 )
 from lib.command import CommandContract
 from lib.container import ContainerContract, ProviderContract
+from lib.database import DatabaseContract
+from lib.guid import GUIDContract
+from lib.temporal import ClockContract
 
 runner = CliRunner()
 _USER = User(UUID(int=1), 'alice', 'Alice')
@@ -24,20 +26,20 @@ _IDENTITY = ExternalIdentity(UUID(int=2), _USER.id, 'telegram', 'primary', '42')
 
 
 class FakeIdentitiesProvider(ProviderContract):
-    def __init__(self, repository: MagicMock, service: MagicMock) -> None:
-        self.repository = repository
-        self.service = service
-
     @override
     def __call__(self, container: ContainerContract) -> None:
-        container.bind(IdentityRepository, instance=self.repository)
-        container.bind(IdentityLinkingService, instance=self.service)
+        transaction = MagicMock()
+        transaction.__aenter__ = AsyncMock()
+        transaction.__aexit__ = AsyncMock(return_value=False)
+        database = MagicMock(spec=DatabaseContract)
+        database.transaction.return_value = transaction
+        container.bind(DatabaseContract, instance=database)
+        container.bind(GUIDContract, instance=MagicMock(spec=GUIDContract))
+        container.bind(ClockContract, instance=MagicMock(spec=ClockContract))
 
 
 def dependencies() -> tuple[MagicMock, MagicMock]:
     repository = MagicMock()
-    repository.session.begin.return_value.__aenter__ = AsyncMock()
-    repository.session.begin.return_value.__aexit__ = AsyncMock(return_value=False)
     repository.create_user = AsyncMock(return_value=_USER)
     repository.find_user = AsyncMock(return_value=_USER)
     repository.list_external = AsyncMock(return_value=(_IDENTITY,))
@@ -59,13 +61,14 @@ def invoke(
     service: MagicMock,
     arguments: list[str],
 ) -> Result:
-    container = App().build(
-        CommandProvider(),
-        FakeIdentitiesProvider(repository, service),
-    )
+    container = App().build(CommandProvider(), FakeIdentitiesProvider())
     commands = container.resolve(CommandContract)
     commands.mount('identities', cli)
-    return runner.invoke(commands.app, ['identities', *arguments])
+    with (
+        patch.object(identities, 'IdentityRepository', return_value=repository),
+        patch.object(identities, '_linking', return_value=service),
+    ):
+        return runner.invoke(commands.app, ['identities', *arguments])
 
 
 def test_user_create() -> None:

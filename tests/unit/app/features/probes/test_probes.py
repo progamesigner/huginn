@@ -26,17 +26,11 @@ def make_redis() -> MagicMock:
 
 
 def make_database(*, failing: bool = False) -> MagicMock:
-    session = MagicMock()
-    session.execute = AsyncMock(
+    database = MagicMock(spec=DatabaseContract)
+    database.ping = AsyncMock(
         # NOTE: asyncpg lets the OSError through unwrapped; the integration test pins it
         side_effect=ConnectionRefusedError('Connect call failed') if failing else None,
     )
-    connection = MagicMock()
-    connection.__aenter__ = AsyncMock(return_value=session)
-    connection.__aexit__ = AsyncMock(return_value=False)
-
-    database = MagicMock(spec=DatabaseContract)
-    database.session.return_value = connection
     return database
 
 
@@ -87,7 +81,7 @@ async def test_readyz_pings_redis_and_the_database() -> None:
 
     assert response == {'status': 'ok', 'mcp': 'ok'}
     redis.connect.return_value.__aenter__.return_value.ping.assert_awaited_once()
-    database.session.return_value.__aenter__.return_value.execute.assert_awaited_once()
+    database.ping.assert_awaited_once()
 
 
 async def test_readyz_reports_unreachable_mcp_servers_without_failing() -> None:

@@ -5,12 +5,14 @@ from typing import Annotated
 
 from sqlalchemy.exc import IntegrityError
 
-from lib.command import Argument, Exit, Typer, echo, scoped
-from lib.container import ContainerContract
-from lib.temporal import parse_duration
+from lib.command import Argument, Exit, Typer, echo, resolve
+from lib.database import DatabaseContract
+from lib.guid import GUIDContract
+from lib.temporal import ClockContract, parse_duration
 
 from .repositories import IdentityRepository
 from .services import IdentityLinkingService
+from .tokens import IdentityTokenCodec
 
 cli = Typer(no_args_is_help=True, help='Manage canonical users and identity links.')
 users = Typer(no_args_is_help=True, help='Manage canonical users.')
@@ -26,14 +28,26 @@ def _ttl(value: str) -> timedelta:
         ) from error
 
 
+def _linking(repository: IdentityRepository) -> IdentityLinkingService:
+    return IdentityLinkingService(
+        repository,
+        resolve(IdentityTokenCodec),
+        resolve(ClockContract),
+    )
+
+
 def _run[T](
-    operation: Callable[[ContainerContract], Awaitable[T]],
+    operation: Callable[[IdentityRepository], Awaitable[T]],
 ) -> T:
     async def execute() -> T:
-        async with scoped() as scope:
-            repository = scope.resolve(IdentityRepository)
-            async with repository.session.begin():
-                return await operation(scope)
+        async with resolve(DatabaseContract).transaction() as transaction:
+            return await operation(
+                IdentityRepository(
+                    transaction,
+                    resolve(GUIDContract),
+                    resolve(ClockContract),
+                ),
+            )
 
     return asyncio.run(execute())
 
@@ -43,8 +57,8 @@ def create_user(
     handle: Annotated[str, Argument(help='Globally unique canonical handle.')],
     display_name: Annotated[str, Argument(help='User-facing display name.')],
 ) -> None:
-    async def create(scope: ContainerContract) -> None:
-        user = await scope.resolve(IdentityRepository).create_user(
+    async def create(repository: IdentityRepository) -> None:
+        user = await repository.create_user(
             handle,
             display_name,
         )
@@ -72,12 +86,11 @@ def invite(
         echo(str(error), err=True)
         raise Exit(1) from error
 
-    async def issue(scope: ContainerContract) -> None:
-        repository = scope.resolve(IdentityRepository)
+    async def issue(repository: IdentityRepository) -> None:
         target = await repository.find_user(user)
         if target is None:
             raise LookupError('canonical user not found')
-        issued = await scope.resolve(IdentityLinkingService).issue_invite(
+        issued = await _linking(repository).issue_invite(
             target.id,
             provider,
             realm,
@@ -104,8 +117,7 @@ def invite(
 def list_identities(
     user: Annotated[str, Argument(help='Canonical user handle.')],
 ) -> None:
-    async def list_for_user(scope: ContainerContract) -> None:
-        repository = scope.resolve(IdentityRepository)
+    async def list_for_user(repository: IdentityRepository) -> None:
         target = await repository.find_user(user)
         if target is None:
             raise LookupError('canonical user not found')
@@ -132,8 +144,7 @@ def unlink(
     realm: Annotated[str, Argument(help='Stable provider realm key.')],
     external_user_id: Annotated[str, Argument(help='Provider user identifier.')],
 ) -> None:
-    async def remove(scope: ContainerContract) -> None:
-        repository = scope.resolve(IdentityRepository)
+    async def remove(repository: IdentityRepository) -> None:
         identity = await repository.find_external(
             provider,
             realm,
@@ -141,7 +152,7 @@ def unlink(
         )
         if identity is None:
             raise LookupError('external identity not found')
-        if not await scope.resolve(IdentityLinkingService).unlink(identity):
+        if not await _linking(repository).unlink(identity):
             raise LookupError('external identity not found')
         echo(f'Unlinked {provider}/{realm}/{external_user_id}.')
 

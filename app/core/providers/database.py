@@ -1,15 +1,8 @@
 from typing import override
 
-from sqlalchemy.ext.asyncio import AsyncSession
-
 from app.core.settings import HuginnSettings
 from lib.container import ContainerContract, ProviderContract
-from lib.database import (
-    DatabaseContract,
-    DatabaseError,
-    DatabaseManager,
-    ScopedSession,
-)
+from lib.database import DatabaseContract, DatabaseError, DatabaseManager
 
 from .settings import SettingsProvider
 
@@ -29,13 +22,3 @@ class DatabaseProvider(ProviderContract):
             )
 
         container.bind(DatabaseContract, factory=_factory, shared=True)
-        container.bind(
-            ScopedSession,
-            factory=lambda c: c.resolve(DatabaseContract).scoped(),
-            scoped=True,
-        )
-        container.bind(
-            AsyncSession,
-            factory=lambda c: c.resolve(ScopedSession).session,
-            scoped=True,
-        )

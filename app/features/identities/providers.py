@@ -10,13 +10,7 @@ from lib.container import ContainerContract, ProviderContract
 
 from .contracts import IdentityLinkingContract, IdentityResolverContract
 from .exceptions import IdentityLinkSecretError
-from .repositories import IdentityRepository
-from .services import (
-    IdentityLinkingService,
-    IdentityResolver,
-    PrincipalLinker,
-    PrincipalResolver,
-)
+from .services import PrincipalLinker, PrincipalResolver
 from .tokens import IdentityTokenCodec
 
 
@@ -32,20 +26,12 @@ class IdentityProvider(ProviderContract):
 
     @override
     def __call__(self, container: ContainerContract) -> None:
-        container.bind(IdentityRepository, constructor=IdentityRepository, scoped=True)
         container.bind(IdentityTokenCodec, factory=_token_codec, shared=True)
-        container.bind(
-            IdentityLinkingService,
-            constructor=IdentityLinkingService,
-            scoped=True,
-        )
-
         container.bind(
             IdentityLinkingContract,
             constructor=PrincipalLinker,
             shared=True,
         )
-        container.bind(IdentityResolver, constructor=IdentityResolver, scoped=True)
         container.bind(
             IdentityResolverContract,
             constructor=PrincipalResolver,

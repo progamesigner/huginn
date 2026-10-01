@@ -1,9 +1,7 @@
-from typing import cast
-
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from lib.database import DatabaseError, DatabaseManager, ScopedSession
+from lib.database import DatabaseError, DatabaseManager
 
 _URL = 'postgresql+asyncpg://user:pass@localhost/huginn'
 
@@ -17,23 +15,23 @@ async def test_session_context_manager_yields_a_session() -> None:
     await manager.dispose()
 
 
-async def test_scoped_returns_a_disposable_session_holder() -> None:
+async def test_transaction_yields_a_session_inside_a_transaction() -> None:
     manager = DatabaseManager({None: _URL})
 
-    scoped = manager.scoped()
-    assert isinstance(scoped.session, AsyncSession)
+    async with manager.transaction() as session:
+        assert session.in_transaction()
 
-    await scoped.dispose()
     await manager.dispose()
 
 
 async def test_manager_reuses_engine_and_sessionmaker() -> None:
     manager = DatabaseManager({None: _URL})
 
-    manager.scoped()
-    engine = manager.engines[None]
-    session_maker = manager.session_makers[None]
-    manager.scoped()
+    async with manager.session():
+        engine = manager.engines[None]
+        session_maker = manager.session_makers[None]
+    async with manager.session():
+        pass
 
     assert manager.engines[None] is engine
     assert manager.session_makers[None] is session_maker
@@ -48,8 +46,8 @@ async def test_named_alias_uses_an_independent_engine() -> None:
         },
     )
 
-    manager.scoped()
-    manager.scoped('analytics')
+    async with manager.session(), manager.session('analytics'):
+        pass
 
     assert manager.engines[None] is not manager.engines['analytics']
     await manager.dispose()
@@ -57,11 +55,12 @@ async def test_named_alias_uses_an_independent_engine() -> None:
     assert manager.session_makers == {}
 
 
-def test_unknown_alias_raises_database_error() -> None:
+async def test_unknown_alias_raises_database_error() -> None:
     manager = DatabaseManager({None: _URL})
 
     with pytest.raises(DatabaseError, match='analytics'):
-        manager.scoped('analytics')
+        async with manager.session('analytics'):
+            pass
 
 
 def test_empty_urls_raise_database_error() -> None:
@@ -71,16 +70,3 @@ def test_empty_urls_raise_database_error() -> None:
 
 async def test_dispose_without_engine_is_a_noop() -> None:
     await DatabaseManager({None: _URL}).dispose()
-
-
-async def test_scoped_session_dispose_closes_the_session() -> None:
-    closed = []
-
-    class FakeSession:
-        async def close(self) -> None:
-            closed.append(True)
-
-    holder = ScopedSession(cast(AsyncSession, FakeSession()))
-    await holder.dispose()
-
-    assert closed == [True]

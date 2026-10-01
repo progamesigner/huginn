@@ -6,8 +6,7 @@ from app.core.config.registry import HuginnConfig
 from app.features.channels.config import CHANNELS
 from app.features.channels.exceptions import MissingWebhookURLError
 from app.features.channels.registry import CommandRegistry
-from lib.command import Argument, Exit, Option, Typer, echo, scoped
-from lib.container import ContainerContract
+from lib.command import Argument, Exit, Option, Typer, echo, resolve
 from lib.http import HTTPClientContract
 from lib.temporal import isoformat
 
@@ -85,13 +84,9 @@ def _describe(status: WebhookStatus) -> Iterator[str]:
         yield f'  last error: {_failure(status)}'
 
 
-def _run[T](operation: Callable[[ContainerContract], Awaitable[T]]) -> T:
-    async def execute() -> T:
-        async with scoped() as scope:
-            return await operation(scope)
-
+def _run[T](operation: Callable[[], Awaitable[T]]) -> T:
     try:
-        return asyncio.run(execute())
+        return asyncio.run(operation())
     except (LookupError, MissingWebhookURLError) as error:
         echo(f'{error}', err=True)
         raise Exit(1) from error
@@ -101,14 +96,14 @@ def _run[T](operation: Callable[[ContainerContract], Awaitable[T]]) -> T:
 def set_my_commands(
     channel: Annotated[str | None, _CHANNEL_ARGUMENT] = None,
 ) -> None:
-    async def publish(scope: ContainerContract) -> None:
+    async def publish() -> None:
         menu = [
             (command.name, command.description)
-            for command in scope.resolve(CommandRegistry).listing()
+            for command in resolve(CommandRegistry).listing()
         ]
-        repository = TelegramMenuRepository(scope.resolve(HTTPClientContract))
+        repository = TelegramMenuRepository(resolve(HTTPClientContract))
 
-        for instance, configured in _targets(scope.resolve(HuginnConfig), channel):
+        for instance, configured in _targets(resolve(HuginnConfig), channel):
             await repository.publish(configured.token, menu)
             echo(f'{instance}: published {len(menu)} commands')
 
@@ -128,10 +123,10 @@ def set_webhook(
     ] = None,
     drop_pending: Annotated[bool, _DROP_PENDING_OPTION] = False,
 ) -> None:
-    async def register(scope: ContainerContract) -> None:
-        repository = TelegramWebhookRepository(scope.resolve(HTTPClientContract))
+    async def register() -> None:
+        repository = TelegramWebhookRepository(resolve(HTTPClientContract))
 
-        for instance, configured in _targets(scope.resolve(HuginnConfig), channel):
+        for instance, configured in _targets(resolve(HuginnConfig), channel):
             registered = await repository.register(
                 configured.token,
                 _base_url(configured, url),
@@ -149,10 +144,10 @@ def delete_webhook(
     channel: Annotated[str | None, _CHANNEL_ARGUMENT] = None,
     drop_pending: Annotated[bool, _DROP_PENDING_OPTION] = False,
 ) -> None:
-    async def unregister(scope: ContainerContract) -> None:
-        repository = TelegramWebhookRepository(scope.resolve(HTTPClientContract))
+    async def unregister() -> None:
+        repository = TelegramWebhookRepository(resolve(HTTPClientContract))
 
-        for instance, configured in _targets(scope.resolve(HuginnConfig), channel):
+        for instance, configured in _targets(resolve(HuginnConfig), channel):
             await repository.unregister(
                 configured.token,
                 drop_pending_updates=drop_pending,
@@ -166,10 +161,10 @@ def delete_webhook(
 def webhook_info(
     channel: Annotated[str | None, _CHANNEL_ARGUMENT] = None,
 ) -> None:
-    async def inspect(scope: ContainerContract) -> None:
-        repository = TelegramWebhookRepository(scope.resolve(HTTPClientContract))
+    async def inspect() -> None:
+        repository = TelegramWebhookRepository(resolve(HTTPClientContract))
 
-        for instance, configured in _targets(scope.resolve(HuginnConfig), channel):
+        for instance, configured in _targets(resolve(HuginnConfig), channel):
             status = await repository.inspect(configured.token)
             echo(f'{instance}:')
             for line in _describe(status):

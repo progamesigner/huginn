@@ -1,5 +1,5 @@
-from collections.abc import AsyncIterator, Callable, Iterator
-from contextlib import asynccontextmanager, contextmanager
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass
 from inspect import Parameter, signature
 from typing import Annotated, cast, get_args, get_origin, override
@@ -17,7 +17,6 @@ class Registration:
     factory: Callable[[ContainerContract], object]
     shared: bool
     eager: bool
-    scoped: bool = False
 
 
 def wire[T](constructor: type[T]) -> Callable[[ContainerContract], T]:
@@ -54,14 +53,12 @@ def wire[T](constructor: type[T]) -> Callable[[ContainerContract], T]:
 class Container(ContainerContract):
     instances: Instances
     overrides: Instances
-    parent: Container | None
     registry: Registry
     resolving: Resolving
 
     def __init__(self) -> None:
         self.instances = {}
         self.overrides = {}
-        self.parent = None
         self.registry = {}
         self.resolving = []
 
@@ -74,7 +71,6 @@ class Container(ContainerContract):
         factory: Callable[[ContainerContract], T] | None = None,
         instance: T | None = None,
         shared: bool = False,
-        scoped: bool = False,
         eager: bool = False,
     ) -> None:
         name = binding.__qualname__
@@ -89,9 +85,6 @@ class Container(ContainerContract):
             factory = wire(constructor)
 
         if factory is None:
-            if scoped:
-                raise BindingError(f'{name} cannot be scoped as a bare instance')
-
             self.instances[binding] = instance
             self.registry[binding] = Registration(
                 lambda _: instance,
@@ -103,45 +96,31 @@ class Container(ContainerContract):
         if eager and not shared:
             raise BindingError(f'{name} cannot be eager without shared')
 
-        if scoped and (shared or eager):
-            raise BindingError(f'{name} cannot be scoped and shared/eager')
-
         self.registry[binding] = Registration(
             factory,
             shared=shared,
             eager=eager,
-            scoped=scoped,
         )
 
     @override
     def bound[T](self, binding: type[T]) -> bool:
-        return self._override(binding) is not None or binding in self.registry
+        return binding in self.overrides or binding in self.registry
 
     @override
     def resolve[T](self, binding: type[T]) -> T:
-        if (holder := self._override(binding)) is not None:
-            return cast(T, holder.overrides[binding])
+        if binding in self.overrides:
+            return cast(T, self.overrides[binding])
 
         if not (registration := self.registry.get(binding)):
             raise ResolutionError(f'{binding.__qualname__} is not bound')
-
-        # NOTE: singletons always build and cache at the root, never in a child
-        if registration.shared and (root := self._root()) is not self:
-            return root.resolve(binding)
 
         if binding in self.resolving:
             chain = ' -> '.join(t.__qualname__ for t in (*self.resolving, binding))
             raise ResolutionError(f'circular dependency: {chain}')
 
-        if registration.scoped and self.parent is None:
-            chain = ' -> '.join(t.__qualname__ for t in (*self.resolving, binding))
-            raise ResolutionError(
-                f'{binding.__qualname__} is scoped and needs an active scope: {chain}',
-            )
-
         self.resolving.append(binding)
         try:
-            if not (registration.shared or registration.scoped):
+            if not registration.shared:
                 return cast(T, registration.factory(self))
 
             if binding not in self.instances:
@@ -150,18 +129,6 @@ class Container(ContainerContract):
             return cast(T, self.instances[binding])
         finally:
             self.resolving.pop()
-
-    @asynccontextmanager
-    @override
-    async def scope(self) -> AsyncIterator[ContainerContract]:
-        child = Container()
-        child.parent = self
-        child.registry = self.registry
-
-        try:
-            yield child
-        finally:
-            await child.dispose()
 
     @contextmanager
     @override
@@ -187,18 +154,6 @@ class Container(ContainerContract):
 
         container.registry = dict(self.registry)
         return container
-
-    def _override(self, binding: type[object]) -> Container | None:
-        if binding in self.overrides:
-            return self
-
-        return self.parent._override(binding) if self.parent is not None else None
-
-    def _root(self) -> Container:
-        node = self
-        while node.parent is not None:
-            node = node.parent
-        return node
 
     @override
     async def start(self) -> None:

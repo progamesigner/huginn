@@ -1,7 +1,5 @@
 from typing import Annotated
 
-from sqlalchemy import text
-
 from app.core.dependencies import Provide
 from lib.database import DatabaseContract
 from lib.mcp import MCPClientContract
@@ -22,8 +20,7 @@ async def readyz(
     mcp: Annotated[MCPClientContract, Depends(Provide(MCPClientContract))],
     redis: Annotated[RedisContract, Depends(Provide(RedisContract))],
 ) -> dict[str, str]:
-    async with database.session() as session:
-        await session.execute(text('SELECT 1'))
+    await database.ping()
 
     async with redis.connect() as client:
         await client.ping()

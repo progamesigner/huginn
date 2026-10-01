@@ -3,7 +3,6 @@ from .contracts import DatabaseContract
 from .exceptions import DatabaseError
 from .manager import DatabaseManager
 from .orm import DatabaseDeclarativeBase
-from .session import ScopedSession
 from .types import GUID, Json, Timestamp
 
 __all__ = [
@@ -13,6 +12,5 @@ __all__ = [
     'DatabaseError',
     'DatabaseManager',
     'Json',
-    'ScopedSession',
     'Timestamp',
 ]
