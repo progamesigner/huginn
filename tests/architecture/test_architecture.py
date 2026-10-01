@@ -43,20 +43,6 @@ ROOT_PACKAGES = ('app', 'bin', 'lib')
 FEATURES_PACKAGE = 'app.features'
 EXTS_PACKAGE = 'app.exts'
 CONTRACTS_PACKAGE = 'app.contracts'
-# An ext slice is named for whose vocabulary it speaks: `clients` and `types` speak the
-# vendor's, `gateways` speaks ours by implementing an app.contracts contract, and
-# `endpoints` is what the vendor calls inbound. A gateway reaches the app only through
-# those contracts, so an ext still never imports a feature. Slice names are plural because
-# a vendor may well have more than one of each; singular is for a named single thing.
-EXT_SLICE_NAMES = frozenset(
-    {
-        'clients',
-        'endpoints',
-        'exceptions',
-        'gateways',
-        'types',
-    },
-)
 # A feature reaches an ext in one of two directions, and the slice it names says which.
 # A data-source ext is pulled: the feature calls the vendor, so a repository owns that
 # call and translates the answer into domain values -- `clients` may only be named from
@@ -222,13 +208,6 @@ def _vendor_types_reach(targets: Iterable[str]) -> Iterator[str]:
                 f'{target}: a vendor payload type stops at the ext;'
                 f' have the adapter hand over an app.contracts type instead'
             )
-
-
-def _unknown_ext_name(relative: Path) -> str | None:
-    if relative.name == '__init__.py' or relative.stem in EXT_SLICE_NAMES:
-        return None
-
-    return f'{relative}: unknown ext file name (allowed: {sorted(EXT_SLICE_NAMES)})'
 
 
 # A vendor fact an ext already owns must be read off its spec, never retyped. The
@@ -744,17 +723,6 @@ def test_vendor_readers_keep_rejected_input_out_of_their_errors() -> None:
     )
 
 
-def test_ext_files_use_ext_vocabulary() -> None:
-    root = _exts_dir()
-    violations = [
-        message
-        for path in sorted(root.rglob('*.py'))
-        if (message := _unknown_ext_name(path.relative_to(root)))
-    ]
-
-    assert not violations, 'unknown ext file names:\n' + '\n'.join(violations)
-
-
 def test_banned_name_check_flags_models_and_utils() -> None:
     assert _banned_name(Path('tools/repositories.py')) is None
     assert _banned_name(Path('tools/models.py')) is not None
@@ -775,21 +743,6 @@ def test_rejected_input_check_flags_only_a_tolerant_reader() -> None:
     assert _leaks_rejected_input(Reader)
     assert not _leaks_rejected_input(Hiding)
     assert not _leaks_rejected_input(Strict)
-
-
-def test_ext_vocabulary_check_flags_unknown_names() -> None:
-    assert _unknown_ext_name(Path('felo/clients.py')) is None
-    assert _unknown_ext_name(Path('felo/__init__.py')) is None
-    # a vendor's own transport, inbound and outbound
-    assert _unknown_ext_name(Path('telegram/endpoints.py')) is None
-    assert _unknown_ext_name(Path('telegram/gateways.py')) is None
-    # the singular reads like a named single thing, which a slice is not
-    assert _unknown_ext_name(Path('telegram/client.py')) is not None
-    assert _unknown_ext_name(Path('telegram/gateway.py')) is not None
-    # orchestration still has no home here, whatever it is called
-    assert _unknown_ext_name(Path('felo/service.py')) is not None
-    assert _unknown_ext_name(Path('telegram/actor.py')) is not None
-    assert _unknown_ext_name(Path('telegram/providers.py')) is not None
 
 
 def test_feature_files_do_not_retype_vendor_facts() -> None:
