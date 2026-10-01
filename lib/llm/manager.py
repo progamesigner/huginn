@@ -1,13 +1,11 @@
 from typing import override
 
-from lib.http import HTTPClientContract
-
 from .client import LLMClient, ProviderConfig, ProviderRegistry
-from .contracts import LLMContract
+from .contracts import HTTPConnector, LLMContract
 from .types import ModelRef
 
 
-def build_adapter(provider: ProviderConfig, http: HTTPClientContract) -> LLMClient:
+def build_adapter(provider: ProviderConfig, http: HTTPConnector) -> LLMClient:
     try:
         match provider.adapter:
             case 'anthropic':
@@ -28,13 +26,13 @@ def build_adapter(provider: ProviderConfig, http: HTTPClientContract) -> LLMClie
 
 class LLMManager(LLMContract):
     clients: dict[str, LLMClient]
-    http: HTTPClientContract
+    http: HTTPConnector
     registry: ProviderRegistry
 
     def __init__(
         self,
         providers: tuple[ProviderConfig, ...],
-        http: HTTPClientContract,
+        http: HTTPConnector,
     ) -> None:
         self.registry = ProviderRegistry(providers)
         self.http = http

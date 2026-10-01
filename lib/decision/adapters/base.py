@@ -6,6 +6,7 @@ from httpx import HTTPError, Response, TimeoutException
 from pydantic import BaseModel, ConfigDict, JsonValue, ValidationError
 
 from lib.decision.client import DecisionProviderConfig
+from lib.decision.contracts import HTTPConnector
 from lib.decision.exceptions import (
     DecisionHTTPError,
     DecisionResponseError,
@@ -13,7 +14,6 @@ from lib.decision.exceptions import (
     DecisionTransportError,
 )
 from lib.decision.types import DecisionRequest, DecisionResult
-from lib.http import HTTPClientContract
 
 _ERROR_TEXT_LIMIT = 200
 
@@ -24,13 +24,13 @@ class WirePayload(BaseModel):
 
 
 class HTTPDecisionAdapter(ABC):
-    http: HTTPClientContract
+    http: HTTPConnector
     provider: DecisionProviderConfig
 
     def __init__(
         self,
         provider: DecisionProviderConfig,
-        http: HTTPClientContract,
+        http: HTTPConnector,
     ) -> None:
         self.provider = provider
         self.http = http

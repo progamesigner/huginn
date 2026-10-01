@@ -25,8 +25,8 @@ from openai.types.responses import (
 )
 from pydantic import JsonValue
 
-from lib.http import HTTPClientContract
 from lib.llm.client import ProviderConfig
+from lib.llm.contracts import HTTPConnector
 from lib.llm.types import (
     CompletionChunk,
     CompletionRequest,
@@ -223,12 +223,12 @@ def decode_chunk(
 class OpenAIAdapter:
     client_factory: Callable[..., AsyncOpenAI]
     provider: ProviderConfig
-    http: HTTPClientContract
+    http: HTTPConnector
 
     def __init__(
         self,
         provider: ProviderConfig,
-        http: HTTPClientContract,
+        http: HTTPConnector,
         client_factory: Callable[..., AsyncOpenAI] = AsyncOpenAI,
     ) -> None:
         self.provider = provider

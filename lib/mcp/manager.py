@@ -9,9 +9,7 @@ from mcp.client.streamable_http import streamable_http_client
 from mcp.types import CallToolResult, TextContent
 from pydantic import JsonValue
 
-from lib.http import HTTPClientContract
-
-from .contracts import MCPClientContract
+from .contracts import HTTPConnector, MCPClientContract
 from .exceptions import MCPConnectionError, UnknownMCPServerError
 from .types import MCPServer, MCPToolInfo
 
@@ -23,7 +21,7 @@ _RECONNECT_COOLDOWN = 30.0
 _HEARTBEAT_INTERVAL = 30.0
 
 
-def streamable_http_connector(http: HTTPClientContract) -> Connector:
+def streamable_http_connector(http: HTTPConnector) -> Connector:
     @asynccontextmanager
     async def connect(server: MCPServer) -> AsyncIterator[ClientSession]:
         async with http.connect(headers=server.headers) as client:

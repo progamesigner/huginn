@@ -31,8 +31,8 @@ from anthropic.types import (
 from httpx import Timeout
 from pydantic import JsonValue
 
-from lib.http import HTTPClientContract
 from lib.llm.client import ProviderConfig
+from lib.llm.contracts import HTTPConnector
 from lib.llm.types import (
     CompletionChunk,
     CompletionRequest,
@@ -191,14 +191,14 @@ def decode_event(event: RawMessageStreamEvent) -> Iterator[CompletionChunk]:
 
 class AnthropicAdapter:
     client_factory: Callable[..., AsyncAnthropic]
-    http: HTTPClientContract
+    http: HTTPConnector
     max_tokens: int
     provider: ProviderConfig
 
     def __init__(
         self,
         provider: ProviderConfig,
-        http: HTTPClientContract,
+        http: HTTPConnector,
         max_tokens: int = _DEFAULT_MAX_TOKENS,
         client_factory: Callable[..., AsyncAnthropic] = AsyncAnthropic,
     ) -> None:

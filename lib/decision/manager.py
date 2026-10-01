@@ -1,18 +1,16 @@
 from typing import override
 
-from lib.http import HTTPClientContract
-
 from .adapters.base import HTTPDecisionAdapter
 from .adapters.bifrost import BifrostAdapter
 from .adapters.typesafe import TypeSafeAdapter
 from .client import DecisionClient, DecisionProviderConfig, DecisionProviderRegistry
-from .contracts import DecisionContract
+from .contracts import DecisionContract, HTTPConnector
 from .types import DecisionRef
 
 
 def build_adapter(
     provider: DecisionProviderConfig,
-    http: HTTPClientContract,
+    http: HTTPConnector,
 ) -> HTTPDecisionAdapter:
     match provider.adapter:
         case 'bifrost':
@@ -23,13 +21,13 @@ def build_adapter(
 
 class DecisionManager(DecisionContract):
     clients: dict[str, DecisionClient]
-    http: HTTPClientContract
+    http: HTTPConnector
     registry: DecisionProviderRegistry
 
     def __init__(
         self,
         providers: tuple[DecisionProviderConfig, ...],
-        http: HTTPClientContract,
+        http: HTTPConnector,
     ) -> None:
         self.registry = DecisionProviderRegistry(providers)
         self.http = http
