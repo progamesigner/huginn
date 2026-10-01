@@ -247,30 +247,6 @@ async def test_start_failure_closes_already_started() -> None:
     assert journal[-1] == 'first:dispose'
 
 
-def test_alias_resolves_through_original_binding() -> None:
-    container = Container()
-    container.bind(Greeter, factory=lambda _: Greeter('aliased'), shared=True)
-    container.alias(Greeter, Greeting)
-
-    assert container.resolve(Greeting) is container.resolve(Greeter)
-
-
-def test_alias_requires_bound_target() -> None:
-    container = Container()
-
-    with pytest.raises(BindingError):
-        container.alias(Greeter, Greeting)
-
-
-def test_alias_key_cannot_collide_with_binding() -> None:
-    container = Container()
-    container.bind(Greeting, instance=Greeting())
-    container.bind(Greeter, instance=Greeter())
-
-    with pytest.raises(BindingError):
-        container.alias(Greeter, Greeting)
-
-
 def test_bound_reports_registrations_and_overrides() -> None:
     container = Container()
 

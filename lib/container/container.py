@@ -66,20 +66,6 @@ class Container(ContainerContract):
         self.resolving = []
 
     @override
-    def alias[T](self, binding: type[T], alias: type[T]) -> None:
-        if alias in self.registry:
-            raise BindingError(f'{alias.__qualname__} is already bound')
-
-        if binding not in self.registry:
-            raise BindingError(f'{binding.__qualname__} is not bound')
-
-        self.registry[alias] = Registration(
-            lambda container: container.resolve(binding),
-            shared=False,
-            eager=False,
-        )
-
-    @override
     def bind[T](
         self,
         binding: type[T],

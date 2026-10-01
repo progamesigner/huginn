@@ -17,9 +17,6 @@ class Disposable(Protocol):
 
 class ContainerContract(ABC):
     @abstractmethod
-    def alias[T](self, binding: type[T], alias: type[T]) -> None: ...
-
-    @abstractmethod
     def bind[T](
         self,
         binding: type[T],
