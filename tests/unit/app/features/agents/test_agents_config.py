@@ -55,6 +55,12 @@ def test_turn_budget_limits_must_be_positive() -> None:
             AgentConfig.model_validate({'description': 'x', field: value})
 
 
+def test_default_turn_budget_limits_must_be_positive() -> None:
+    for field in ('max_iterations', 'turn_timeout'):
+        with pytest.raises(ValidationError, match=field):
+            DefaultsConfig.model_validate({field: 0})
+
+
 def test_agent_config_leaves_the_turn_budget_to_the_built_in_defaults() -> None:
     agent = AgentConfig(description='x')
 

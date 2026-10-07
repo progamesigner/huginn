@@ -2,6 +2,8 @@ defaults:
   provider: openai
   model: gpt-5-mini
   max_completion_tokens: 16384
+  max_iterations: 10   # per agent overrides; built-in default: 10
+  turn_timeout: 300    # seconds; per agent overrides; built-in default: 300
 
 providers:
   openai:

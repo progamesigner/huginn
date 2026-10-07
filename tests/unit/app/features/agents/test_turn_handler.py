@@ -817,17 +817,37 @@ async def test_the_agents_tool_timeout_reaches_the_runner() -> None:
 
 
 async def test_an_agent_that_configures_nothing_keeps_the_built_in_budget() -> None:
-    assert resolve_budget(agents()['scout']) == TurnBudget()
+    assert resolve_budget(agents()['scout'], DEFAULTS) == TurnBudget()
 
 
 async def test_an_agent_budget_overrides_only_what_it_sets() -> None:
     agent = agents()['scout'].model_copy(update={'turn_timeout': 900.0})
 
-    budget = resolve_budget(agent)
+    budget = resolve_budget(agent, DEFAULTS)
 
     assert budget.turn_timeout == 900.0
     assert budget.max_iterations == TurnBudget().max_iterations
     assert budget.tool_timeout == TurnBudget().tool_timeout
+
+
+async def test_the_defaults_budget_backs_an_agent_that_sets_none() -> None:
+    defaults = DEFAULTS.model_copy(update={'max_iterations': 30, 'turn_timeout': 600.0})
+
+    budget = resolve_budget(agents()['scout'], defaults)
+
+    assert budget.max_iterations == 30
+    assert budget.turn_timeout == 600.0
+    assert budget.tool_timeout == TurnBudget().tool_timeout
+
+
+async def test_an_agent_budget_overrides_the_defaults_budget() -> None:
+    defaults = DEFAULTS.model_copy(update={'max_iterations': 30, 'turn_timeout': 600.0})
+    agent = agents()['scout'].model_copy(update={'max_iterations': 5})
+
+    budget = resolve_budget(agent, defaults)
+
+    assert budget.max_iterations == 5
+    assert budget.turn_timeout == 600.0
 
 
 async def test_a_model_without_a_provider_refuses_the_turn() -> None:

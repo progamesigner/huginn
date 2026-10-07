@@ -12,7 +12,7 @@ from app.contracts.auth import RouterEngine
 from app.contracts.channels import AttachmentKind, TurnEnding
 from lib.llm import Message, ModelCapabilities, ToolCallSegment, ToolResultSegment
 
-from .config import AgentConfig, BindingSource, RouterConfig
+from .config import AgentConfig, BindingSource, DefaultsConfig, RouterConfig
 from .exceptions import DuplicateToolNameError
 
 logger = logging.getLogger(__name__)
@@ -177,11 +177,15 @@ class TurnBudget:
     min_iteration_budget: float = _DEFAULT_MIN_ITERATION_BUDGET
 
 
-def resolve_budget(agent: AgentConfig) -> TurnBudget:
+def resolve_budget(agent: AgentConfig, defaults: DefaultsConfig) -> TurnBudget:
     default = TurnBudget()
     return TurnBudget(
-        max_iterations=agent.max_iterations or default.max_iterations,
-        turn_timeout=agent.turn_timeout or default.turn_timeout,
+        max_iterations=(
+            agent.max_iterations or defaults.max_iterations or default.max_iterations
+        ),
+        turn_timeout=(
+            agent.turn_timeout or defaults.turn_timeout or default.turn_timeout
+        ),
         tool_timeout=agent.tool_timeout or default.tool_timeout,
     )
 

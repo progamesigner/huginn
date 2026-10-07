@@ -500,7 +500,7 @@ class TurnHandler(TurnHandlerContract):
                         or agent.config.max_completion_tokens
                         or self.default_max_completion_tokens
                     ),
-                    budget=resolve_budget(agent.config),
+                    budget=resolve_budget(agent.config, self.defaults),
                 ),
                 witness,
             )

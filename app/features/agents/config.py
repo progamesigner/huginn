@@ -37,6 +37,8 @@ class DefaultsConfig(ConfigValue):
     router_prompt: Annotated[str | None, Field()] = None
     router_instructions: Annotated[str | None, Field(min_length=1)] = None
     max_completion_tokens: Annotated[int | None, Field(gt=0)] = None
+    max_iterations: Annotated[int | None, Field(gt=0)] = None
+    turn_timeout: Annotated[float | None, Field(gt=0)] = None
 
 
 type BindingSource = Literal['account', 'actor', 'agent', 'channel', 'chat', 'handle']
