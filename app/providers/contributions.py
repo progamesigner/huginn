@@ -42,9 +42,13 @@ from app.features.skills.config import SKILLS
 from app.features.skills.providers import SkillsProvider
 from app.features.skills.repositories import SkillRepository
 from app.features.skills.tools import SkillToolSource
+from app.features.tools.artifacts import ArtifactWriter
 from app.features.tools.config import build_sections as tool_sections
 from app.features.tools.document.config import DocumentToolConfig
 from app.features.tools.document.tool import ReadDocumentTool, build_read_document
+from app.features.tools.images.config import ImageToolConfig
+from app.features.tools.images.repositories import ImageRepository
+from app.features.tools.images.tool import ImageTool, build_images
 from app.features.tools.providers import ToolProvider
 from app.features.tools.registry import ToolKind, ToolRegistry
 from app.features.tools.sources import ConfiguredToolSource
@@ -198,6 +202,18 @@ class ToolContributions(ProviderContract):
                     c.resolve(BlobServiceContract),
                     config,
                     scope,
+                ),
+            ),
+        )
+        container.contribute(
+            ToolKind,
+            lambda c: ToolKind(
+                ImageTool,
+                ImageToolConfig,
+                builder=lambda config, _scope: build_images(
+                    c.resolve(ImageRepository),
+                    c.resolve(ArtifactWriter),
+                    config,
                 ),
             ),
         )

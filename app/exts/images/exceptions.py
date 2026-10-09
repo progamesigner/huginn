@@ -1,0 +1,2 @@
+class ImageGenerationError(Exception):
+    pass

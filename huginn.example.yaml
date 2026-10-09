@@ -51,6 +51,14 @@ tools:
     api_key:
       value_from:
         env: SUPERSEARCH_API_KEY
+  illustrator:
+    kind: images
+    description: Draw an image the user asked for; it is sent to them directly.
+    model: gpt-image-1
+    api_key:
+      value_from:
+        env: OPENAI_API_KEY
+    size: 1024x1024
 
 mcp_servers:
   memory:
@@ -88,6 +96,7 @@ agents:
     - name: supersearch
       inject:
         max_results: 3
+    - name: illustrator
     mcp:
     - server: memory
       allow:
