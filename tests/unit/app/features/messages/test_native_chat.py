@@ -28,7 +28,9 @@ from app.features.auth.config import (
     ApiKeyConfigList,
     ApiKeyToolsConfig,
 )
+from app.features.blobs.config import BLOBS, BlobsConfig
 from app.features.blobs.contracts import BlobServiceContract
+from app.features.channels.config import TRANSCRIPTION, TranscriptionConfig
 from app.features.messages.services import _policy
 from bin.server import build
 from lib.mcp import MCPClientContract
@@ -124,6 +126,8 @@ def make_config(key: ApiKeyConfig) -> HuginnConfig:
             ),
             API_KEYS.key: ApiKeyConfigList({'web': key}),
             DEFAULTS.key: DefaultsConfig(model='gpt-5-mini'),
+            BLOBS.key: BlobsConfig(),
+            TRANSCRIPTION.key: TranscriptionConfig(),
         },
     )
 

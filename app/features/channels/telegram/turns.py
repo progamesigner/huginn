@@ -12,7 +12,7 @@ from app.features.agents.contracts import TurnServiceContract
 from app.features.agents.entities import PromptAttachment, TurnPrompt, TurnRequest
 from app.features.channels.config import routing_policy
 from app.features.channels.contracts import TranscriptionServiceContract
-from app.features.channels.documents import read_document
+from app.features.channels.documents import attachment_hint, read_document
 from app.features.channels.exceptions import TranscriptionUnavailableError
 from app.features.channels.registry import CommandRegistry
 from app.features.identities.contracts import IdentityResolutionServiceContract
@@ -67,20 +67,6 @@ def _prompt(
 
     actor = _UNATTRIBUTED if principal is None else principal.stable_key
     return TurnPrompt(text=text, actor=actor, attachments=attachments)
-
-
-def _hint(attachment: InboundAttachment) -> str:
-    if attachment.width is not None and attachment.height is not None:
-        detail = f' {attachment.width}x{attachment.height}'
-    elif attachment.duration is not None:
-        detail = f' {attachment.duration}s'
-    else:
-        detail = ''
-
-    if attachment.name is not None:
-        detail = f' {attachment.name}{detail}'
-
-    return f'[{attachment.kind}: {attachment.mime}{detail}]'
 
 
 class TelegramTurnProcessor:
@@ -210,7 +196,7 @@ class TelegramTurnProcessor:
                 attachment.mime,
                 data,
                 attachment.name,
-                _hint(attachment),
+                attachment_hint(attachment),
                 logger=self.logger,
             )
             transcript = reading.transcript
@@ -222,7 +208,7 @@ class TelegramTurnProcessor:
             reference=attachment.reference,
             unique=attachment.unique,
             data=data,
-            hint=_hint(attachment),
+            hint=attachment_hint(attachment),
             name=attachment.name,
             transcript=transcript,
             document_text=document_text,

@@ -25,6 +25,7 @@ from fastapi.responses import (
     StreamingResponse,
 )
 from fastapi.sse import ServerSentEvent, format_sse_event
+from starlette.datastructures import UploadFile
 
 from .contracts import RouterContract
 from .exceptions import DuplicateRouteError, RouterError
@@ -58,5 +59,6 @@ __all__ = [
     'Security',
     'ServerSentEvent',
     'StreamingResponse',
+    'UploadFile',
     'format_sse_event',
 ]

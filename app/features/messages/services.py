@@ -20,16 +20,24 @@ from lib.observability import Logger
 from lib.redis import RedisContract, RedisLock
 from lib.result import Err, Ok, Result
 
+from .attachments import AttachmentError, AttachmentIntake, Received, classify
 from .entities import AttachmentEvent, OpenedEvent, TurnEvent
 from .exceptions import (
     BlobNotFoundError,
     ConversationBusyError,
     ForbiddenAgentError,
+    InvalidAttachmentError,
     UnroutableRequestError,
 )
+from .schemas import AttachmentInput
 from .streams import QueuedReply, drain
 
-type PrepareError = ConversationBusyError | ForbiddenAgentError | UnroutableRequestError
+type PrepareError = (
+    AttachmentError
+    | ConversationBusyError
+    | ForbiddenAgentError
+    | UnroutableRequestError
+)
 _LOCK_TTL = timedelta(seconds=30)
 
 
@@ -76,6 +84,8 @@ def _policy(agent: str | None, client: ApiClient) -> RoutingPolicy:
 class ChatService:
     logger: Logger
     blobs: BlobServiceContract
+    intake: AttachmentIntake
+    uploads: timedelta
     guid: GUIDContract
     redis: RedisContract
     turns: TurnServiceContract
@@ -87,12 +97,16 @@ class ChatService:
         redis: RedisContract,
         guid: GUIDContract,
         blobs: BlobServiceContract,
+        intake: AttachmentIntake,
         *,
+        uploads: timedelta,
         ttl: timedelta = _LOCK_TTL,
         logger: Logger,
     ) -> None:
         self.logger = logger.bind(component='messages')
         self.blobs = blobs
+        self.intake = intake
+        self.uploads = uploads
         self.guid = guid
         self.redis = redis
         self.turns = turns
@@ -106,6 +120,7 @@ class ChatService:
         conversation: str | None = None,
         agent: str | None = None,
         max_completion_tokens: int | None = None,
+        attachments: tuple[AttachmentInput, ...] = (),
     ) -> Result[PreparedTurn, PrepareError]:
         agent = agent or client.agent
         if agent is not None and agent not in client.agents:
@@ -118,6 +133,14 @@ class ChatService:
                 UnroutableRequestError(
                     'this key routes no message on its own; name an agent',
                 ),
+            )
+
+        carried = await self.intake.take(client, attachments)
+        if not isinstance(carried, tuple):
+            return Err(carried)
+        if attachments and not message and not carried:
+            return Err(
+                InvalidAttachmentError('nothing in this request could be read'),
             )
 
         thread = conversation or str(self.guid.generate())
@@ -139,7 +162,13 @@ class ChatService:
                     channel=client.key,
                     chat=thread,
                     policy=_policy(agent, client),
-                    prompts=(TurnPrompt(text=message, actor=_actor(client)),),
+                    prompts=(
+                        TurnPrompt(
+                            text=message,
+                            actor=_actor(client),
+                            attachments=carried,
+                        ),
+                    ),
                     denied_tools=client.denied_tools,
                     max_completion_tokens=max_completion_tokens,
                 ),
@@ -168,6 +197,29 @@ class ChatService:
                     yield event
         finally:
             await prepared.lock.release()
+
+    # NOTE: an upload is nobody's until a turn names it, so it lapses like a generated
+    # file unless a recorded turn adopts it
+    async def upload(
+        self,
+        client: ApiClient,
+        data: bytes,
+        name: str | None,
+    ) -> Result[Blob, AttachmentError]:
+        received = classify(data, name)
+        if not isinstance(received, Received):
+            return Err(received)
+
+        blob = await self.blobs.save(
+            received.mime,
+            data,
+            kind=received.kind,
+            filename=name,
+            ttl=self.uploads,
+        )
+        await self.blobs.grant(blob.id, client.key)
+        self.logger.info('Stored an upload of %d bytes as %s', blob.size, blob.id)
+        return Ok(blob)
 
     # NOTE: absent and forbidden answer alike, so an id says nothing about whether
     # the blob behind it exists

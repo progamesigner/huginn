@@ -1,10 +1,25 @@
 import asyncio
 from dataclasses import dataclass
 
+from app.contracts.channels import InboundAttachment
 from lib.documents import DocumentExtractionError, extract
 from lib.observability import Logger
 
 _PREVIEW = 2000
+
+
+def attachment_hint(attachment: InboundAttachment) -> str:
+    if attachment.width is not None and attachment.height is not None:
+        detail = f' {attachment.width}x{attachment.height}'
+    elif attachment.duration is not None:
+        detail = f' {attachment.duration}s'
+    else:
+        detail = ''
+
+    if attachment.name is not None:
+        detail = f' {attachment.name}{detail}'
+
+    return f'[{attachment.kind}: {attachment.mime}{detail}]'
 
 
 @dataclass(frozen=True)

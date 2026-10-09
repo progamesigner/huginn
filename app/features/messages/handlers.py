@@ -4,12 +4,17 @@ from contextlib import aclosing
 from urllib.parse import quote
 
 from app.contracts.auth import ApiClient
+from app.contracts.channels import ATTACHMENT_LIMITS
 from lib.guid import GUIDContract
-from lib.router import EventSourceResponse, Response
+from lib.router import EventSourceResponse, Request, Response, UploadFile
 from lib.temporal import ClockContract
 
 from .entities import AttachmentEvent, ErrorEvent, TextEvent
-from .exceptions import TurnFailedError
+from .exceptions import (
+    AttachmentTooLargeError,
+    InvalidAttachmentError,
+    TurnFailedError,
+)
 from .presenters import (
     AnthropicPresenter,
     NativePresenter,
@@ -26,10 +31,14 @@ from .schemas import (
     CompletionChoice,
     CompletionMessage,
     MessageContent,
+    UploadedBlob,
 )
 from .services import ChatService, PreparedTurn
 
 _HEADERS = {'Cache-Control': 'no-cache', 'X-Accel-Buffering': 'no'}
+_FILE_LIMIT = max(ATTACHMENT_LIMITS.values())
+# NOTE: room for the multipart boundaries and headers around the file itself
+_UPLOAD_LIMIT = _FILE_LIMIT + 64 * 1024
 _FALLBACK_NAME = 'download'
 _UNSAFE_NAME = re.compile(r'[^A-Za-z0-9._-]+')
 _CONTROL = re.compile(r'[\x00-\x1f\x7f/\\]+')
@@ -85,6 +94,37 @@ class ChatHandlers:
             AnthropicPresenter(identifier, ask.model),
         )
 
+    # NOTE: the declared length is refused before a byte of the body is read; a body
+    # without one is still cut off at the same size once it is read
+    async def upload(self, request: Request, client: ApiClient) -> UploadedBlob:
+        declared = request.headers.get('content-length')
+        if (
+            declared is not None
+            and declared.isdigit()
+            and int(declared) > _UPLOAD_LIMIT
+        ):
+            raise AttachmentTooLargeError(f'uploads are limited to {_FILE_LIMIT} bytes')
+
+        async with request.form(max_files=1, max_fields=1) as form:
+            file = form.get('file')
+            if not isinstance(file, UploadFile):
+                raise InvalidAttachmentError('send the file as multipart field "file"')
+
+            data = await file.read(_FILE_LIMIT + 1)
+            name = file.filename
+
+        if len(data) > _FILE_LIMIT:
+            raise AttachmentTooLargeError(f'uploads are limited to {_FILE_LIMIT} bytes')
+
+        blob = (await self.service.upload(client, data, name)).unwrap()
+        return UploadedBlob(
+            id=str(blob.id),
+            kind=blob.kind,
+            mime=blob.mime,
+            size=blob.size,
+            name=blob.filename,
+        )
+
     async def download(self, blob: str, client: ApiClient) -> Response:
         found = (await self.service.download(client, blob)).unwrap()
         return Response(
@@ -106,6 +146,7 @@ class ChatHandlers:
                 conversation=ask.conversation,
                 agent=ask.agent,
                 max_completion_tokens=ask.max_completion_tokens,
+                attachments=ask.attachments,
             )
         ).unwrap()
 
@@ -179,6 +220,7 @@ class ChatHandlers:
                 conversation=ask.thread(),
                 agent=ask.model if ask.model in client.agents else None,
                 max_completion_tokens=ask.max_completion_tokens,
+                attachments=ask.latest_attachments(),
             )
         ).unwrap()
 

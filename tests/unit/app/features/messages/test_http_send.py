@@ -12,6 +12,8 @@ from app.features.agents.config import (
     DefaultsConfig,
 )
 from app.features.auth.config import API_KEYS, ApiKeyConfig, ApiKeyConfigList
+from app.features.blobs.config import BLOBS, BlobsConfig
+from app.features.channels.config import TRANSCRIPTION, TranscriptionConfig
 from app.features.messages.handlers import disposition
 from tests.helpers.blobs import MemoryBlobs
 
@@ -57,6 +59,8 @@ def two_keys() -> HuginnConfig:
                 },
             ),
             DEFAULTS.key: DefaultsConfig(model='gpt-5-mini'),
+            BLOBS.key: BlobsConfig(),
+            TRANSCRIPTION.key: TranscriptionConfig(),
         },
     )
 

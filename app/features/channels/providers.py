@@ -8,13 +8,21 @@ from app.features.conversations.providers import ConversationProvider
 from app.features.identities.providers import IdentityProvider
 from lib.container import ContainerContract, ProviderContract
 from lib.http import HTTPClientContract
+from lib.observability import Logger
 
 from .config import TRANSCRIPTION
-from .contracts import TranscriptionServiceContract
+from .contracts import AttachmentReadingServiceContract, TranscriptionServiceContract
 from .registry import ChannelKind, ChannelRegistry, Command, CommandRegistry
 from .repositories import TranscriptionRepository
 from .resolver import ChannelSecretResolver
-from .services import TranscriptionService
+from .services import AttachmentReader, TranscriptionService
+
+
+def _reader(container: ContainerContract) -> AttachmentReader:
+    return AttachmentReader(
+        container.resolve(TranscriptionServiceContract),
+        logger=container.resolve(Logger),
+    )
 
 
 def _resolver(container: ContainerContract) -> ChannelSecretResolver:
@@ -60,6 +68,11 @@ class ChannelProvider(ProviderContract):
         container.bind(
             TranscriptionServiceContract,
             factory=_transcription,
+            shared=True,
+        )
+        container.bind(
+            AttachmentReadingServiceContract,
+            factory=_reader,
             shared=True,
         )
 

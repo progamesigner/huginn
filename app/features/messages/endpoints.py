@@ -2,10 +2,16 @@ from typing import Annotated
 
 from app.contracts.auth import ApiClient
 from app.core.dependencies import Authenticated, Provide
-from lib.router import Depends, EventSourceResponse, Response, Router
+from lib.router import Depends, EventSourceResponse, Request, Response, Router
 
 from .handlers import ChatHandlers
-from .schemas import ChatRequest, CompatibleMessage, CompatibleRequest, Completion
+from .schemas import (
+    ChatRequest,
+    CompatibleMessage,
+    CompatibleRequest,
+    Completion,
+    UploadedBlob,
+)
 
 router = Router()
 
@@ -17,6 +23,15 @@ async def chat(
     handlers: Annotated[ChatHandlers, Depends(Provide(ChatHandlers))],
 ) -> EventSourceResponse:
     return await handlers.native(ask, client)
+
+
+@router.post('/v1/blobs', status_code=201)
+async def upload(
+    request: Request,
+    client: Annotated[ApiClient, Depends(Authenticated())],
+    handlers: Annotated[ChatHandlers, Depends(Provide(ChatHandlers))],
+) -> UploadedBlob:
+    return await handlers.upload(request, client)
 
 
 @router.get('/v1/blobs/{blob}', response_class=Response)
