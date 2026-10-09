@@ -59,6 +59,9 @@ tools:
       value_from:
         env: OPENAI_API_KEY
     size: 1024x1024
+  write_document:
+    kind: write_document
+    description: Write a Markdown, CSV, Word or Excel file for the user to download.
   narrator:
     kind: speech
     description: Read a short answer aloud as a voice message.
@@ -107,6 +110,7 @@ agents:
         max_results: 3
     - name: illustrator
     - name: narrator
+    - name: write_document
     mcp:
     - server: memory
       allow:

@@ -58,6 +58,8 @@ from app.features.tools.speech.tool import SpeechTool, build_speech
 from app.features.tools.websearch.config import WebSearchToolConfig
 from app.features.tools.websearch.repositories import WebSearchRepository
 from app.features.tools.websearch.tool import WebSearchTool, build_websearch
+from app.features.tools.writing.config import WritingToolConfig
+from app.features.tools.writing.tool import WriteDocumentTool, build_write_document
 from lib.container import ContainerContract, ProviderContract
 from lib.guid import GUIDContract
 from lib.mcp import MCPClientContract
@@ -227,6 +229,17 @@ class ToolContributions(ProviderContract):
                 SpeechToolConfig,
                 builder=lambda config, _scope: build_speech(
                     c.resolve(SpeechRepository),
+                    c.resolve(ArtifactWriter),
+                    config,
+                ),
+            ),
+        )
+        container.contribute(
+            ToolKind,
+            lambda c: ToolKind(
+                WriteDocumentTool,
+                WritingToolConfig,
+                builder=lambda config, _scope: build_write_document(
                     c.resolve(ArtifactWriter),
                     config,
                 ),
