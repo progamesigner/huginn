@@ -7,9 +7,15 @@ import pytest
 import respx
 from pydantic import SecretStr
 
-from app.contracts.channels import InboundAttachment, InboundMessage
+from app.contracts.channels import (
+    ArtifactKind,
+    InboundAttachment,
+    InboundMessage,
+    ReplyArtifact,
+)
 from app.exts.telegram.clients import TelegramClient
 from app.exts.telegram.gateways import TelegramGateway, TelegramReply
+from app.exts.telegram.types import UPLOAD
 from app.features.agents.contracts import TurnStream
 from lib.http import HTTPClientManager
 from tests.helpers.clock import FakeClock
@@ -671,3 +677,131 @@ async def test_reply_streams_into_the_inbound_chat() -> None:
         'chat_id': str(_CHAT_ID),
         'text': 'hello',
     }
+
+
+def artifact(
+    kind: ArtifactKind = 'image',
+    mime: str = 'image/png',
+    *,
+    size: int | None = None,
+) -> ReplyArtifact:
+    data = b'\x89PNG bytes'
+    return ReplyArtifact(
+        blob='0190a1b2-0000-7000-8000-000000000001',
+        kind=kind,
+        mime=mime,
+        size=len(data) if size is None else size,
+        data=data,
+        name='chart.png',
+    )
+
+
+class Wire:
+    calls: list[tuple[str, str]]
+    status: int
+
+    def __init__(self, status: int = 200) -> None:
+        self.calls = []
+        self.status = status
+
+    def answer(self, request: httpx.Request) -> httpx.Response:
+        method = request.url.path.rpartition('/')[2]
+        if method in ('sendMessage', 'editMessageText'):
+            self.calls.append((method, json.loads(request.content)['text']))
+            return message(7 + len(self.calls))
+
+        self.calls.append((method, ''))
+        if self.status != 200:
+            return httpx.Response(self.status, json={'ok': False})
+        return message(100)
+
+
+def wired(status: int = 200) -> Wire:
+    wire = Wire(status)
+    respx.post(url__startswith=_BASE_URL).mock(side_effect=wire.answer)
+    return wire
+
+
+@respx.mock
+async def test_text_before_a_file_is_finished_before_the_file_goes_out() -> None:
+    wire = wired()
+    clock = FakeClock()
+    reply = make_reply(clock)
+
+    await reply.on_text('Here')
+    await reply.on_text(' it is')
+    await reply.on_artifact(artifact())
+    await reply.on_text('Anything else?')
+    await reply.finish()
+
+    assert wire.calls == [
+        ('sendMessage', 'Here'),
+        ('editMessageText', 'Here it is'),
+        ('sendPhoto', ''),
+        ('sendMessage', 'Anything else?'),
+    ]
+
+
+@respx.mock
+async def test_a_file_with_no_text_before_it_goes_out_alone() -> None:
+    wire = wired()
+    reply = make_reply(FakeClock())
+
+    await reply.on_artifact(artifact())
+    await reply.finish()
+
+    assert wire.calls == [('sendPhoto', '')]
+
+
+@pytest.mark.parametrize(
+    ('kind', 'mime', 'method'),
+    [
+        ('audio', 'audio/ogg', 'sendVoice'),
+        ('audio', 'audio/mpeg', 'sendAudio'),
+        ('document', 'text/csv', 'sendDocument'),
+        ('video', 'video/mp4', 'sendVideo'),
+    ],
+)
+@respx.mock
+async def test_a_file_goes_out_by_the_method_its_mime_calls_for(
+    kind: ArtifactKind,
+    mime: str,
+    method: str,
+) -> None:
+    wire = wired()
+
+    await make_reply(FakeClock()).on_artifact(artifact(kind, mime))
+
+    assert wire.calls == [(method, '')]
+
+
+@respx.mock
+async def test_a_file_telegram_refuses_is_explained_and_the_reply_finishes() -> None:
+    wire = wired(status=400)
+    reply = make_reply(FakeClock())
+
+    await reply.on_text('Here it is')
+    await reply.on_artifact(artifact())
+    await reply.finish()
+
+    assert wire.calls == [
+        ('sendMessage', 'Here it is'),
+        ('sendPhoto', ''),
+        (
+            'sendMessage',
+            'I made chart.png but could not send it (telegram answered 400).',
+        ),
+    ]
+
+
+@respx.mock
+async def test_a_file_over_the_vendor_limit_is_never_uploaded() -> None:
+    wire = wired()
+    reply = make_reply(FakeClock())
+
+    await reply.on_artifact(artifact(size=UPLOAD.photo_limit + 1))
+    await reply.finish()
+
+    assert wire.calls == [
+        ('sendMessage', 'I made chart.png but could not send it (it is too large).'),
+    ]

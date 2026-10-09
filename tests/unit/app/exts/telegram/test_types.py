@@ -3,10 +3,12 @@ from datetime import timedelta
 import pytest
 from pydantic import ValidationError
 
+from app.contracts.channels import ArtifactKind
 from app.exts.telegram.types import (
     MEDIA,
     MESSAGE,
     TYPING,
+    UPLOAD,
     WEBHOOK,
     MessageEntity,
     PhotoSize,
@@ -15,6 +17,8 @@ from app.exts.telegram.types import (
     clip_entities,
     render,
     select_photo,
+    select_upload,
+    upload_limit,
     utf16_offsets,
 )
 
@@ -225,3 +229,30 @@ def test_webhook_spec_carries_no_behaviour() -> None:
     ]
 
     assert not methods
+
+
+def test_upload_spec_pins_the_vendor_limits() -> None:
+    assert UPLOAD.photo_limit == 10 * 1024 * 1024
+    assert UPLOAD.file_limit == 50 * 1024 * 1024
+    assert upload_limit('photo') == UPLOAD.photo_limit
+    assert upload_limit('document') == UPLOAD.file_limit
+
+
+@pytest.mark.parametrize(
+    ('kind', 'mime', 'upload'),
+    [
+        ('image', 'image/png', 'photo'),
+        ('image', 'image/jpeg', 'photo'),
+        ('image', 'image/svg+xml', 'document'),
+        ('audio', 'audio/ogg', 'voice'),
+        ('audio', 'audio/mpeg', 'audio'),
+        ('video', 'video/mp4', 'video'),
+        ('document', 'application/pdf', 'document'),
+    ],
+)
+def test_select_upload_reads_the_mime_not_only_the_kind(
+    kind: ArtifactKind,
+    mime: str,
+    upload: str,
+) -> None:
+    assert select_upload(kind, mime) == upload

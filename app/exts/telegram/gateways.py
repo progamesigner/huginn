@@ -29,6 +29,8 @@ from .types import (
     MessageEntity,
     clip_entities,
     render,
+    select_upload,
+    upload_limit,
     utf16_offsets,
 )
 
@@ -39,6 +41,7 @@ _FAIL_EMOJI = '🤯'
 _FAIL_NOTE = (
     '\n\nSomething went wrong before I could finish this reply. Please ask again.'
 )
+_UNSENT_NOTE = 'I made {name} but could not send it ({reason}).\n\n'
 _ENDING_NOTES: dict[TurnEnding, str] = {
     'timeout': '\n\nI ran out of time before finishing this. Ask me to continue.',
     'exhausted': '\n\nI used up every step I get for one reply. Ask me to continue.',
@@ -123,9 +126,9 @@ class TelegramReply(ChannelReplyContract):
     @override
     async def abandon(self) -> None:
         await self._stop_typing()
-        # NOTE: with no draft out there is nothing to annotate, and the reaction on the
-        # incoming message already carries the whole signal
-        if self.draft is None:
+        # NOTE: with nothing out or owed there is nothing to annotate, and the reaction
+        # on the incoming message already carries the whole signal
+        if self.draft is None and not self.pending:
             return
 
         self.pending += _FAIL_NOTE
@@ -141,9 +144,44 @@ class TelegramReply(ChannelReplyContract):
             self.opened.elapsed().total_seconds(),
         )
 
+    # NOTE: the text so far is finished before the file goes out, so the file lands
+    # after it and the next text opens a message of its own instead of editing above it
     @override
     async def on_artifact(self, artifact: ReplyArtifact) -> None:
-        self.logger.debug('Produced a %s artifact %s', artifact.kind, artifact.blob)
+        await self._flush()
+        self.pending = ''
+        self.sealed = 0
+        self.draft = None
+        self.sent = ('', ())
+
+        name = artifact.name or f'{artifact.kind}'
+        upload = select_upload(artifact.kind, artifact.mime)
+        if artifact.size > (limit := upload_limit(upload)):
+            self.logger.warning(
+                'Not sending %s: %d bytes is over the %d byte limit',
+                artifact.blob,
+                artifact.size,
+                limit,
+            )
+            self.pending += _UNSENT_NOTE.format(name=name, reason='it is too large')
+            return
+
+        try:
+            await self.client.send_file(
+                self.chat_id,
+                upload,
+                name,
+                artifact.data,
+                artifact.mime,
+            )
+        except Exception as error:
+            self.logger.exception('Could not send %s as a %s', artifact.blob, upload)
+            reason = (
+                f'telegram answered {error.response.status_code}'
+                if isinstance(error, httpx.HTTPStatusError)
+                else 'the upload failed'
+            )
+            self.pending += _UNSENT_NOTE.format(name=name, reason=reason)
 
     @override
     async def on_routed(self, agent: str) -> None:

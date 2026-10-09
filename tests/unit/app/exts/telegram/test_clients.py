@@ -7,7 +7,7 @@ from pydantic import SecretStr
 
 from app.exts.telegram.clients import TelegramClient, webhook_url
 from app.exts.telegram.exceptions import MediaTooLargeError, MediaUnavailableError
-from app.exts.telegram.types import MessageEntity
+from app.exts.telegram.types import MessageEntity, Upload
 from lib.http import HTTPClientManager
 
 _BASE_URL = 'https://api.telegram.org/bottelegram-token'
@@ -408,3 +408,77 @@ async def test_set_my_commands_sends_the_menu_in_the_order_it_was_given() -> Non
         ],
     }
     assert result is True
+
+
+@respx.mock
+async def test_send_file_uploads_the_bytes_as_multipart() -> None:
+    route = respx.post(f'{_BASE_URL}/sendPhoto').mock(
+        return_value=httpx.Response(200, json={'ok': True, 'result': _MESSAGE}),
+    )
+
+    message = await make_client().send_file(
+        123,
+        'photo',
+        'chart.png',
+        b'\x89PNG bytes',
+        'image/png',
+    )
+
+    request = route.calls.last.request
+    body = request.content
+    assert request.headers['content-type'].startswith('multipart/form-data')
+    assert b'name="chat_id"\r\n\r\n123' in body
+    assert b'name="photo"; filename="chart.png"' in body
+    assert b'Content-Type: image/png' in body
+    assert b'\x89PNG bytes' in body
+    assert message.message_id == 7
+
+
+@pytest.mark.parametrize(
+    ('upload', 'method'),
+    [
+        ('audio', 'sendAudio'),
+        ('document', 'sendDocument'),
+        ('photo', 'sendPhoto'),
+        ('video', 'sendVideo'),
+        ('voice', 'sendVoice'),
+    ],
+)
+@respx.mock
+async def test_send_file_picks_the_method_of_its_upload(
+    upload: Upload,
+    method: str,
+) -> None:
+    route = respx.post(f'{_BASE_URL}/{method}').mock(
+        return_value=httpx.Response(200, json={'ok': True, 'result': _MESSAGE}),
+    )
+
+    await make_client().send_file(123, upload, 'file', b'bytes', 'text/plain')
+
+    assert f'name="{upload}"'.encode() in route.calls.last.request.content
+
+
+@respx.mock
+async def test_send_file_shares_the_rate_limit_retry(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    sleeps = []
+
+    async def record_sleep(delay: float) -> None:
+        sleeps.append(delay)
+
+    monkeypatch.setattr('app.exts.telegram.clients.asyncio.sleep', record_sleep)
+    route = respx.post(f'{_BASE_URL}/sendDocument').mock(
+        side_effect=[
+            httpx.Response(
+                429,
+                json={'ok': False, 'parameters': {'retry_after': 2}},
+            ),
+            httpx.Response(200, json={'ok': True, 'result': _MESSAGE}),
+        ],
+    )
+
+    await make_client().send_file(123, 'document', 'a.csv', b'a,b', 'text/csv')
+
+    assert route.call_count == 2
+    assert sleeps == [2.0]

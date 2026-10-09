@@ -15,10 +15,20 @@ from .types import (
     MessageEntity,
     ReactionTypeEmoji,
     TelegramResponse,
+    Upload,
     WebhookInfo,
 )
 
 _MAX_ATTEMPTS = 3
+_UPLOAD_METHODS: dict[Upload, str] = {
+    'audio': 'sendAudio',
+    'document': 'sendDocument',
+    'photo': 'sendPhoto',
+    'video': 'sendVideo',
+    'voice': 'sendVoice',
+}
+
+type Multipart = dict[str, tuple[str, bytes, str]]
 
 
 def webhook_url(base_url: str) -> str:
@@ -107,6 +117,23 @@ class TelegramClient:
             bool,
         )
 
+    async def send_file(
+        self,
+        chat_id: int | str,
+        upload: Upload,
+        name: str,
+        data: bytes,
+        mime: str,
+    ) -> Message:
+        response = await self._request(
+            self.base_url,
+            _UPLOAD_METHODS[upload],
+            {'chat_id': str(chat_id)},
+            files={upload: (name, data, mime)},
+        )
+        parsed = TelegramResponse.model_validate_json(response)
+        return Message.model_validate(parsed.result)
+
     async def send_message(
         self,
         chat_id: int | str,
@@ -180,14 +207,17 @@ class TelegramClient:
         base_url: str,
         path: str,
         payload: dict[str, JsonValue] | None = None,
+        *,
+        files: Multipart | None = None,
     ) -> bytes:
         async with self.http.connect(base_url) as client:
             for attempt in range(_MAX_ATTEMPTS):
-                response = (
-                    await client.get(path)
-                    if payload is None
-                    else await client.post(path, json=payload)
-                )
+                if files is not None:
+                    response = await client.post(path, data=payload, files=files)
+                elif payload is not None:
+                    response = await client.post(path, json=payload)
+                else:
+                    response = await client.get(path)
                 if response.status_code == 429 or response.status_code >= 500:
                     if attempt + 1 < _MAX_ATTEMPTS:
                         retry_after = 2**attempt

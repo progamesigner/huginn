@@ -7,7 +7,7 @@ from typing import Annotated, Literal
 from pydantic import BaseModel, ConfigDict, Field, JsonValue
 from telegramify_markdown import convert, utf16_len
 
-from app.contracts.channels import ATTACHMENT_LIMITS
+from app.contracts.channels import ATTACHMENT_LIMITS, ArtifactKind
 
 
 class TelegramValue(BaseModel):
@@ -35,6 +35,16 @@ class MediaSpec:
 
 
 @dataclass(frozen=True)
+class UploadSpec:
+    file_limit: int
+    photo_limit: int
+    photo_mimes: frozenset[str]
+
+
+type Upload = Literal['audio', 'document', 'photo', 'video', 'voice']
+
+
+@dataclass(frozen=True)
 class TypingSpec:
     action: str
     refresh_interval: timedelta
@@ -50,6 +60,11 @@ MESSAGE = MessageSpec(length_limit=4096, edit_interval=timedelta(seconds=1.1))
 MEDIA = MediaSpec(
     photo_mime='image/jpeg',
     audio_mime='audio/ogg',
+)
+UPLOAD = UploadSpec(
+    file_limit=50 * 1024 * 1024,
+    photo_limit=10 * 1024 * 1024,
+    photo_mimes=frozenset({'image/jpeg', 'image/png', 'image/webp'}),
 )
 TYPING = TypingSpec(action='typing', refresh_interval=timedelta(seconds=4))
 
@@ -204,3 +219,23 @@ def select_photo(
 
 def utf16_offsets(text: str) -> tuple[int, ...]:
     return tuple(accumulate((utf16_len(character) for character in text), initial=0))
+
+
+# NOTE: the mime picks the method, not the kind alone -- telegram plays only ogg/opus
+# as a voice note and shows only a few image formats inline
+def select_upload(kind: ArtifactKind, mime: str) -> Upload:
+    match kind:
+        case 'image' if mime in UPLOAD.photo_mimes:
+            return 'photo'
+        case 'audio' if mime == MEDIA.audio_mime:
+            return 'voice'
+        case 'audio':
+            return 'audio'
+        case 'video':
+            return 'video'
+        case _:
+            return 'document'
+
+
+def upload_limit(upload: Upload) -> int:
+    return UPLOAD.photo_limit if upload == 'photo' else UPLOAD.file_limit
