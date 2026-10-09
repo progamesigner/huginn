@@ -5,6 +5,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 
+from app.contracts.channels import ReplyArtifact
 from app.features.agents.config import AgentConfig, DefaultsConfig
 from app.features.agents.contracts import (
     NamedTool,
@@ -48,7 +49,15 @@ from tests.helpers.clock import FakeClock
 from tests.helpers.logging import make_logger
 from tests.helpers.replies import RecordingReply
 
-from .test_agent_runner import EchoTool, FakeLLM, SleepTool, StallingLLM
+from .test_agent_runner import (
+    ARTIFACT,
+    DrawTool,
+    EchoTool,
+    FakeLLM,
+    SleepTool,
+    StallingLLM,
+    drawing,
+)
 
 DEFAULTS = DefaultsConfig(model='default-model')
 
@@ -81,6 +90,7 @@ class FakeTranscript:
 
 
 class FakeStore(TranscriptServiceContract):
+    artifacts: list[ReplyArtifact]
     maintain_error: Exception | None
     maintained: list[tuple[str, str, str, ModelRef]]
     opened: list[tuple[str, str]]
@@ -94,6 +104,7 @@ class FakeStore(TranscriptServiceContract):
         maintain_error: Exception | None = None,
         record_error: Exception | None = None,
     ) -> None:
+        self.artifacts = []
         self.maintain_error = maintain_error
         self.maintained = []
         self.opened = []
@@ -121,10 +132,12 @@ class FakeStore(TranscriptServiceContract):
         agent: str,
         prompts: Sequence[TurnPrompt],
         answer: str,
+        artifacts: Sequence[ReplyArtifact] = (),
     ) -> None:
         if self.record_error is not None:
             raise self.record_error
 
+        self.artifacts.extend(artifacts)
         self.transcript.recorded.append(
             (tuple(prompt.text for prompt in prompts), answer),
         )
@@ -151,8 +164,9 @@ class SharedFakeStore(FakeStore):
         agent: str,
         prompts: Sequence[TurnPrompt],
         answer: str,
+        artifacts: Sequence[ReplyArtifact] = (),
     ) -> None:
-        await super().record(channel, chat, agent, prompts, answer)
+        await super().record(channel, chat, agent, prompts, answer, artifacts)
         replay = tuple(
             Message(role='user', segments=(TextSegment(text=prompt.text),))
             for prompt in prompts
@@ -980,3 +994,18 @@ async def test_routing_context_loads_history_only_when_needed(
     assert isinstance(context, RoutingContext)
     assert context.current == prompts
     assert bool(context.turns) == bool(expected_calls)
+
+
+async def test_a_turn_records_the_artifacts_its_tools_produced() -> None:
+    store = FakeStore()
+    reply = RecordingReply()
+
+    await configured_handler(
+        drawing(),
+        store,
+        FakeSource('draw', tool=DrawTool()),
+    ).handle(request('draw me a chart'), reply)
+
+    assert reply.artifacts == [ARTIFACT]
+    assert store.artifacts == [ARTIFACT]
+    assert store.transcript.recorded == [(('draw me a chart',), 'here it is')]

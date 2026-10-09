@@ -9,8 +9,13 @@ import pytest
 from pydantic import Field, JsonValue
 from structlog.contextvars import bound_contextvars, get_contextvars
 
-from app.contracts.channels import AttachmentKind
-from app.features.agents.contracts import ToolOutput, ToolParams, TypedTool
+from app.contracts.channels import AttachmentKind, ReplyArtifact, ToolPhase
+from app.features.agents.contracts import (
+    ToolOutput,
+    ToolParams,
+    ToolResult,
+    TypedTool,
+)
 from app.features.agents.entities import (
     PromptAttachment,
     TurnBudget,
@@ -986,3 +991,89 @@ async def test_run_joins_a_turn_id_its_caller_already_bound() -> None:
         await runner.run(make_turn(), discard())
 
     assert probe.seen['turn_id'] == 'opened-by-the-channel'
+
+
+ARTIFACT = ReplyArtifact(
+    blob='0190a1b2-0000-7000-8000-000000000001',
+    kind='image',
+    mime='image/png',
+    size=4,
+    data=b'\x89PNG',
+    name='chart.png',
+)
+
+
+class DrawTool(TypedTool[ProbeParams]):
+    name = 'draw'
+    description = 'Produce an image'
+    params = ProbeParams
+
+    @override
+    async def run(self, params: ProbeParams) -> ToolOutput:
+        return ToolResult(text='Drew a chart.', artifacts=(ARTIFACT,))
+
+
+class OrderedReply(RecordingReply):
+    llm: FakeLLM
+    log: list[str]
+
+    def __init__(self, llm: FakeLLM) -> None:
+        super().__init__()
+        self.llm = llm
+        self.log = []
+
+    @override
+    async def on_artifact(self, artifact: ReplyArtifact) -> None:
+        await super().on_artifact(artifact)
+        self.log.append(f'artifact after {len(self.llm.requests)} requests')
+
+    @override
+    async def on_tool(self, name: str, phase: ToolPhase) -> None:
+        await super().on_tool(name, phase)
+        self.log.append(f'tool {phase}')
+
+
+def drawing() -> FakeLLM:
+    return FakeLLM(
+        [
+            [
+                ToolCallChunk(index=0, id='call_1', name='draw', arguments='{}'),
+                FinishChunk(reason='tool_calls'),
+            ],
+            [TextChunk(text='here it is'), FinishChunk(reason='stop')],
+        ],
+    )
+
+
+async def test_run_hands_an_artifact_to_the_reader_after_its_tool_finishes() -> None:
+    llm = drawing()
+    tools = ToolSet(logger=make_logger())
+    tools.add('draw', DrawTool())
+    sink = OrderedReply(llm)
+
+    await AgentRunner(llm, tools, ClockManager(), logger=make_logger()).run(
+        make_turn(),
+        sink,
+    )
+
+    assert sink.artifacts == [ARTIFACT]
+    assert sink.log == [
+        'tool started',
+        'tool finished',
+        'artifact after 1 requests',
+    ]
+
+
+async def test_run_shows_the_model_only_the_text_of_an_artifact_tool() -> None:
+    llm = drawing()
+    tools = ToolSet(logger=make_logger())
+    tools.add('draw', DrawTool())
+
+    await AgentRunner(llm, tools, ClockManager(), logger=make_logger()).run(
+        make_turn(),
+        discard(),
+    )
+
+    result = tool_result(llm.requests[1].messages[-1])
+    assert result.content == 'Drew a chart.'
+    assert 'PNG' not in llm.requests[1].model_dump_json()

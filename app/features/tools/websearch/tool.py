@@ -3,7 +3,7 @@ from typing import Annotated, override
 
 from pydantic import BaseModel, Field, SecretStr
 
-from app.features.agents.contracts import ToolOutput, ToolParams, TypedTool
+from app.features.agents.contracts import ToolParams, TypedTool
 from app.features.tools.exceptions import ToolError
 
 from .config import WebSearchToolConfig
@@ -60,7 +60,7 @@ class WebSearchTool(TypedTool[WebSearchParams]):
         self.base_url = base_url
 
     @override
-    async def run(self, params: WebSearchParams) -> ToolOutput:
+    async def run(self, params: WebSearchParams) -> str:
         result = await self.repository.search(params.query, self.api_key, self.base_url)
         return _format_result(result, params.max_results)
 

@@ -73,7 +73,7 @@ def test_schema_exposes_only_name() -> None:
 async def test_loading_a_skill_returns_its_body() -> None:
     tools, _ = await build('alpha')
 
-    result = await tools.execute(
+    result, _ = await tools.execute(
         ToolCallSegment(id='c1', name='skill', arguments='{"name": "alpha"}'),
     )
 
@@ -187,6 +187,7 @@ async def test_source_carries_bound_scope_from_inventory_into_load() -> None:
     harvest = await tools.collect(_agent(), scope)
     result = await harvest.tools[0][1].invoke('{"name":"triage"}')
 
+    assert isinstance(result, str)
     assert 'do the thing' in result
     assert source.list_scopes == [{'agent': 'default', 'user': 'alice'}]
     assert source.load_scopes == [{'agent': 'default', 'user': 'alice'}]
@@ -214,7 +215,7 @@ async def test_a_source_that_cannot_read_the_inventory_offers_no_skills(
 async def test_unknown_skill_lists_the_available_ones() -> None:
     tools, _ = await build('alpha', 'beta')
 
-    result = await tools.execute(
+    result, _ = await tools.execute(
         ToolCallSegment(id='c1', name='skill', arguments='{"name": "gamma"}'),
     )
 

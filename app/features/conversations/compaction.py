@@ -27,6 +27,7 @@ _DEFAULT_TOKEN_THRESHOLD = 50_000
 _DEFAULT_MAX_RETRIES = 1
 _TEXT = 'text'
 _REPLAYED = ('audio', 'image', _TEXT)
+_ARTIFACTS = ('audio', 'document', 'image', 'video')
 
 
 class SummaryOutput(BaseModel):
@@ -62,7 +63,10 @@ _INSTRUCTION = (
 
 
 def _text_of(part: Part) -> str | None:
-    if part.kind not in _REPLAYED:
+    # NOTE: what the agent produced replays as its placeholder, so a later turn knows
+    # the file exists without its bytes ever reaching the model
+    produced = part.role == 'assistant' and part.kind in _ARTIFACTS
+    if part.kind not in _REPLAYED and not produced:
         return None
 
     text = part.payload.get('text')

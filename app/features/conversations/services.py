@@ -6,6 +6,7 @@ from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.contracts.channels import ReplyArtifact
 from app.core.config.registry import HuginnConfig
 from app.features.agents.config import (
     AGENTS,
@@ -65,6 +66,25 @@ def routing_turn(turn: Turn) -> RoutingTurn:
 _TEXT = 'text'
 
 
+def _placeholder(artifact: ReplyArtifact) -> str:
+    return f'[generated {artifact.kind}: {artifact.name or artifact.mime}]'
+
+
+# NOTE: the tool stored the bytes already; the part names the blob and nothing more
+def _artifact(artifact: ReplyArtifact) -> Part:
+    return Part(
+        role='assistant',
+        kind=artifact.kind,
+        payload={
+            'text': _placeholder(artifact),
+            'blob': artifact.blob,
+            'mime': artifact.mime,
+            'size': artifact.size,
+            'name': artifact.name,
+        },
+    )
+
+
 class ConversationTranscript:
     blobs: BlobServiceContract
     conversation: Conversation
@@ -105,6 +125,7 @@ class ConversationTranscript:
         agent: str,
         prompts: Sequence[TurnPrompt],
         answer: str,
+        artifacts: Sequence[ReplyArtifact] = (),
     ) -> None:
         parts = []
         for prompt in prompts:
@@ -121,6 +142,7 @@ class ConversationTranscript:
 
         if answer:
             parts.append(Part(role='assistant', kind=_TEXT, payload={'text': answer}))
+        parts.extend(_artifact(artifact) for artifact in artifacts)
 
         await self.repository.append_turn(self.conversation, agent, parts)
 
@@ -349,9 +371,10 @@ class ConversationTranscriptStore(TranscriptServiceContract):
         agent: str,
         prompts: Sequence[TurnPrompt],
         answer: str,
+        artifacts: Sequence[ReplyArtifact] = (),
     ) -> None:
         async with self._open(channel, chat) as transcript:
-            await transcript.record(agent, prompts, answer)
+            await transcript.record(agent, prompts, answer, artifacts)
 
     @override
     async def maintain(

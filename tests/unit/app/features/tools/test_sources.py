@@ -95,6 +95,18 @@ class DocumentBlobs(BlobServiceContract):
         self.blob = blob
 
     @override
+    async def save(
+        self,
+        mime: str,
+        data: bytes,
+        *,
+        kind: BlobKind,
+        filename: str | None = None,
+        ttl: timedelta | None = None,
+    ) -> Blob:
+        raise NotImplementedError
+
+    @override
     async def load(self, id: UUID) -> Blob | None:
         return self.blob if id == self.blob.id else None
 
@@ -154,4 +166,6 @@ async def test_document_source_applies_turn_allow_list() -> None:
 
     harvest = await source.collect(agent, scope)
     tool = harvest.tools[0][1]
-    assert (await tool.invoke(json.dumps({'blob': str(blob_id)}))).endswith('\nhello')
+    output = await tool.invoke(json.dumps({'blob': str(blob_id)}))
+    assert isinstance(output, str)
+    assert output.endswith('\nhello')

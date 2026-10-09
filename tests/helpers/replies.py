@@ -1,10 +1,16 @@
 from typing import override
 
-from app.contracts.channels import ChannelReplyContract, ToolPhase, TurnEnding
+from app.contracts.channels import (
+    ChannelReplyContract,
+    ReplyArtifact,
+    ToolPhase,
+    TurnEnding,
+)
 
 
 class RecordingReply(ChannelReplyContract):
     abandoned: bool
+    artifacts: list[ReplyArtifact]
     endings: list[TurnEnding]
     finished: bool
     fragments: list[str]
@@ -13,6 +19,7 @@ class RecordingReply(ChannelReplyContract):
 
     def __init__(self) -> None:
         self.abandoned = False
+        self.artifacts = []
         self.endings = []
         self.finished = False
         self.fragments = []
@@ -26,6 +33,10 @@ class RecordingReply(ChannelReplyContract):
     @override
     async def finish(self) -> None:
         self.finished = True
+
+    @override
+    async def on_artifact(self, artifact: ReplyArtifact) -> None:
+        self.artifacts.append(artifact)
 
     @override
     async def on_routed(self, agent: str) -> None:

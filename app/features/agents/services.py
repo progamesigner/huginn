@@ -6,7 +6,7 @@ from uuid import uuid4
 
 from structlog.contextvars import bound_contextvars, get_contextvars
 
-from app.contracts.channels import ChannelReplyContract, ToolPhase
+from app.contracts.channels import ChannelReplyContract, ReplyArtifact, ToolPhase
 from lib.llm import (
     CompletionChunk,
     CompletionRequest,
@@ -86,15 +86,22 @@ def _instructions(
 
 class AnswerRecorder(TurnStream):
     stream: TurnStream
+    artifacts: list[ReplyArtifact]
     fragments: list[str]
 
     def __init__(self, stream: TurnStream) -> None:
         self.stream = stream
+        self.artifacts = []
         self.fragments = []
 
     @property
     def answer(self) -> str:
         return ''.join(self.fragments)
+
+    @override
+    async def on_artifact(self, artifact: ReplyArtifact) -> None:
+        self.artifacts.append(artifact)
+        await self.stream.on_artifact(artifact)
 
     @override
     async def on_routed(self, agent: str) -> None:
@@ -244,13 +251,16 @@ async def _execute(
     await sink.on_tool(call.name, 'started')
     try:
         async with asyncio.timeout(tool_timeout):
-            result = await tools.execute(call)
+            result, artifacts = await tools.execute(call)
     except TimeoutError:
         logger.warning('Tool %s timed out after %.1fs', call.name, tool_timeout)
-        result = ToolResultSegment(
-            tool_call_id=call.id,
-            content=f'tool {call.name!r} timed out',
-            error=True,
+        result, artifacts = (
+            ToolResultSegment(
+                tool_call_id=call.id,
+                content=f'tool {call.name!r} timed out',
+                error=True,
+            ),
+            (),
         )
 
     record = ToolExecution(
@@ -265,6 +275,10 @@ async def _execute(
         record.ok,
     )
     await sink.on_tool(record.name, 'finished' if record.ok else 'failed')
+    # NOTE: after the tool reports, before the model speaks again, so the reader sees
+    # the file where the agent produced it rather than tacked onto the end
+    for artifact in artifacts:
+        await sink.on_artifact(artifact)
     return result, record
 
 
@@ -557,7 +571,12 @@ class TurnHandler(TurnServiceContract):
                 witness,
             )
         except Exception:
-            await self._salvage(request, agent.name, witness.answer)
+            await self._salvage(
+                request,
+                agent.name,
+                witness.answer,
+                witness.artifacts,
+            )
             raise
 
         if not output.completed:
@@ -571,9 +590,16 @@ class TurnHandler(TurnServiceContract):
             agent.name,
             request.prompts,
             output.text,
+            witness.artifacts,
         )
 
-    async def _salvage(self, request: TurnRequest, agent: str, answer: str) -> None:
+    async def _salvage(
+        self,
+        request: TurnRequest,
+        agent: str,
+        answer: str,
+        artifacts: Sequence[ReplyArtifact],
+    ) -> None:
         try:
             await self.store.record(
                 request.channel,
@@ -581,6 +607,7 @@ class TurnHandler(TurnServiceContract):
                 agent,
                 request.prompts,
                 answer,
+                artifacts,
             )
         except Exception:
             self.logger.exception(

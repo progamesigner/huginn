@@ -6,6 +6,7 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, SecretStr
 
 type AttachmentKind = Literal['audio', 'document', 'image']
+type ArtifactKind = Literal['audio', 'document', 'image', 'video']
 ATTACHMENT_LIMITS: Mapping[AttachmentKind, int] = MappingProxyType(
     {
         'image': 5 * 1024 * 1024,
@@ -29,6 +30,19 @@ class InboundAttachment(BaseModel):
     height: int | None = None
     size: int | None = None
     width: int | None = None
+
+
+# NOTE: the bytes ride along because a transport cannot reach the blob store; the blob
+# id is what a channel hands out when the bytes travel by another request
+class ReplyArtifact(BaseModel):
+    model_config = ConfigDict(strict=True, frozen=True, extra='forbid')
+
+    blob: str
+    kind: ArtifactKind
+    mime: str
+    size: int
+    data: bytes
+    name: str | None = None
 
 
 class InboundCommand(BaseModel):
@@ -63,6 +77,9 @@ class ChannelReplyContract(ABC):
 
     @abstractmethod
     async def finish(self) -> None: ...
+
+    @abstractmethod
+    async def on_artifact(self, artifact: ReplyArtifact) -> None: ...
 
     @abstractmethod
     async def on_routed(self, agent: str) -> None: ...

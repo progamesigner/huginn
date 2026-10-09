@@ -2,7 +2,8 @@ from typing import Annotated, override
 
 from pydantic import Field
 
-from app.features.agents.contracts import ToolOutput, ToolParams, TypedTool
+from app.contracts.channels import ReplyArtifact
+from app.features.agents.contracts import ToolOutput, ToolParams, ToolResult, TypedTool
 from app.features.agents.tooling import ToolSet
 from lib.llm import ToolCallSegment
 from tests.helpers.logging import make_logger
@@ -43,7 +44,7 @@ async def test_execute_returns_tool_output_for_valid_arguments() -> None:
     tools = make_toolset()
     call = ToolCallSegment(id='call_1', name='echo', arguments='{"text": "hi"}')
 
-    result = await tools.execute(call)
+    result, _ = await tools.execute(call)
 
     assert result.tool_call_id == 'call_1'
     assert result.content == 'hi'
@@ -54,7 +55,7 @@ async def test_execute_reports_invalid_json_as_error_result() -> None:
     tools = make_toolset()
     call = ToolCallSegment(id='call_1', name='echo', arguments='{not json')
 
-    result = await tools.execute(call)
+    result, _ = await tools.execute(call)
 
     assert result.error is True
     assert 'json' in result.content.lower()
@@ -64,7 +65,7 @@ async def test_execute_reports_missing_field_as_error_result() -> None:
     tools = make_toolset()
     call = ToolCallSegment(id='call_1', name='echo', arguments='{}')
 
-    result = await tools.execute(call)
+    result, _ = await tools.execute(call)
 
     assert result.error is True
     assert 'text' in result.content
@@ -76,7 +77,7 @@ async def test_execute_reports_why_a_tool_raised_not_only_that_it_did() -> None:
     tools = make_toolset()
     call = ToolCallSegment(id='call_1', name='boom', arguments='{"text": "x"}')
 
-    result = await tools.execute(call)
+    result, _ = await tools.execute(call)
 
     assert result.error is True
     assert "tool 'boom' failed" in result.content
@@ -87,7 +88,47 @@ async def test_execute_reports_unknown_tool_with_available_list() -> None:
     tools = make_toolset()
     call = ToolCallSegment(id='call_1', name='missing', arguments='{}')
 
-    result = await tools.execute(call)
+    result, _ = await tools.execute(call)
 
     assert result.error is True
     assert 'boom, echo' in result.content
+
+
+_ARTIFACT = ReplyArtifact(
+    blob='0190a1b2-0000-7000-8000-000000000001',
+    kind='document',
+    mime='text/csv',
+    size=3,
+    data=b'a,b',
+    name='table.csv',
+)
+
+
+class FileTool(TypedTool[EchoParams]):
+    name = 'file'
+    description = 'Produce a file'
+    params = EchoParams
+
+    @override
+    async def run(self, params: EchoParams) -> ToolOutput:
+        return ToolResult(text=params.text, artifacts=(_ARTIFACT,))
+
+
+async def test_execute_keeps_a_plain_answer_free_of_artifacts() -> None:
+    call = ToolCallSegment(id='call_1', name='echo', arguments='{"text": "hi"}')
+
+    result, artifacts = await make_toolset().execute(call)
+
+    assert result.content == 'hi'
+    assert artifacts == ()
+
+
+async def test_execute_splits_an_artifact_from_the_text_the_model_reads() -> None:
+    tools = ToolSet(logger=make_logger())
+    tools.add('file', FileTool())
+    call = ToolCallSegment(id='call_1', name='file', arguments='{"text": "made"}')
+
+    result, artifacts = await tools.execute(call)
+
+    assert (result.content, result.error) == ('made', False)
+    assert artifacts == (_ARTIFACT,)

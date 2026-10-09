@@ -24,6 +24,18 @@ class Blobs(BlobServiceContract):
         self.blob = blob
 
     @override
+    async def save(
+        self,
+        mime: str,
+        data: bytes,
+        *,
+        kind: BlobKind,
+        filename: str | None = None,
+        ttl: timedelta | None = None,
+    ) -> Blob:
+        raise NotImplementedError
+
+    @override
     async def load(self, id: UUID) -> Blob | None:
         return self.blob if self.blob and self.blob.id == id else None
 
@@ -148,7 +160,7 @@ def test_the_builder_refuses_a_foreign_config() -> None:
 
 async def test_tool_set_returns_a_safe_error_without_aborting() -> None:
     blob_id = uuid4()
-    result = await ToolSet(
+    result, _ = await ToolSet(
         {'read_document': _tool(None, blob_id)},
         logger=make_logger(),
     ).execute(

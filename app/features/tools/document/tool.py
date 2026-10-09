@@ -3,7 +3,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field
 
-from app.features.agents.contracts import ToolOutput, ToolParams, TypedTool
+from app.features.agents.contracts import ToolParams, TypedTool
 from app.features.agents.entities import TurnScope
 from app.features.blobs.contracts import BlobServiceContract
 from app.features.tools.exceptions import ToolError
@@ -40,7 +40,7 @@ class ReadDocumentTool(TypedTool[ReadDocumentParams]):
         self.max_chars = max_chars
 
     @override
-    async def run(self, params: ReadDocumentParams) -> ToolOutput:
+    async def run(self, params: ReadDocumentParams) -> str:
         if str(params.blob) not in self.allowed:
             raise ToolError('document blob is not available in this conversation')
 

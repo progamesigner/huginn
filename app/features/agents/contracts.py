@@ -6,18 +6,27 @@ from typing import Protocol, override
 
 from pydantic import BaseModel, ConfigDict, JsonValue
 
-from app.contracts.channels import ChannelReplyContract, ToolPhase
+from app.contracts.channels import ChannelReplyContract, ReplyArtifact, ToolPhase
 from lib.llm import Message, ModelRef
 
 from .config import AgentConfig
 from .entities import RoutingHistory, RoutingTurn, TurnPrompt, TurnRequest, TurnScope
 
 type NamedTool = tuple[str, Tool]
-type ToolOutput = str
+type ToolOutput = str | ToolResult
 type ToolSourceCollector = Callable[[], Iterable[ToolSource]]
 
 
+# NOTE: the model reads `text` alone; the artifacts go to the reader beside it
+@dataclass(frozen=True)
+class ToolResult:
+    text: str
+    artifacts: tuple[ReplyArtifact, ...] = ()
+
+
 class TurnStream(Protocol):
+    async def on_artifact(self, artifact: ReplyArtifact) -> None: ...
+
     async def on_routed(self, agent: str) -> None: ...
 
     async def on_text(self, fragment: str) -> None: ...
@@ -101,6 +110,7 @@ class TranscriptServiceContract(ABC):
         agent: str,
         prompts: Sequence[TurnPrompt],
         answer: str,
+        artifacts: Sequence[ReplyArtifact] = (),
     ) -> None: ...
 
     @abstractmethod

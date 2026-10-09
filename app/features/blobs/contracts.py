@@ -22,6 +22,19 @@ class BlobServiceContract(ABC):
         ttl: timedelta | None = None,
     ) -> Blob: ...
 
+    # NOTE: for bytes nothing in a transaction names yet -- an upload or a generated
+    # file -- so the blob commits alone and lapses on `ttl` unless something adopts it
+    @abstractmethod
+    async def save(
+        self,
+        mime: str,
+        data: bytes,
+        *,
+        kind: BlobKind,
+        filename: str | None = None,
+        ttl: timedelta | None = None,
+    ) -> Blob: ...
+
     @abstractmethod
     async def load(self, id: UUID) -> Blob | None: ...
 

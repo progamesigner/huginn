@@ -43,6 +43,26 @@ class BlobService(BlobServiceContract):
             ttl=ttl,
         )
 
+    @override
+    async def save(
+        self,
+        mime: str,
+        data: bytes,
+        *,
+        kind: BlobKind,
+        filename: str | None = None,
+        ttl: timedelta | None = None,
+    ) -> Blob:
+        async with self.database.transaction() as transaction:
+            return await self.store(
+                transaction,
+                mime,
+                data,
+                kind=kind,
+                filename=filename,
+                ttl=ttl,
+            )
+
     # NOTE: a read needs no transaction of the caller's, so it opens its own session
     @override
     async def load(self, id: UUID) -> Blob | None:

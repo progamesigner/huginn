@@ -8,6 +8,7 @@ import pytest
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.contracts.channels import ReplyArtifact
 from app.core.config.registry import HuginnConfig
 from app.features.agents.entities import PromptAttachment, TurnPrompt
 from app.features.blobs.config import BlobsConfig, RetentionConfig
@@ -41,6 +42,18 @@ pytestmark = pytest.mark.integration
 
 _PHOTO = b'\xff\xd8\xff\xe0 not really a jpeg'
 _VOICE = b'OggS not really an ogg'
+_CHART = b'\x89PNG not really a png'
+
+
+def _chart(blob: str) -> ReplyArtifact:
+    return ReplyArtifact(
+        blob=blob,
+        kind='image',
+        mime='image/png',
+        size=len(_CHART),
+        data=_CHART,
+        name='chart.png',
+    )
 
 
 class NoModels(LLMContract):
@@ -80,6 +93,18 @@ class SessionBlobs(BlobServiceContract):
         )
 
     @override
+    async def save(
+        self,
+        mime: str,
+        data: bytes,
+        *,
+        kind: BlobKind,
+        filename: str | None = None,
+        ttl: timedelta | None = None,
+    ) -> Blob:
+        raise NotImplementedError
+
+    @override
     async def load(self, id: UUID) -> Blob | None:
         return await self.reads.load(id)
 
@@ -116,6 +141,18 @@ class FlakyBlobs(BlobServiceContract):
             filename=filename,
             ttl=ttl,
         )
+
+    @override
+    async def save(
+        self,
+        mime: str,
+        data: bytes,
+        *,
+        kind: BlobKind,
+        filename: str | None = None,
+        ttl: timedelta | None = None,
+    ) -> Blob:
+        raise NotImplementedError
 
     @override
     async def load(self, id: UUID) -> Blob | None:
@@ -518,5 +555,88 @@ async def test_a_record_that_raises_partway_commits_nothing(database_url: str) -
             assert (await session.execute(select(BlobRecord))).scalars().all() == []
 
         assert await store.history('support_bot', '9999') == ()
+    finally:
+        await database.dispose()
+
+
+async def test_a_produced_artifact_is_named_by_an_assistant_part_without_its_bytes(
+    session: AsyncSession,
+) -> None:
+    repository = _repository(session)
+    conversation = await repository.get_or_create('support_bot', '8')
+    stored = await _blobs(session).store(
+        session,
+        'image/png',
+        _CHART,
+        kind='image',
+        filename='chart.png',
+    )
+    artifact = _chart(str(stored.id))
+
+    await _transcript(session, conversation).record(
+        'scout',
+        [_prompt('draw it')],
+        'here it is',
+        [artifact],
+    )
+
+    turn = (await repository.load_recent_turns(conversation, limit=1))[0]
+    _, answer, produced = turn.parts
+    assert (answer.role, answer.kind) == ('assistant', 'text')
+    assert (produced.role, produced.kind) == ('assistant', 'image')
+    assert dict(produced.payload) == {
+        'text': '[generated image: chart.png]',
+        'blob': str(stored.id),
+        'mime': 'image/png',
+        'size': len(_CHART),
+        'name': 'chart.png',
+    }
+
+
+async def test_a_produced_artifact_replays_as_its_placeholder(
+    session: AsyncSession,
+) -> None:
+    repository = _repository(session)
+    conversation = await repository.get_or_create('support_bot', '9')
+    transcript = _transcript(session, conversation)
+    stored = await _blobs(session).store(session, 'image/png', _CHART, kind='image')
+
+    await transcript.record(
+        'scout',
+        [_prompt('draw it')],
+        'here it is',
+        [_chart(str(stored.id))],
+    )
+
+    history = await transcript.history()
+    assert _texts(history) == [
+        ('user', 'draw it'),
+        ('assistant', 'here it is'),
+        ('assistant', '[generated image: chart.png]'),
+    ]
+    assert not any(
+        isinstance(segment, ImageSegment)
+        for message in history
+        for segment in message.segments
+    )
+
+
+@pytest.mark.usefixtures('_migrated')
+async def test_saving_a_blob_commits_it_on_its_own(database_url: str) -> None:
+    database = DatabaseManager({None: database_url})
+    blobs = BlobService(database, GUIDManager(), ClockManager())
+    try:
+        saved = await blobs.save(
+            'image/png',
+            _CHART + b' saved alone',
+            kind='image',
+            filename='chart.png',
+            ttl=timedelta(days=1),
+        )
+
+        loaded = await blobs.load(saved.id)
+        assert loaded is not None
+        assert loaded.data == _CHART + b' saved alone'
+        assert loaded.expires_at is not None
     finally:
         await database.dispose()

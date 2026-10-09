@@ -2,13 +2,15 @@ from collections.abc import Mapping
 
 from pydantic import JsonValue, ValidationError
 
+from app.contracts.channels import ReplyArtifact
 from lib.llm import ToolCallSegment, ToolResultSegment
 from lib.observability import Logger
 
-from .contracts import Tool
+from .contracts import Tool, ToolResult
 from .exceptions import DuplicateToolNameError
 
 type Instances = dict[str, Tool]
+type ToolOutcome = tuple[ToolResultSegment, tuple[ReplyArtifact, ...]]
 
 
 class ToolSet:
@@ -43,30 +45,29 @@ class ToolSet:
             for name, tool in self.tools.items()
         )
 
-    async def execute(self, call: ToolCallSegment) -> ToolResultSegment:
+    async def execute(self, call: ToolCallSegment) -> ToolOutcome:
         if call.name not in self.tools:
             available = ', '.join(sorted(self.tools)) or 'none'
-            return ToolResultSegment(
-                tool_call_id=call.id,
-                content=f'unknown tool {call.name!r}; available: {available}',
-                error=True,
+            return _failed(
+                call,
+                f'unknown tool {call.name!r}; available: {available}',
             )
 
         tool = self.tools[call.name]
         try:
             output = await tool.invoke(call.arguments)
         except ValidationError as error:
-            return ToolResultSegment(
-                tool_call_id=call.id,
-                content=str(error),
-                error=True,
-            )
+            return _failed(call, str(error))
         except Exception as error:
             self.logger.exception('Tool %s raised while executing', call.name)
-            return ToolResultSegment(
-                tool_call_id=call.id,
-                content=f'tool {call.name!r} failed: {error}',
-                error=True,
-            )
+            return _failed(call, f'tool {call.name!r} failed: {error}')
 
-        return ToolResultSegment(tool_call_id=call.id, content=output, error=False)
+        result = output if isinstance(output, ToolResult) else ToolResult(text=output)
+        return (
+            ToolResultSegment(tool_call_id=call.id, content=result.text, error=False),
+            result.artifacts,
+        )
+
+
+def _failed(call: ToolCallSegment, content: str) -> ToolOutcome:
+    return ToolResultSegment(tool_call_id=call.id, content=content, error=True), ()

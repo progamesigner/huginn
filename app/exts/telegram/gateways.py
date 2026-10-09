@@ -14,6 +14,7 @@ from app.contracts.channels import (
     ChannelReplyContract,
     InboundAttachment,
     InboundMessage,
+    ReplyArtifact,
     ToolPhase,
     TurnEnding,
 )
@@ -139,6 +140,10 @@ class TelegramReply(ChannelReplyContract):
             'Finished the reply after %.3fs',
             self.opened.elapsed().total_seconds(),
         )
+
+    @override
+    async def on_artifact(self, artifact: ReplyArtifact) -> None:
+        self.logger.debug('Produced a %s artifact %s', artifact.kind, artifact.blob)
 
     @override
     async def on_routed(self, agent: str) -> None:

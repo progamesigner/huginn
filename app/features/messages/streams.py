@@ -2,7 +2,12 @@ import asyncio
 from collections.abc import AsyncGenerator, Coroutine
 from typing import override
 
-from app.contracts.channels import ChannelReplyContract, ToolPhase, TurnEnding
+from app.contracts.channels import (
+    ChannelReplyContract,
+    ReplyArtifact,
+    ToolPhase,
+    TurnEnding,
+)
 from lib.observability import Logger
 
 from .entities import (
@@ -34,6 +39,10 @@ class QueuedReply(ChannelReplyContract):
     @override
     async def finish(self) -> None:
         await self.events.put(DoneEvent())
+
+    @override
+    async def on_artifact(self, artifact: ReplyArtifact) -> None:
+        pass
 
     @override
     async def on_routed(self, agent: str) -> None:
