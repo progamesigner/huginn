@@ -1,18 +1,21 @@
+import re
 from collections.abc import AsyncGenerator
 from contextlib import aclosing
+from urllib.parse import quote
 
 from app.contracts.auth import ApiClient
 from lib.guid import GUIDContract
-from lib.router import EventSourceResponse
+from lib.router import EventSourceResponse, Response
 from lib.temporal import ClockContract
 
-from .entities import ErrorEvent, TextEvent
+from .entities import AttachmentEvent, ErrorEvent, TextEvent
 from .exceptions import TurnFailedError
 from .presenters import (
     AnthropicPresenter,
     NativePresenter,
     OpenAIPresenter,
     Presenter,
+    attachment_link,
     encode,
 )
 from .schemas import (
@@ -27,8 +30,25 @@ from .schemas import (
 from .services import ChatService, PreparedTurn
 
 _HEADERS = {'Cache-Control': 'no-cache', 'X-Accel-Buffering': 'no'}
+_FALLBACK_NAME = 'download'
+_UNSAFE_NAME = re.compile(r'[^A-Za-z0-9._-]+')
+_CONTROL = re.compile(r'[\x00-\x1f\x7f/\\]+')
 _COMPLETION_PREFIX = 'chatcmpl'
 _MESSAGE_PREFIX = 'msg'
+
+
+# NOTE: the name came from a model or a user, and it lands in a header -- the plain form
+# keeps only what no client misreads, the encoded form carries the rest escaped
+def disposition(name: str | None) -> str:
+    cleaned = _CONTROL.sub('_', name or '').strip(' .') or _FALLBACK_NAME
+    plain = _UNSAFE_NAME.sub('_', cleaned).strip('_')
+    if not plain.strip('.'):
+        plain = _FALLBACK_NAME
+    elif plain.startswith('.'):
+        plain = _FALLBACK_NAME + plain
+    return (
+        f'attachment; filename="{plain}"; filename*=UTF-8\'\'{quote(cleaned, safe="")}'
+    )
 
 
 class ChatHandlers:
@@ -63,6 +83,18 @@ class ChatHandlers:
         return self._streaming(
             prepared,
             AnthropicPresenter(identifier, ask.model),
+        )
+
+    async def download(self, blob: str, client: ApiClient) -> Response:
+        found = (await self.service.download(client, blob)).unwrap()
+        return Response(
+            content=found.data,
+            media_type=found.mime,
+            headers={
+                'Content-Disposition': disposition(found.filename),
+                'Cache-Control': 'private, no-store',
+                'X-Content-Type-Options': 'nosniff',
+            },
         )
 
     async def native(self, ask: ChatRequest, client: ApiClient) -> EventSourceResponse:
@@ -123,6 +155,8 @@ class ChatHandlers:
                 match event:
                     case TextEvent(text=text):
                         fragments.append(text)
+                    case AttachmentEvent():
+                        fragments.append(attachment_link(event))
                     case ErrorEvent(message=message):
                         raise TurnFailedError(message)
                     case _:

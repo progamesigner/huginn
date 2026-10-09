@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.features.blobs.exceptions import BlobError
 from app.features.blobs.repositories import BlobRepository
-from app.features.blobs.sources.sqlalchemy import BlobRecord
+from app.features.blobs.sources.sqlalchemy import BlobGrantRecord, BlobRecord
 from app.features.conversations.entities import Part
 from app.features.conversations.repositories import (
     ConversationRepository,
@@ -182,3 +182,32 @@ async def test_prune_refuses_to_run_without_a_reference_source(
         await blobs.prune(ClockManager().now() + timedelta(days=2), ())
 
     assert await _count(session) == 1
+
+
+async def test_a_grant_names_one_owner_and_repeats_harmlessly(
+    session: AsyncSession,
+) -> None:
+    blobs = _blobs(session)
+    blob = await blobs.store('image/jpeg', _PHOTO, kind='image')
+
+    await blobs.grant(blob.id, 'web-key')
+    await blobs.grant(blob.id, 'web-key')
+
+    assert await blobs.granted(blob.id, 'web-key')
+    assert not await blobs.granted(blob.id, 'other-key')
+    count = select(func.count()).select_from(BlobGrantRecord)
+    assert (await session.execute(count)).scalar_one() == 1
+
+
+async def test_pruning_a_granted_blob_takes_its_grants_along(
+    session: AsyncSession,
+) -> None:
+    blobs = _blobs(session)
+    day = timedelta(days=1)
+    blob = await blobs.store('image/jpeg', _PHOTO, kind='image', ttl=day)
+    await blobs.grant(blob.id, 'web-key')
+    references = (ConversationBlobReferences(GUIDManager(), ClockManager()),)
+
+    assert await blobs.prune(ClockManager().now() + 2 * day, references) == 1
+
+    assert not await blobs.granted(blob.id, 'web-key')

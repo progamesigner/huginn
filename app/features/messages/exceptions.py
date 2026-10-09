@@ -17,6 +17,11 @@ class UnroutableRequestError(AppError):
     code = Code.UNROUTABLE_REQUEST
 
 
+class BlobNotFoundError(AppError):
+    status = 404
+    code = Code.BLOB_NOT_FOUND
+
+
 class TurnFailedError(AppError):
     status = 500
     code = Code.TURN_FAILED

@@ -2,6 +2,7 @@ from collections.abc import AsyncGenerator
 from contextlib import aclosing
 from dataclasses import dataclass
 from datetime import timedelta
+from uuid import UUID
 
 from app.contracts.auth import ApiClient
 from app.features.agents.contracts import TurnServiceContract
@@ -12,13 +13,16 @@ from app.features.agents.entities import (
     TurnPrompt,
     TurnRequest,
 )
+from app.features.blobs.contracts import BlobServiceContract
+from app.features.blobs.entities import Blob
 from lib.guid import GUIDContract
 from lib.observability import Logger
 from lib.redis import RedisContract, RedisLock
 from lib.result import Err, Ok, Result
 
-from .entities import OpenedEvent, TurnEvent
+from .entities import AttachmentEvent, OpenedEvent, TurnEvent
 from .exceptions import (
+    BlobNotFoundError,
     ConversationBusyError,
     ForbiddenAgentError,
     UnroutableRequestError,
@@ -71,6 +75,7 @@ def _policy(agent: str | None, client: ApiClient) -> RoutingPolicy:
 
 class ChatService:
     logger: Logger
+    blobs: BlobServiceContract
     guid: GUIDContract
     redis: RedisContract
     turns: TurnServiceContract
@@ -81,11 +86,13 @@ class ChatService:
         turns: TurnServiceContract,
         redis: RedisContract,
         guid: GUIDContract,
+        blobs: BlobServiceContract,
         *,
         ttl: timedelta = _LOCK_TTL,
         logger: Logger,
     ) -> None:
         self.logger = logger.bind(component='messages')
+        self.blobs = blobs
         self.guid = guid
         self.redis = redis
         self.turns = turns
@@ -156,6 +163,37 @@ class ChatService:
                 ) as (events),
             ):
                 async for event in events:
+                    if isinstance(event, AttachmentEvent):
+                        await self._grant(event, prepared.request.channel)
                     yield event
         finally:
             await prepared.lock.release()
+
+    # NOTE: absent and forbidden answer alike, so an id says nothing about whether
+    # the blob behind it exists
+    async def download(
+        self,
+        client: ApiClient,
+        blob: str,
+    ) -> Result[Blob, BlobNotFoundError]:
+        missing = Err(BlobNotFoundError(f'no blob {blob!r} for this key'))
+        try:
+            id_ = UUID(blob)
+        except ValueError:
+            return missing
+
+        if not await self.blobs.granted(id_, client.key):
+            return missing
+
+        found = await self.blobs.load(id_)
+        if found is None or found.data is None:
+            return missing
+
+        return Ok(found)
+
+    # NOTE: the file is the key's to fetch before the reader is told it exists
+    async def _grant(self, event: AttachmentEvent, owner: str) -> None:
+        try:
+            await self.blobs.grant(UUID(event.blob), owner)
+        except Exception:
+            self.logger.exception('Could not grant %s to its reader', event.blob)

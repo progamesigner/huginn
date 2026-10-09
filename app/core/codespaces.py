@@ -12,3 +12,4 @@ class Code(IntEnum):
     UNROUTABLE_REQUEST = 4
     TURN_FAILED = 5
     INVALID_REQUEST = 6
+    BLOB_NOT_FOUND = 7

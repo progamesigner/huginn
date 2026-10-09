@@ -10,7 +10,7 @@ from fastapi import FastAPI
 from pydantic import SecretStr
 
 from app.contracts.auth import ApiClient, ApiRouting
-from app.contracts.channels import ChannelReplyContract, TurnEnding
+from app.contracts.channels import ChannelReplyContract, ReplyArtifact, TurnEnding
 from app.core.config.registry import HuginnConfig
 from app.features.agents.config import (
     AGENTS,
@@ -28,11 +28,13 @@ from app.features.auth.config import (
     ApiKeyConfigList,
     ApiKeyToolsConfig,
 )
+from app.features.blobs.contracts import BlobServiceContract
 from app.features.messages.services import _policy
 from bin.server import build
 from lib.mcp import MCPClientContract
 from lib.redis import RedisContract
 from lib.router import RouterContract
+from tests.helpers.blobs import MemoryBlobs
 from tests.helpers.redis import FakeClient, make_redis
 
 _PATH = '/v1/chat'
@@ -44,13 +46,16 @@ class StreamingTurns(TurnServiceContract):
     answer: tuple[str, ...]
     fail: bool
     ending: TurnEnding
+    artifacts: tuple[ReplyArtifact, ...]
 
     def __init__(
         self,
         *answer: str,
         fail: bool = False,
         ending: TurnEnding = 'complete',
+        artifacts: tuple[ReplyArtifact, ...] = (),
     ) -> None:
+        self.artifacts = artifacts
         self.requests = []
         self.answer = answer or ('the ', 'answer')
         self.ending = ending
@@ -66,6 +71,8 @@ class StreamingTurns(TurnServiceContract):
         await reply.on_routed(request.policy.agent or 'concierge')
         for fragment in self.answer:
             await reply.on_text(fragment)
+        for artifact in self.artifacts:
+            await reply.on_artifact(artifact)
 
         if self.fail:
             raise RuntimeError('the model gave up')
@@ -126,9 +133,11 @@ async def chat_client(
     config: HuginnConfig,
     turns: TurnServiceContract,
     redis: MagicMock | None = None,
+    blobs: BlobServiceContract | None = None,
 ) -> AsyncIterator[httpx.AsyncClient]:
     application = build()
     with (
+        application.use(BlobServiceContract, blobs or MemoryBlobs()),
         application.use(HuginnConfig, config),
         application.use(MCPClientContract, MagicMock(spec=MCPClientContract)),
         application.use(RedisContract, redis or make_redis(FakeClient())),
@@ -152,6 +161,7 @@ async def asgi_app(
 ) -> AsyncIterator[FastAPI]:
     application = build()
     with (
+        application.use(BlobServiceContract, MemoryBlobs()),
         application.use(HuginnConfig, config),
         application.use(MCPClientContract, MagicMock(spec=MCPClientContract)),
         application.use(RedisContract, make_redis(FakeClient())),

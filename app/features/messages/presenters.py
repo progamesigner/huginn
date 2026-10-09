@@ -8,6 +8,7 @@ from pydantic import JsonValue
 from lib.router import ServerSentEvent, format_sse_event
 
 from .entities import (
+    AttachmentEvent,
     DoneEvent,
     ErrorEvent,
     OpenedEvent,
@@ -24,6 +25,16 @@ _KEEPALIVE = 'ping'
 _TURN_FAILED = 'turn_failed'
 _OPENAI_UNFINISHED = 'length'
 _ANTHROPIC_UNFINISHED = 'max_tokens'
+
+
+_LINK_UNSAFE = str.maketrans({'[': '(', ']': ')', '\n': ' ', '\r': ' '})
+
+
+# NOTE: neither compatible dialect has a wire shape for a file, so the file becomes a
+# link in the answer rather than an event their SDKs would not understand
+def attachment_link(event: AttachmentEvent) -> str:
+    label = (event.name or event.kind).translate(_LINK_UNSAFE)
+    return f'\n\n[{label}]({event.url})'
 
 
 def _payload(event: ServerSentEvent) -> str | None:
@@ -64,6 +75,11 @@ class NativePresenter(Presenter):
                     event='tool',
                     data={'name': name, 'phase': phase},
                 )
+            case AttachmentEvent():
+                yield ServerSentEvent(
+                    event='attachment',
+                    data=event.model_dump(mode='json'),
+                )
             case UnfinishedEvent(ending=ending):
                 yield ServerSentEvent(event='unfinished', data={'ending': ending})
             case DoneEvent():
@@ -93,6 +109,8 @@ class OpenAIPresenter(Presenter):
         match event:
             case TextEvent(text=text):
                 yield self._chunk(self._delta(text))
+            case AttachmentEvent():
+                yield self._chunk(self._delta(attachment_link(event)))
             case UnfinishedEvent():
                 self.finish = _OPENAI_UNFINISHED
             case DoneEvent():
@@ -149,15 +167,9 @@ class AnthropicPresenter(Presenter):
     def present(self, event: TurnEvent) -> Iterator[ServerSentEvent]:
         match event:
             case TextEvent(text=text):
-                yield from self._open()
-                yield ServerSentEvent(
-                    event='content_block_delta',
-                    data={
-                        'type': 'content_block_delta',
-                        'index': 0,
-                        'delta': {'type': 'text_delta', 'text': text},
-                    },
-                )
+                yield from self._text(text)
+            case AttachmentEvent():
+                yield from self._text(attachment_link(event))
             case UnfinishedEvent():
                 self.stop = _ANTHROPIC_UNFINISHED
             case DoneEvent():
@@ -189,6 +201,17 @@ class AnthropicPresenter(Presenter):
                 yield ServerSentEvent(event='ping', data={'type': 'ping'})
             case OpenedEvent() | RoutedEvent() | ToolEvent():
                 return
+
+    def _text(self, text: str) -> Iterator[ServerSentEvent]:
+        yield from self._open()
+        yield ServerSentEvent(
+            event='content_block_delta',
+            data={
+                'type': 'content_block_delta',
+                'index': 0,
+                'delta': {'type': 'text_delta', 'text': text},
+            },
+        )
 
     def _open(self) -> Iterator[ServerSentEvent]:
         if self.opened:

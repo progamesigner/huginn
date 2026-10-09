@@ -105,7 +105,7 @@ A browser front end talks to Huginn over HTTP, streaming the answer with Server-
 
 | Surface | Path | Shape |
 | --- | --- | --- |
-| Native | `POST /v1/chat` | `event: opened \| routed \| delta \| tool \| unfinished \| done \| error`, each with a JSON payload |
+| Native | `POST /v1/chat` | `event: opened \| routed \| delta \| tool \| attachment \| unfinished \| done \| error`, each with a JSON payload |
 | OpenAI-compatible | `POST /openai/v1/chat/completions` | `data: {chat.completion.chunk}` … `data: [DONE]`, or one `chat.completion` body when `stream` is false |
 | Anthropic-compatible | `POST /anthropic/v1/messages` | `message_start` / `content_block_delta` / `message_delta` / `message_stop`, or one `message` body when `stream` is false |
 
@@ -114,6 +114,8 @@ Point an existing SDK at the compatible surfaces by base URL: `https://host/open
 Callers authenticate with `Authorization: Bearer <token>` against the `api_keys` config section. A key carries the agents it may reach, optionally a default `agent`, optionally a `router` (an LLM picks among the key's agents, with `fallback` when it cannot), and optionally `tools.deny` to take tools away from what the agent is configured with. Every refusal lands before the stream opens, because an SSE response has spent its status line by the time the first frame is out: an unknown or missing token is `401`, an agent the key may not use is `403`, a key that pins no agent and cannot route is `400`, and a conversation already answering is `409` — one question at a time per conversation, rejected rather than queued, which is what a web client can actually show. A failure after the first frame arrives as a terminal `error` event instead, in each dialect's own idiom.
 
 A turn that answered but stopped short of finishing — it spent its `turn_timeout`, or every iteration `max_iterations` allowed (each set per agent, falling back to `defaults`, then to 300 seconds and 10 iterations) — is not a failure: the answer stands, and the caller is told why it ends where it does. Each surface says so in its own idiom, because only the surface knows how its readers hear it: the native surface emits an `unfinished` event naming the ending before `done`, the compatible surfaces carry it on the stop reason they already have (`finish_reason: length`, `stop_reason: max_tokens`), and Telegram appends a plain sentence inviting the reader to ask for the rest. The note is never folded into the transcript — it is written for the reader, not remembered as the agent's own words.
+
+A file a tool produced — an image, a voice note, a document — never travels inside the stream. The native surface announces it with an `attachment` event carrying `blob`, `kind`, `mime`, `size`, `name` and a relative `url`, and the bytes come from `GET /v1/blobs/{id}` with the same bearer token. A key can fetch only what was produced in its own turns or uploaded with it; anything else answers `404`, never `403`, so a guessed id learns nothing. The compatible surfaces have no wire shape for a file, so there the file arrives as a Markdown link appended to the answer text rather than as an event their SDKs would not understand.
 
 Streaming details worth knowing: a keepalive comment goes out every 15 seconds so an idle proxy does not close the connection during a long tool call, `Cache-Control: no-cache` and `X-Accel-Buffering: no` keep an ingress from buffering the stream back into one late answer, and a client that hangs up cancels the turn it was reading rather than leaving it to spend tokens on nobody's behalf.
 

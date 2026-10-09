@@ -11,6 +11,7 @@ from app.contracts.channels import (
 from lib.observability import Logger
 
 from .entities import (
+    AttachmentEvent,
     DoneEvent,
     ErrorEvent,
     PingEvent,
@@ -21,9 +22,15 @@ from .entities import (
     UnfinishedEvent,
 )
 
+_BLOBS = '/v1/blobs'
 _FAILED = 'the turn failed before it finished'
 _PENDING = 256
 _PING_INTERVAL = 15.0
+
+
+# NOTE: relative, because only the reader knows the host it reached us by
+def blob_path(blob: str) -> str:
+    return f'{_BLOBS}/{blob}'
 
 
 class QueuedReply(ChannelReplyContract):
@@ -42,7 +49,16 @@ class QueuedReply(ChannelReplyContract):
 
     @override
     async def on_artifact(self, artifact: ReplyArtifact) -> None:
-        pass
+        await self.events.put(
+            AttachmentEvent(
+                blob=artifact.blob,
+                kind=artifact.kind,
+                mime=artifact.mime,
+                size=artifact.size,
+                url=blob_path(artifact.blob),
+                name=artifact.name,
+            ),
+        )
 
     @override
     async def on_routed(self, agent: str) -> None:

@@ -36,6 +36,14 @@ class Blobs(BlobServiceContract):
         raise NotImplementedError
 
     @override
+    async def grant(self, id: UUID, owner: str) -> None:
+        raise NotImplementedError
+
+    @override
+    async def granted(self, id: UUID, owner: str) -> bool:
+        raise NotImplementedError
+
+    @override
     async def load(self, id: UUID) -> Blob | None:
         return self.blob if self.blob and self.blob.id == id else None
 

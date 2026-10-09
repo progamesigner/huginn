@@ -105,6 +105,14 @@ class SessionBlobs(BlobServiceContract):
         raise NotImplementedError
 
     @override
+    async def grant(self, id: UUID, owner: str) -> None:
+        raise NotImplementedError
+
+    @override
+    async def granted(self, id: UUID, owner: str) -> bool:
+        raise NotImplementedError
+
+    @override
     async def load(self, id: UUID) -> Blob | None:
         return await self.reads.load(id)
 
@@ -152,6 +160,14 @@ class FlakyBlobs(BlobServiceContract):
         filename: str | None = None,
         ttl: timedelta | None = None,
     ) -> Blob:
+        raise NotImplementedError
+
+    @override
+    async def grant(self, id: UUID, owner: str) -> None:
+        raise NotImplementedError
+
+    @override
+    async def granted(self, id: UUID, owner: str) -> bool:
         raise NotImplementedError
 
     @override

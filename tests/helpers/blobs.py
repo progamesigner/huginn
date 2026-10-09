@@ -11,10 +11,12 @@ from app.features.blobs.entities import Blob, BlobKind
 
 class MemoryBlobs(BlobServiceContract):
     blobs: dict[UUID, Blob]
+    grants: set[tuple[UUID, str]]
     ttls: dict[UUID, timedelta | None]
 
     def __init__(self) -> None:
         self.blobs = {}
+        self.grants = set()
         self.ttls = {}
 
     @override
@@ -52,6 +54,14 @@ class MemoryBlobs(BlobServiceContract):
         self.blobs[blob.id] = blob
         self.ttls[blob.id] = ttl
         return blob
+
+    @override
+    async def grant(self, id: UUID, owner: str) -> None:
+        self.grants.add((id, owner))
+
+    @override
+    async def granted(self, id: UUID, owner: str) -> bool:
+        return (id, owner) in self.grants
 
     @override
     async def load(self, id: UUID) -> Blob | None:

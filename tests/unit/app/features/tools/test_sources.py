@@ -107,6 +107,14 @@ class DocumentBlobs(BlobServiceContract):
         raise NotImplementedError
 
     @override
+    async def grant(self, id: UUID, owner: str) -> None:
+        raise NotImplementedError
+
+    @override
+    async def granted(self, id: UUID, owner: str) -> bool:
+        raise NotImplementedError
+
+    @override
     async def load(self, id: UUID) -> Blob | None:
         return self.blob if id == self.blob.id else None
 

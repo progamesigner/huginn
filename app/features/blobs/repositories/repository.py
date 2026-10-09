@@ -12,7 +12,7 @@ from sqlalchemy.orm import defer
 from app.features.blobs.contracts import BlobReferenceSource
 from app.features.blobs.entities import Blob, BlobKind
 from app.features.blobs.exceptions import BlobError
-from app.features.blobs.sources.sqlalchemy import BlobRecord
+from app.features.blobs.sources.sqlalchemy import BlobGrantRecord, BlobRecord
 from lib.guid import GUIDContract
 from lib.temporal import ClockContract
 
@@ -97,6 +97,24 @@ class BlobRepository:
             .where(BlobRecord.id == id),
         )
         return None if record is None else _to_blob(record)
+
+    async def grant(self, id: UUID, owner: str) -> None:
+        await self.session.execute(
+            insert(BlobGrantRecord)
+            .values(id=self.guid.generate(), blob_id=id, owner=owner)
+            .on_conflict_do_nothing(
+                index_elements=[BlobGrantRecord.blob_id, BlobGrantRecord.owner],
+            ),
+        )
+
+    async def granted(self, id: UUID, owner: str) -> bool:
+        found = await self.session.scalar(
+            select(BlobGrantRecord.id).where(
+                BlobGrantRecord.blob_id == id,
+                BlobGrantRecord.owner == owner,
+            ),
+        )
+        return found is not None
 
     async def prune(
         self,

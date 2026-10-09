@@ -73,3 +73,16 @@ class BlobService(BlobServiceContract):
     async def head(self, id: UUID) -> Blob | None:
         async with self.database.session() as session:
             return await BlobRepository(session, self.guid, self.clock).head(id)
+
+    @override
+    async def grant(self, id: UUID, owner: str) -> None:
+        async with self.database.transaction() as transaction:
+            await BlobRepository(transaction, self.guid, self.clock).grant(id, owner)
+
+    @override
+    async def granted(self, id: UUID, owner: str) -> bool:
+        async with self.database.session() as session:
+            return await BlobRepository(session, self.guid, self.clock).granted(
+                id,
+                owner,
+            )

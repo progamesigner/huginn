@@ -7,6 +7,8 @@ from app.core.providers.temporal import ClockProvider
 from app.features.agents.contracts import TurnServiceContract
 from app.features.agents.providers import TurnProvider
 from app.features.auth.providers import AuthProvider
+from app.features.blobs.contracts import BlobServiceContract
+from app.features.blobs.providers import BlobProvider
 from lib.container import ContainerContract, ProviderContract
 from lib.guid import GUIDContract
 from lib.observability import Logger
@@ -31,6 +33,7 @@ def _service(container: ContainerContract) -> ChatService:
         container.resolve(TurnServiceContract),
         container.resolve(RedisContract),
         container.resolve(GUIDContract),
+        container.resolve(BlobServiceContract),
         logger=container.resolve(Logger),
     )
 
@@ -38,6 +41,7 @@ def _service(container: ContainerContract) -> ChatService:
 class MessageProvider(ProviderContract):
     dependencies = (
         AuthProvider,
+        BlobProvider,
         ClockProvider,
         GUIDProvider,
         RedisProvider,

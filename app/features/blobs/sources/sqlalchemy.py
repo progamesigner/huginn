@@ -1,6 +1,14 @@
 from datetime import datetime
+from uuid import UUID
 
-from sqlalchemy import CheckConstraint, Index, UniqueConstraint, column, func
+from sqlalchemy import (
+    CheckConstraint,
+    ForeignKey,
+    Index,
+    UniqueConstraint,
+    column,
+    func,
+)
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.records import AppRecord
@@ -24,4 +32,16 @@ class BlobRecord(AppRecord):
     kind: Mapped[str] = mapped_column()
     filename: Mapped[str | None] = mapped_column(default=None)
     expires_at: Mapped[datetime | None] = mapped_column(Timestamp(), default=None)
+    created_at: Mapped[datetime] = mapped_column(server_default=func.now())
+
+
+# NOTE: blobs are shared by content, so who may fetch one cannot live on the row itself
+class BlobGrantRecord(AppRecord):
+    __tablename__ = 'blob_grants'
+    __table_args__ = (UniqueConstraint('blob_id', 'owner'),)
+
+    blob_id: Mapped[UUID] = mapped_column(
+        ForeignKey(BlobRecord.id, ondelete='CASCADE'),
+    )
+    owner: Mapped[str] = mapped_column()
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())

@@ -41,6 +41,13 @@ class BlobServiceContract(ABC):
     @abstractmethod
     async def head(self, id: UUID) -> Blob | None: ...
 
+    # NOTE: a grant names who may fetch a blob back; it never keeps one from lapsing
+    @abstractmethod
+    async def grant(self, id: UUID, owner: str) -> None: ...
+
+    @abstractmethod
+    async def granted(self, id: UUID, owner: str) -> bool: ...
+
 
 class BlobReferenceSource(ABC):
     @abstractmethod
