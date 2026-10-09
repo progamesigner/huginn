@@ -164,7 +164,9 @@ async def test_filesystem_tool_enabled_allow_and_cached_inventory_without_mcp(
     )
     harvest = await tools.collect(agent, scope)
     assert await harvest.tools[0][1].invoke('{"name":"triage"}') == 'Steps'
-    assert 'unknown skill' in await harvest.tools[0][1].invoke('{"name":"other"}')
+    unknown = await harvest.tools[0][1].invoke('{"name":"other"}')
+    assert isinstance(unknown, str)
+    assert 'unknown skill' in unknown
     write_skill(tmp_path, 'later', '---\nname: later\ndescription: Later\n---\nNew')
     assert len(await repository.inventory({})) == 1
     disabled = agent.model_copy(update={'skills': AgentSkills(enabled=False)})

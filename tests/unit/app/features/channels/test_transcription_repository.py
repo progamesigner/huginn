@@ -3,7 +3,7 @@ import pytest
 import respx
 from pydantic import HttpUrl, SecretStr
 
-from app.features.channels.config import TranscriptionConfig
+from app.features.channels.config import TranscriptionConfig, TranscriptionKind
 from app.features.channels.exceptions import TranscriptionUnavailableError
 from app.features.channels.repositories import TranscriptionRepository
 from lib.http import HTTPClientManager
@@ -41,3 +41,58 @@ async def test_an_unconfigured_section_reports_itself_as_unavailable() -> None:
     # transcription, so no retry will ever make this voice message readable
     with pytest.raises(TranscriptionUnavailableError):
         await make_repository(TranscriptionConfig()).transcribe('audio/ogg', _VOICE)
+
+
+@pytest.mark.parametrize(
+    ('kind', 'url', 'answer'),
+    [
+        (
+            'openai',
+            'https://api.openai.com/v1/audio/transcriptions',
+            {'text': 'heard'},
+        ),
+        (
+            'gemini',
+            'https://generativelanguage.googleapis.com/v1beta/interactions',
+            {
+                'steps': [
+                    {
+                        'type': 'model_output',
+                        'content': [{'type': 'text', 'text': 'heard'}],
+                    },
+                ],
+            },
+        ),
+        (
+            'elevenlabs',
+            'https://api.elevenlabs.io/v1/speech-to-text',
+            {'text': 'heard'},
+        ),
+    ],
+)
+@respx.mock
+async def test_each_kind_reaches_its_own_vendor_by_default(
+    kind: TranscriptionKind,
+    url: str,
+    answer: dict[str, object],
+) -> None:
+    route = respx.post(url).mock(return_value=httpx.Response(200, json=answer))
+    config = TranscriptionConfig(kind=kind, model='m', api_key=SecretStr('k'))
+
+    assert await make_repository(config).transcribe('audio/ogg', _VOICE) == 'heard'
+    assert route.called
+
+
+def test_a_config_names_every_supported_kind_and_its_options() -> None:
+    config = TranscriptionConfig.model_validate_json(
+        '{"kind": "gemini", "model": "gemini-3.5-transcribe", "api_key": "k",'
+        ' "mode": "verbatim", "language_codes": ["zh-TW", "en-US"]}',
+    )
+
+    assert (config.kind, config.mode, config.language_codes) == (
+        'gemini',
+        'verbatim',
+        ('zh-TW', 'en-US'),
+    )
+    with pytest.raises(ValueError, match='kind'):
+        TranscriptionConfig.model_validate_json('{"kind": "aws"}')

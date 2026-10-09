@@ -1,9 +1,17 @@
+import json
+from base64 import b64encode
+
 import httpx
 import pytest
 import respx
 from pydantic import SecretStr
 
-from app.exts.transcription.clients import TranscriptionClient, filename
+from app.exts.transcription.clients import (
+    ElevenLabsTranscriptionClient,
+    GeminiTranscriptionClient,
+    TranscriptionClient,
+    filename,
+)
 from lib.http import HTTPClientManager
 
 _URL = 'https://api.openai.com/v1/audio/transcriptions'
@@ -60,3 +68,96 @@ def test_the_upload_is_named_for_the_format_openai_reads(
     # NOTE: telegram sends OGG/Opus and openai picks the decoder off the extension, so a
     # name of audio.mpeg (the subtype) would be refused where audio.mp3 is accepted
     assert filename(mime) == expected
+
+
+@respx.mock
+async def test_gemini_sends_the_audio_inline_with_its_transcription_config() -> None:
+    route = respx.post('https://gemini.example/v1beta/interactions').mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                'id': 'v1_x',
+                'status': 'completed',
+                'steps': [
+                    {'type': 'user_input', 'content': [{'type': 'audio'}]},
+                    {
+                        'type': 'model_output',
+                        'content': [
+                            {'type': 'text', 'text': 'call me '},
+                            {'type': 'text', 'text': 'back'},
+                        ],
+                    },
+                ],
+            },
+        ),
+    )
+    client = GeminiTranscriptionClient(
+        http=HTTPClientManager(),
+        api_key=SecretStr('gemini-key'),
+        base_url='https://gemini.example',
+        model='gemini-3.5-transcribe',
+        mode='verbatim',
+        languages=('zh-TW',),
+    )
+
+    text = await client.transcribe(b'OggS voice', 'audio/ogg')
+
+    assert text == 'call me back'
+    request = route.calls.last.request
+    assert request.headers['x-goog-api-key'] == 'gemini-key'
+    assert json.loads(request.content) == {
+        'model': 'gemini-3.5-transcribe',
+        'input': [
+            {
+                'type': 'audio',
+                'data': b64encode(b'OggS voice').decode(),
+                'mime_type': 'audio/ogg',
+            },
+        ],
+        'generation_config': {
+            'transcription_config': {'mode': 'verbatim', 'language_codes': ['zh-TW']},
+        },
+    }
+
+
+@respx.mock
+async def test_elevenlabs_uploads_the_audio_with_its_model_and_language() -> None:
+    route = respx.post('https://eleven.example/v1/speech-to-text').mock(
+        return_value=httpx.Response(
+            200,
+            json={'language_code': 'zho', 'text': '回電給我', 'words': []},
+        ),
+    )
+    client = ElevenLabsTranscriptionClient(
+        http=HTTPClientManager(),
+        api_key=SecretStr('eleven-key'),
+        base_url='https://eleven.example',
+        model='scribe_v2',
+        language='zh',
+    )
+
+    text = await client.transcribe(b'OggS voice', 'audio/ogg')
+
+    assert text == '回電給我'
+    request = route.calls.last.request
+    assert request.headers['xi-api-key'] == 'eleven-key'
+    assert b'name="model_id"\r\n\r\nscribe_v2' in request.content
+    assert b'name="language_code"\r\n\r\nzh' in request.content
+    assert b'filename="audio.ogg"' in request.content
+
+
+@respx.mock
+async def test_elevenlabs_leaves_the_language_to_detection_when_unset() -> None:
+    route = respx.post('https://eleven.example/v1/speech-to-text').mock(
+        return_value=httpx.Response(200, json={'text': 'hi'}),
+    )
+    client = ElevenLabsTranscriptionClient(
+        http=HTTPClientManager(),
+        api_key=SecretStr('eleven-key'),
+        base_url='https://eleven.example',
+        model='scribe_v2',
+    )
+
+    await client.transcribe(b'OggS voice', 'audio/ogg')
+
+    assert b'language_code' not in route.calls.last.request.content

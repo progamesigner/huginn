@@ -37,14 +37,18 @@ from .exceptions import (
 )
 from .registry import ChannelRegistry
 
-type TranscriptionKind = Literal['openai']
+type TranscriptionKind = Literal['elevenlabs', 'gemini', 'openai']
+type TranscriptionMode = Literal['smart', 'verbatim']
 
 
 class TranscriptionConfig(ConfigValue):
     kind: Annotated[TranscriptionKind | None, Field()] = None
     model: Annotated[str | None, Field()] = None
     api_key: Annotated[SecretStr | None, Field()] = None
-    base_url: Annotated[HttpUrl, Field()] = HttpUrl('https://api.openai.com')
+    # NOTE: unset means the vendor's own endpoint, which only the kind can name
+    base_url: Annotated[HttpUrl | None, Field()] = None
+    mode: Annotated[TranscriptionMode, Field()] = 'smart'
+    language_codes: Annotated[tuple[str, ...], Field()] = ()
 
 
 class ChannelConfig(ConfigValue):

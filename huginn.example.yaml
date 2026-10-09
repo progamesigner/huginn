@@ -81,11 +81,13 @@ mcp_servers:
         env: MEMORY_MCP_TOKEN
 
 skills:
-  server: memory
-  inject:
-    agent: default
-  bind:
-    user: handle
+  source:
+    kind: mcp
+    server: memory
+    inject:
+      agent: default
+    bind:
+      user: handle
 
 agents:
   scout:
@@ -138,6 +140,9 @@ api_keys:
     - concierge
     agent: scout
 
+# kind: openai | gemini | elevenlabs. gemini also reads `mode` (smart, verbatim) and
+# `language_codes`; elevenlabs reads the first language code. Unset `base_url` means
+# the vendor's own endpoint.
 transcription:
   kind: openai
   model: gpt-4o-mini-transcribe
