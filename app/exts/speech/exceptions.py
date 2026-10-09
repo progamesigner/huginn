@@ -1,0 +1,2 @@
+class SpeechSynthesisError(Exception):
+    pass

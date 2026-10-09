@@ -52,6 +52,9 @@ from app.features.tools.images.tool import ImageTool, build_images
 from app.features.tools.providers import ToolProvider
 from app.features.tools.registry import ToolKind, ToolRegistry
 from app.features.tools.sources import ConfiguredToolSource
+from app.features.tools.speech.config import SpeechToolConfig
+from app.features.tools.speech.repositories import SpeechRepository
+from app.features.tools.speech.tool import SpeechTool, build_speech
 from app.features.tools.websearch.config import WebSearchToolConfig
 from app.features.tools.websearch.repositories import WebSearchRepository
 from app.features.tools.websearch.tool import WebSearchTool, build_websearch
@@ -212,6 +215,18 @@ class ToolContributions(ProviderContract):
                 ImageToolConfig,
                 builder=lambda config, _scope: build_images(
                     c.resolve(ImageRepository),
+                    c.resolve(ArtifactWriter),
+                    config,
+                ),
+            ),
+        )
+        container.contribute(
+            ToolKind,
+            lambda c: ToolKind(
+                SpeechTool,
+                SpeechToolConfig,
+                builder=lambda config, _scope: build_speech(
+                    c.resolve(SpeechRepository),
                     c.resolve(ArtifactWriter),
                     config,
                 ),

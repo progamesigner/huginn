@@ -12,6 +12,7 @@ from lib.container import ContainerContract, ProviderContract
 from .artifacts import ArtifactWriter
 from .images.repositories import ImageRepository
 from .registry import ToolKind, ToolRegistry
+from .speech.repositories import SpeechRepository
 from .websearch.repositories import WebSearchRepository
 
 
@@ -49,4 +50,5 @@ class ToolProvider(ProviderContract):
             shared=True,
         )
         container.bind(ImageRepository, constructor=ImageRepository, shared=True)
+        container.bind(SpeechRepository, constructor=SpeechRepository, shared=True)
         container.bind(ArtifactWriter, factory=_writer, shared=True)

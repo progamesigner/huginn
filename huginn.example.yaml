@@ -59,6 +59,15 @@ tools:
       value_from:
         env: OPENAI_API_KEY
     size: 1024x1024
+  narrator:
+    kind: speech
+    description: Read a short answer aloud as a voice message.
+    model: gpt-4o-mini-tts
+    voice: alloy
+    format: opus
+    api_key:
+      value_from:
+        env: OPENAI_API_KEY
 
 mcp_servers:
   memory:
@@ -97,6 +106,7 @@ agents:
       inject:
         max_results: 3
     - name: illustrator
+    - name: narrator
     mcp:
     - server: memory
       allow:
