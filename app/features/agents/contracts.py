@@ -131,3 +131,22 @@ class ToolSourceRegistry:
 
     def sources(self) -> tuple[ToolSource, ...]:
         return tuple(self.collect())
+
+
+@dataclass(frozen=True)
+class HookHarvest:
+    content: str | None = None
+    unreachable: tuple[str, ...] = ()
+
+
+class HookSource(ABC):
+    @abstractmethod
+    async def collect(self, agent: AgentConfig, scope: TurnScope) -> HookHarvest: ...
+
+
+class HookRegistry:
+    def __init__(self, collect: Callable[[], Iterable[HookSource]] = tuple) -> None:
+        self.collect = collect
+
+    def sources(self) -> tuple[HookSource, ...]:
+        return tuple(self.collect())

@@ -17,6 +17,8 @@ from lib.temporal import ClockContract
 
 from .config import AGENTS, DEFAULTS, DefaultsConfig
 from .contracts import (
+    HookRegistry,
+    HookSource,
     ToolSource,
     ToolSourceRegistry,
     TranscriptServiceContract,
@@ -59,6 +61,7 @@ def _turns(container: ContainerContract) -> TurnHandler:
         llm=container.resolve(LLMContract),
         router=container.resolve(Router),
         sources=container.resolve(ToolSourceRegistry),
+        hooks=container.resolve(HookRegistry),
         store=container.resolve(TranscriptServiceContract),
         clock=container.resolve(ClockContract),
         defaults=defaults,
@@ -75,6 +78,11 @@ class AgentProvider(ProviderContract):
         container.bind(
             ToolSourceRegistry,
             factory=lambda c: ToolSourceRegistry(lambda: c.collect(ToolSource)),
+            shared=True,
+        )
+        container.bind(
+            HookRegistry,
+            factory=lambda c: HookRegistry(lambda: c.collect(HookSource)),
             shared=True,
         )
         container.bind(Router, factory=_router, shared=True)

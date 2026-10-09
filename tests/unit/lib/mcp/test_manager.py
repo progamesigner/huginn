@@ -6,6 +6,7 @@ import pytest
 from mcp import ClientSession
 from mcp.server.fastmcp import FastMCP
 from mcp.shared.memory import create_connected_server_and_client_session
+from mcp.types import CallToolResult, TextContent
 
 from lib.mcp import (
     Connector,
@@ -318,3 +319,28 @@ async def test_call_unknown_server_raises() -> None:
             await manager.call_tool('missing', 'echo', {})
     finally:
         await manager.dispose()
+
+
+def test_tool_errors_never_become_successful_text() -> None:
+    from lib.mcp import MCPError
+    from lib.mcp.manager import _render
+
+    with pytest.raises(MCPError, match='returned an error'):
+        _render(
+            CallToolResult(
+                isError=True,
+                content=[TextContent(type='text', text='private')],
+            ),
+        )
+
+
+def test_structured_only_tools_retain_their_payload() -> None:
+    import json
+
+    from lib.mcp.manager import _render
+
+    assert json.loads(
+        _render(
+            CallToolResult(content=[], structuredContent={'rendered': 'whole context'}),
+        ),
+    ) == {'rendered': 'whole context'}

@@ -36,6 +36,7 @@ from .config import (
     resolve_selection,
 )
 from .contracts import (
+    HookRegistry,
     ToolSource,
     ToolSourceRegistry,
     TranscriptServiceContract,
@@ -72,8 +73,9 @@ def _instructions(
     unreachable: Sequence[str],
     *,
     logger: Logger,
+    extra: Sequence[str] = (),
 ) -> str:
-    instructions = load_instructions(agent)
+    instructions = '\n\n'.join((load_instructions(agent), *extra))
     if not unreachable:
         return instructions
 
@@ -436,7 +438,9 @@ class TurnHandler(TurnServiceContract):
         default_max_completion_tokens: int | None = None,
         *,
         logger: Logger,
+        hooks: HookRegistry | None = None,
     ) -> None:
+        self.hooks = hooks or HookRegistry()
         self.logger = logger.bind(component='turns')
         self.clock = clock
         self.defaults = defaults or DefaultsConfig()
@@ -521,13 +525,21 @@ class TurnHandler(TurnServiceContract):
                 request.denied_tools,
                 logger=self.logger,
             )
+            extra = []
+            missing_hooks = []
+            for source in self.hooks.sources():
+                harvest = await source.collect(agent.config, scope)
+                if harvest.content:
+                    extra.append(harvest.content)
+                missing_hooks.extend(harvest.unreachable)
             runner = AgentRunner(client, tools, self.clock, logger=self.logger)
             output = await runner.run(
                 TurnInput(
                     instructions=_instructions(
                         agent.config,
-                        unreachable,
+                        (*unreachable, *missing_hooks),
                         logger=self.logger,
+                        extra=extra,
                     ),
                     prompts=request.prompts,
                     model=ref.model,

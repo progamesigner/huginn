@@ -6,7 +6,7 @@ from app.core.config.providers import PROVIDERS
 from app.core.config.registry import HuginnConfig, SectionSpec
 from app.core.providers.config import ConfigProvider
 from app.features.agents.config import build_sections as agent_sections
-from app.features.agents.contracts import ToolSource
+from app.features.agents.contracts import HookSource, ToolSource
 from app.features.agents.providers import AgentProvider
 from app.features.auth.config import build_sections as auth_sections
 from app.features.auth.providers import AuthProvider
@@ -27,6 +27,9 @@ from app.features.conversations.config import COMPACTION
 from app.features.conversations.contracts import ConversationServiceContract
 from app.features.conversations.providers import ConversationProvider
 from app.features.conversations.services import ConversationBlobReferences
+from app.features.hooks.config import HOOKS
+from app.features.hooks.providers import HooksProvider
+from app.features.hooks.sources.configured import ConfiguredHookSource
 from app.features.identities.contracts import (
     IdentityLinkingServiceContract,
     IdentityResolutionServiceContract,
@@ -205,4 +208,16 @@ class ToolContributions(ProviderContract):
                 c.resolve(ToolRegistry),
                 logger=c.resolve(Logger),
             ),
+        )
+
+
+class HookContributions(ProviderContract):
+    dependencies = (HooksProvider,)
+
+    @override
+    def __call__(self, container: ContainerContract) -> None:
+        _section(container, HOOKS)
+        container.contribute(
+            HookSource,
+            lambda c: c.resolve(ConfiguredHookSource),
         )

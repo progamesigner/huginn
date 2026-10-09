@@ -103,6 +103,7 @@ class AgentConfig(ConfigValue):
     instructions_file: Annotated[str | None, Field()] = None
     tools: Annotated[tuple[ToolRef, ...], Field()] = ()
     mcp: Annotated[tuple[MCPRef, ...], Field()] = ()
+    hooks: Annotated[tuple[str, ...], Field()] = ()
     skills: Annotated[SkillsConfig, Field()] = Field(default_factory=SkillsConfig)
 
 

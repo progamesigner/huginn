@@ -1,4 +1,5 @@
 import asyncio
+import json
 from collections.abc import AsyncIterator, Callable, Mapping, Sequence
 from contextlib import AbstractAsyncContextManager, asynccontextmanager, suppress
 from dataclasses import dataclass
@@ -11,7 +12,7 @@ from pydantic import JsonValue
 from structlog.stdlib import BoundLogger
 
 from .contracts import HTTPConnector, MCPClientContract
-from .exceptions import MCPConnectionError, UnknownMCPServerError
+from .exceptions import MCPConnectionError, MCPError, UnknownMCPServerError
 from .types import MCPServer, MCPToolInfo
 
 type Connector = Callable[[MCPServer], AbstractAsyncContextManager[ClientSession]]
@@ -52,9 +53,14 @@ def _describe(error: BaseException | None) -> str:
 
 
 def _render(result: CallToolResult) -> str:
-    return '\n'.join(
+    if result.isError:
+        raise MCPError('MCP tool returned an error')
+    text = '\n'.join(
         block.text for block in result.content if isinstance(block, TextContent)
     )
+    if not text and result.structuredContent is not None:
+        return json.dumps(result.structuredContent)
+    return text
 
 
 class _Connection:
