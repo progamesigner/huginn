@@ -2,7 +2,6 @@ import json
 from collections.abc import Mapping
 from typing import override
 
-import yaml
 from pydantic import JsonValue
 
 from app.features.skills.entities import Skill, SkillMeta
@@ -10,34 +9,10 @@ from app.features.skills.sources.contracts import SkillSource
 from lib.mcp import MCPClientContract
 from lib.observability import Logger
 
-
-def _split(content: str) -> tuple[Mapping[str, object], str]:
-    if content.startswith('---'):
-        _, _, rest = content.partition('---')
-        front, sep, body = rest.partition('---')
-        if sep:
-            parsed = yaml.safe_load(front)
-            if isinstance(parsed, dict):
-                return parsed, body.lstrip('\n')
-    return {}, content
+from .markdown import _meta, _split
 
 
-def _name_from_path(path: str) -> str:
-    parts = [part for part in path.split('/') if part]
-    return parts[-2] if len(parts) >= 2 else path
-
-
-def _meta(path: str, content: str, *, logger: Logger) -> SkillMeta:
-    front, _ = _split(content)
-    name = str(front.get('name') or _name_from_path(path))
-    description = front.get('description')
-    if not description:
-        logger.warning('skill %s has no description; using its name', path)
-        description = name
-    return SkillMeta(name=name, description=str(description), path=path)
-
-
-class MuninnSkillSource(SkillSource):
+class MCPSkillSource(SkillSource):
     logger: Logger
     client: MCPClientContract
     server: str
@@ -50,11 +25,15 @@ class MuninnSkillSource(SkillSource):
         glob: str,
         *,
         logger: Logger,
+        list_tool: str = 'list_memory_notes',
+        read_tool: str = 'read_memory_note',
     ) -> None:
         self.logger = logger.bind(component='skills')
         self.client = client
         self.server = server
         self.glob = glob
+        self.list_tool = list_tool
+        self.read_tool = read_tool
 
     @override
     async def list(
@@ -63,13 +42,16 @@ class MuninnSkillSource(SkillSource):
     ) -> tuple[SkillMeta, ...]:
         raw = await self.client.call_tool(
             self.server,
-            'list_memory_notes',
+            self.list_tool,
             {'glob': self.glob, **scope},
         )
-        metas = [
-            _meta(path, await self._read(path, scope), logger=self.logger)
-            for path in _paths(raw)
-        ]
+        metas = []
+        for path in _paths(raw):
+            content = await self._read(path, scope)
+            try:
+                metas.append(_meta(path, content, logger=self.logger))
+            except ValueError:
+                self.logger.warning('Skipping invalid skill frontmatter: %s', path)
         return tuple(metas)
 
     @override
@@ -83,7 +65,7 @@ class MuninnSkillSource(SkillSource):
     async def _read(self, path: str, scope: Mapping[str, JsonValue]) -> str:
         raw = await self.client.call_tool(
             self.server,
-            'read_memory_note',
+            self.read_tool,
             {'path': path, **scope},
         )
         return _content(raw)

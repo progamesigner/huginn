@@ -7,7 +7,7 @@ from pydantic import JsonValue
 from app.features.agents.config import AgentConfig, SkillsConfig
 from app.features.agents.entities import TurnInput, TurnPrompt, TurnScope
 from app.features.agents.services import AgentRunner, build_tool_set
-from app.features.skills.config import SkillsSourceConfig
+from app.features.skills.config import SkillsConfig as SourceConfig
 from app.features.skills.entities import Skill, SkillMeta
 from app.features.skills.repositories import SkillRepository
 from app.features.skills.sources.contracts import SkillSource
@@ -70,7 +70,7 @@ async def test_agent_loads_a_skill_through_the_tool_loop() -> None:
         (
             SkillToolSource(
                 lambda: repository,
-                SkillsSourceConfig(),
+                SourceConfig(),
                 logger=make_logger(),
             ),
         ),

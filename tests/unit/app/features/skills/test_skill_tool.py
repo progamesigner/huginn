@@ -9,7 +9,8 @@ from pydantic import JsonValue
 from app.features.agents.config import AgentConfig, SkillsConfig
 from app.features.agents.entities import TurnScope
 from app.features.agents.tooling import ToolSet
-from app.features.skills.config import SkillsSourceConfig
+from app.features.skills.config import MCPSkillSourceConfig
+from app.features.skills.config import SkillsConfig as SourceConfig
 from app.features.skills.entities import Skill, SkillMeta
 from app.features.skills.repositories import SkillRepository
 from app.features.skills.sources.contracts import SkillSource
@@ -99,7 +100,7 @@ def _source(*names: str) -> SkillToolSource:
     repository = SkillRepository(source, FakeClock(), ttl=timedelta(minutes=15))
     return SkillToolSource(
         lambda: repository,
-        SkillsSourceConfig(),
+        SourceConfig(),
         logger=make_logger(),
     )
 
@@ -150,7 +151,9 @@ async def test_source_withholds_skills_when_a_bound_scope_is_missing() -> None:
     repository = SkillRepository(source, FakeClock(), ttl=timedelta(minutes=15))
     tools = SkillToolSource(
         lambda: repository,
-        SkillsSourceConfig(bind={'user': 'handle'}),
+        SourceConfig(
+            source=MCPSkillSourceConfig(server='memory', bind={'user': 'handle'}),
+        ),
         logger=make_logger(),
     )
 
@@ -164,7 +167,13 @@ async def test_source_carries_bound_scope_from_inventory_into_load() -> None:
     repository = SkillRepository(source, FakeClock(), ttl=timedelta(minutes=15))
     tools = SkillToolSource(
         lambda: repository,
-        SkillsSourceConfig(inject={'agent': 'default'}, bind={'user': 'handle'}),
+        SourceConfig(
+            source=MCPSkillSourceConfig(
+                server='memory',
+                inject={'agent': 'default'},
+                bind={'user': 'handle'},
+            ),
+        ),
         logger=make_logger(),
     )
     scope = TurnScope(
@@ -190,7 +199,7 @@ async def test_a_source_that_cannot_read_the_inventory_offers_no_skills(
 ) -> None:
     source = SkillToolSource(
         lambda: _broken_repository(),
-        SkillsSourceConfig(),
+        SourceConfig(),
         logger=make_logger(),
     )
 

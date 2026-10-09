@@ -9,23 +9,34 @@ from lib.mcp import MCPClientContract
 from lib.observability import Logger
 from lib.temporal import ClockContract
 
-from .config import SKILLS
+from .config import SKILLS, FilesystemSkillSourceConfig, MCPSkillSourceConfig
 from .exceptions import SkillsNotConfiguredError
 from .repositories import SkillRepository
-from .sources.muninn import MuninnSkillSource
+from .sources.filesystem import FilesystemSkillSource
+from .sources.mcp import MCPSkillSource
 
 
 def _repository(container: ContainerContract) -> SkillRepository:
     settings = container.resolve(HuginnConfig).section(SKILLS)
-    if settings.server is None:
-        raise SkillsNotConfiguredError('skills.server is not configured')
+    match settings.source:
+        case MCPSkillSourceConfig() as config:
+            source = MCPSkillSource(
+                container.resolve(MCPClientContract),
+                config.server,
+                config.glob,
+                list_tool=config.list_tool,
+                read_tool=config.read_tool,
+                logger=container.resolve(Logger),
+            )
+        case FilesystemSkillSourceConfig() as config:
+            source = FilesystemSkillSource(
+                config.root,
+                config.glob,
+                logger=container.resolve(Logger),
+            )
+        case None:
+            raise SkillsNotConfiguredError('skills.source is not configured')
 
-    source = MuninnSkillSource(
-        container.resolve(MCPClientContract),
-        settings.server,
-        settings.glob,
-        logger=container.resolve(Logger),
-    )
     return SkillRepository(source, container.resolve(ClockContract))
 
 

@@ -30,9 +30,11 @@ mcp_servers:
     url: https://memory.test
 
 skills:
-  server: memory
-  inject:
-    agent: default
+  source:
+    kind: mcp
+    server: memory
+    inject:
+      agent: default
 """
 
 _UNCONFIGURED = """

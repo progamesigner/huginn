@@ -4,7 +4,7 @@ from typing import override
 
 from pydantic import JsonValue
 
-from app.features.skills.sources.muninn import MuninnSkillSource
+from app.features.skills.sources.mcp import MCPSkillSource
 from lib.mcp import MCPClientContract, MCPToolInfo
 from tests.helpers.logging import make_logger
 
@@ -58,9 +58,9 @@ class FakeMCP(MCPClientContract):
         return ()
 
 
-def source() -> tuple[MuninnSkillSource, FakeMCP]:
+def source() -> tuple[MCPSkillSource, FakeMCP]:
     client = FakeMCP()
-    skills = MuninnSkillSource(
+    skills = MCPSkillSource(
         client,
         'memory',
         'Agents/skills/**/SKILL.md',

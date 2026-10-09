@@ -14,7 +14,7 @@ from app.features.agents.contracts import (
 from app.features.agents.entities import TurnScope, resolve_bindings
 from lib.observability import Logger
 
-from .config import SkillsSourceConfig
+from .config import FilesystemSkillSourceConfig, MCPSkillSourceConfig, SkillsConfig
 from .entities import SkillMeta
 from .repositories import SkillRepository
 
@@ -92,13 +92,13 @@ class SkillTool(TypedTool[SkillParams]):
 
 class SkillToolSource(ToolSource):
     logger: Logger
-    config: SkillsSourceConfig
+    config: SkillsConfig
     repository: Callable[[], SkillRepository]
 
     def __init__(
         self,
         repository: Callable[[], SkillRepository],
-        config: SkillsSourceConfig,
+        config: SkillsConfig,
         *,
         logger: Logger,
     ) -> None:
@@ -111,11 +111,18 @@ class SkillToolSource(ToolSource):
         if not agent.skills.enabled:
             return ToolHarvest()
 
-        inject = resolve_bindings(self.config.inject, self.config.bind, scope)
+        source = self.config.source
+        inject = (
+            resolve_bindings(source.inject, source.bind, scope)
+            if isinstance(source, MCPSkillSourceConfig)
+            else {}
+        )
         if inject is None:
             self.logger.info(
                 'skill library omitted because bound keys are unavailable: %s',
-                ', '.join(sorted(self.config.bind)),
+                ', '.join(sorted(source.bind))
+                if isinstance(source, MCPSkillSourceConfig)
+                else '',
             )
             return ToolHarvest()
 
@@ -126,6 +133,8 @@ class SkillToolSource(ToolSource):
                 inject,
             )
         except Exception:
+            if isinstance(source, FilesystemSkillSourceConfig):
+                raise
             self.logger.exception(
                 'Could not read the skill inventory; offering no skills',
             )
