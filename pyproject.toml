@@ -27,7 +27,7 @@ anthropic = ["anthropic==0.116.0"]
 openai = ["openai==2.45.0"]
 documents = [
     "openpyxl==3.1.5",
-    "pypdf==6.4.0",
+    "pypdf==6.19.0",
     "python-docx==1.2.0",
 ]
 
@@ -53,6 +53,9 @@ dev = [
 [build-system]
 build-backend = "hatchling.build"
 requires = ["hatchling==1.31.0"]
+
+[tool.uv]
+constraint-dependencies = ["mako>=1.4.2"]
 
 [tool.alembic]
 script_location = "migrations"
