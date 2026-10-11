@@ -22,6 +22,7 @@ _HEADING = re.compile(r'^(#{1,6})\s+(.*)$')
 _BULLET = re.compile(r'^\s*[-*+]\s+(.*)$')
 _NUMBERED = re.compile(r'^\s*\d+[.)]\s+(.*)$')
 _TABLE_RULE = re.compile(r'^\s*\|?\s*:?-+:?\s*(\|\s*:?-+:?\s*)*\|?\s*$')
+_CSV_FORMULA_PREFIXES = ('=', '+', '-', '@', '\t', '\r')
 
 
 @dataclass(frozen=True)
@@ -105,15 +106,26 @@ def _docx(markdown: str) -> bytes:
 
 
 def _csv(content: str, sheets: Sequence[Sheet]) -> bytes:
-    if not sheets:
-        return _required(content, 'csv').encode()
+    if sheets:
+        return _csv_rows(sheets[0].rows)
 
+    content = _required(content, 'csv')
+    rows = list(csv.reader(io.StringIO(content, newline='')))
+    if not any(cell.startswith(_CSV_FORMULA_PREFIXES) for row in rows for cell in row):
+        return content.encode()
+    return _csv_rows(rows)
+
+
+def _csv_rows(rows: Sequence[Sequence[Cell]]) -> bytes:
     buffer = io.StringIO()
     writer = csv.writer(buffer)
-    writer.writerows(
-        ['' if cell is None else cell for cell in row] for row in sheets[0].rows
-    )
+    writer.writerows([_csv_cell(cell) for cell in row] for row in rows)
     return buffer.getvalue().encode()
+
+
+def _csv_cell(cell: Cell) -> str:
+    text = '' if cell is None else str(cell)
+    return "'" + text if text.startswith(_CSV_FORMULA_PREFIXES) else text
 
 
 @dataclass(frozen=True)

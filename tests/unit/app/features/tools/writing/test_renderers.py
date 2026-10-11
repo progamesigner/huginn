@@ -1,3 +1,4 @@
+import csv
 import io
 import sys
 
@@ -6,6 +7,7 @@ from docx import Document
 from openpyxl import load_workbook
 
 from app.features.tools.writing.renderers import (
+    Cell,
     Code,
     Heading,
     Item,
@@ -91,6 +93,50 @@ def test_a_csv_is_its_content_or_its_first_sheet() -> None:
     assert render('csv', 'x', 'a,b\n1,2\n', ()).data == b'a,b\n1,2\n'
     rows = render('csv', 'x', '', (Sheet('s', (('a', None), (1, 'x,y'))),)).data
     assert rows == b'a,\r\n1,"x,y"\r\n'
+
+
+@pytest.mark.parametrize('from_content', [False, True])
+@pytest.mark.parametrize(
+    ('cell', 'expected'),
+    [
+        ('=1+1', "'=1+1"),
+        ('+1+1', "'+1+1"),
+        ('-1+1', "'-1+1"),
+        ('@SUM(1,2)', "'@SUM(1,2)"),
+        ('\t=1+1', "'\t=1+1"),
+        ('\r=1+1', "'\r=1+1"),
+        (-1, "'-1"),
+        (-1.5, "'-1.5"),
+        ('', ''),
+        (None, ''),
+        (1, '1'),
+        (1.5, '1.5'),
+        (True, 'True'),
+        ('plain text', 'plain text'),
+        ("'=1+1", "'=1+1"),
+        ('a=1+1', 'a=1+1'),
+        ('x,y', 'x,y'),
+        ('a"b\nc', 'a"b\nc'),
+    ],
+)
+def test_csv_cells_are_safe_for_spreadsheets(
+    cell: Cell,
+    expected: str,
+    from_content: bool,
+) -> None:
+    rows = (('header', 'value'), ('row', cell), ('tail', 'unchanged'))
+    if from_content:
+        buffer = io.StringIO()
+        csv.writer(buffer).writerows(rows)
+        rendered = render('csv', 'x', buffer.getvalue(), ())
+    else:
+        rendered = render('csv', 'x', '', (Sheet('S', rows),))
+
+    assert list(csv.reader(io.StringIO(rendered.data.decode(), newline=''))) == [
+        ['header', 'value'],
+        ['row', expected],
+        ['tail', 'unchanged'],
+    ]
 
 
 def test_markdown_and_word_need_content() -> None:
