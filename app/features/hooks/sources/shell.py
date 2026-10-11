@@ -13,7 +13,13 @@ async def read(config: ShellHookConfig, bound: Mapping[str, JsonValue]) -> str:
     process = await asyncio.create_subprocess_exec(
         *config.command,
         env={
-            **os.environ,
+            **{
+                key: value
+                for key, value in os.environ.items()
+                if key in ('PATH', 'HOME')
+                or key.startswith('HUGINN_HOOK_')
+                or key in config.inherit_env
+            },
             **{
                 f'HUGINN_HOOK_{key.upper()}': str(value) for key, value in bound.items()
             },

@@ -89,6 +89,18 @@ skills:
     bind:
       user: handle
 
+# Shell hooks inherit only PATH, HOME and HUGINN_HOOK_* by default. bind values
+# become HUGINN_HOOK_<UPPERCASE_KEY> and override inherited values. inherit_env
+# adds exact environment variable names; unset names are skipped. Default: [].
+# hooks:
+#   notice:
+#     kind: shell
+#     command: [uptime]
+#     inherit_env: [TZ]
+#     bind:
+#       user: handle
+# Attach a hook to an agent with hooks: [notice].
+
 agents:
   scout:
     description: Research agent — answers questions with web search and recall.

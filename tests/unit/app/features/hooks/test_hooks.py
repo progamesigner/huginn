@@ -1,5 +1,6 @@
 import asyncio
 import json
+import os
 import sys
 from collections.abc import AsyncIterator, Mapping
 from contextlib import asynccontextmanager
@@ -33,6 +34,7 @@ from app.features.hooks.config import (
 )
 from app.features.hooks.sources.configured import ConfiguredHookSource
 from app.features.hooks.sources.mcp import _content
+from app.features.hooks.sources.shell import read as read_shell
 from app.features.mcp.config import MCP_SERVERS
 from lib.http import HTTPClientContract
 from lib.llm import TextSegment
@@ -331,6 +333,99 @@ async def test_shell_exec_environment_and_truncation() -> None:
     assert harvest.content is not None
     assert harvest.content.startswith('alice\n')
     assert len(harvest.content.encode()) == 65536
+
+
+@pytest.mark.parametrize(
+    'inherit_env',
+    [(), ('*',), ('OPENAI_API_KEY', 'MISSING', 'HUGINN_HOOK_USER')],
+)
+async def test_shell_inherits_only_allowed_environment(
+    inherit_env: tuple[str, ...],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    environment = {
+        'PATH': str(Path(sys.executable).parent),
+        'HOME': '/hook-home',
+        'HUGINN_HOOK_EXTRA': 'context',
+        'HUGINN_HOOK_USER': 'inherited-user',
+        'OPENAI_API_KEY': 'test-api-key',
+        'DATABASE_PASSWORD': 'test-password',
+        'HUGINN_CONFIG_FILE': '/private/config.yaml',
+        'PYTHONPATH': '/private/modules',
+    }
+    monkeypatch.setattr(os, 'environ', environment)
+    config = ShellHookConfig(
+        kind='shell',
+        command=(
+            Path(sys.executable).name,
+            '-c',
+            'import json, os; print(json.dumps(dict(os.environ)))',
+        ),
+        inherit_env=inherit_env,
+        bind={'user': 'handle'},
+    )
+    harvest = await source(config).collect(agent('context'), scope())
+    assert harvest.content is not None
+    actual = json.loads(harvest.content)
+    # Python may set LC_CTYPE during locale coercion on startup.
+    actual.pop('LC_CTYPE', None)
+    expected = {
+        'PATH': environment['PATH'],
+        'HOME': environment['HOME'],
+        'HUGINN_HOOK_EXTRA': 'context',
+        'HUGINN_HOOK_USER': 'alice',
+    }
+    if 'OPENAI_API_KEY' in inherit_env:
+        expected['OPENAI_API_KEY'] = 'test-api-key'
+    assert actual == expected
+
+
+async def test_shell_missing_default_environment_is_omitted(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(os, 'environ', {})
+    config = ShellHookConfig(
+        kind='shell',
+        command=(
+            sys.executable,
+            '-c',
+            "import json, os; print(json.dumps([os.getenv('PATH'), os.getenv('HOME')]))",
+        ),
+        inherit_env=('MISSING',),
+    )
+    assert json.loads(await read_shell(config, {})) == [None, None]
+
+
+def test_shell_environment_allowlist_loads_from_yaml(tmp_path: Path) -> None:
+    path = tmp_path / 'config.yaml'
+    path.write_text(
+        'agents: {}\n'
+        'hooks:\n'
+        '  minimal: {kind: shell, command: [uptime]}\n'
+        '  custom: {kind: shell, command: [uptime], inherit_env: [TZ]}\n',
+    )
+    hooks = (
+        load_config(path, SectionRegistry((AGENTS, HOOKS, MCP_SERVERS)))
+        .section(HOOKS)
+        .root
+    )
+    minimal, custom = hooks['minimal'], hooks['custom']
+    assert isinstance(minimal, ShellHookConfig)
+    assert isinstance(custom, ShellHookConfig)
+    assert minimal.inherit_env == ()
+    assert custom.inherit_env == ('TZ',)
+
+
+@pytest.mark.parametrize('inherit_env', ['*', True, [1]])
+def test_shell_environment_allowlist_rejects_invalid_types(
+    inherit_env: JsonValue,
+) -> None:
+    with pytest.raises(ValidationError, match='inherit_env'):
+        ShellHookConfig.model_validate_json(
+            json.dumps(
+                {'kind': 'shell', 'command': ['uptime'], 'inherit_env': inherit_env},
+            ),
+        )
 
 
 @pytest.mark.parametrize(

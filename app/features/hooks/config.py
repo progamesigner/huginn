@@ -39,6 +39,7 @@ class HTTPHookConfig(BoundHookConfig):
 class ShellHookConfig(BoundHookConfig):
     kind: Annotated[Literal['shell'], Field()]
     command: Annotated[tuple[str, ...], Field(min_length=1)]
+    inherit_env: Annotated[tuple[str, ...], Field()] = ()
     timeout: Annotated[int, Field(gt=0)] = 30
 
     @model_validator(mode='after')
