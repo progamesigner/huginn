@@ -3,6 +3,8 @@ from collections.abc import AsyncGenerator
 from contextlib import aclosing
 from urllib.parse import quote
 
+from starlette.types import Message
+
 from app.contracts.auth import ApiClient
 from app.contracts.channels import ATTACHMENT_LIMITS
 from lib.guid import GUIDContract
@@ -60,6 +62,22 @@ def disposition(name: str | None) -> str:
     )
 
 
+# NOTE: counts the body as it arrives, so a chunked upload with no declared length is
+# cut off at the limit instead of being parsed and spooled to disk in full
+def capped(request: Request, limit: int) -> Request:
+    received = 0
+
+    async def receive() -> Message:
+        nonlocal received
+        message = await request.receive()
+        received += len(message.get('body', b''))
+        if received > limit:
+            raise AttachmentTooLargeError(f'uploads are limited to {_FILE_LIMIT} bytes')
+        return message
+
+    return Request(request.scope, receive)
+
+
 class ChatHandlers:
     clock: ClockContract
     guid: GUIDContract
@@ -95,7 +113,7 @@ class ChatHandlers:
         )
 
     # NOTE: the declared length is refused before a byte of the body is read; a body
-    # without one is still cut off at the same size once it is read
+    # without one is cut off at the same size while it is read
     async def upload(self, request: Request, client: ApiClient) -> UploadedBlob:
         declared = request.headers.get('content-length')
         if (
@@ -105,7 +123,8 @@ class ChatHandlers:
         ):
             raise AttachmentTooLargeError(f'uploads are limited to {_FILE_LIMIT} bytes')
 
-        async with request.form(max_files=1, max_fields=1) as form:
+        body = capped(request, _UPLOAD_LIMIT)
+        async with body.form(max_files=1, max_fields=1) as form:
             file = form.get('file')
             if not isinstance(file, UploadFile):
                 raise InvalidAttachmentError('send the file as multipart field "file"')

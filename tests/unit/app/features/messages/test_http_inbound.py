@@ -1,5 +1,6 @@
 import json
 from base64 import b64encode
+from collections.abc import AsyncIterator
 
 import pytest
 
@@ -79,6 +80,46 @@ async def test_an_upload_over_the_limit_is_refused_by_its_declared_length(
 
     assert response.status_code == 413
     assert response.json()['error'] == 'ATTACHMENT_TOO_LARGE'
+    assert blobs.blobs == {}
+
+
+async def test_an_upload_over_the_limit_is_cut_off_without_a_declared_length(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(handlers, '_UPLOAD_LIMIT', 64)
+    blobs = MemoryBlobs()
+    sent = 0
+    boundary = 'huginn'
+    head = (
+        f'--{boundary}\r\n'
+        'Content-Disposition: form-data; name="file"; filename="big.png"\r\n'
+        'Content-Type: image/png\r\n\r\n'
+    ).encode()
+
+    async def chunked() -> AsyncIterator[bytes]:
+        nonlocal sent
+        for chunk in (head, *[_PNG] * 100, f'\r\n--{boundary}--\r\n'.encode()):
+            sent += 1
+            yield chunk
+
+    async with chat_client(
+        make_config(api_key(agent='scout')),
+        StreamingTurns(),
+        blobs=blobs,
+    ) as client:
+        response = await client.post(
+            '/v1/blobs',
+            headers={
+                **bearer(),
+                'Content-Type': f'multipart/form-data; boundary={boundary}',
+            },
+            content=chunked(),
+        )
+
+    assert 'content-length' not in response.request.headers
+    assert response.status_code == 413
+    assert response.json()['error'] == 'ATTACHMENT_TOO_LARGE'
+    assert sent < 10
     assert blobs.blobs == {}
 
 
