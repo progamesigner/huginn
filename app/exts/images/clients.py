@@ -9,6 +9,7 @@ from lib.http import HTTPClientContract
 from .exceptions import ImageGenerationError
 
 _GENERATION_TIMEOUT = 120.0
+_DEFAULT_MAX_BYTES = 20 * 1024 * 1024
 
 
 class ImagesValue(BaseModel):
@@ -44,6 +45,7 @@ class ImagesClient:
     base_url: str
     headers: dict[str, str]
     model: str
+    max_bytes: int
 
     def __init__(
         self,
@@ -51,11 +53,13 @@ class ImagesClient:
         api_key: SecretStr,
         base_url: str,
         model: str,
+        max_bytes: int = _DEFAULT_MAX_BYTES,
     ) -> None:
         self.http = http
         self.base_url = base_url
         self.headers = {'Authorization': f'Bearer {api_key.get_secret_value()}'}
         self.model = model
+        self.max_bytes = max_bytes
 
     async def generate(
         self,
@@ -90,8 +94,13 @@ class ImagesClient:
 
         image = images[0]
         if image.b64_json is not None:
+            if len(image.b64_json) > 4 * ((self.max_bytes + 2) // 3):
+                raise ImageGenerationError('the image exceeds the size limit')
+            data = b64decode(image.b64_json)
+            if len(data) > self.max_bytes:
+                raise ImageGenerationError('the image exceeds the size limit')
             return Generation(
-                data=b64decode(image.b64_json),
+                data=data,
                 revised_prompt=image.revised_prompt,
             )
         if image.url is not None:
@@ -108,8 +117,18 @@ class ImagesClient:
             raise ImageGenerationError('the vendor linked the image over plain http')
 
         async with self.http.connect() as client:
-            response = await client.get(url, timeout=_GENERATION_TIMEOUT)
-            return response.raise_for_status().content
+            async with client.stream(
+                'GET',
+                url,
+                timeout=_GENERATION_TIMEOUT,
+            ) as response:
+                response.raise_for_status()
+                body = bytearray()
+                async for chunk in response.aiter_bytes():
+                    if len(body) + len(chunk) > self.max_bytes:
+                        raise ImageGenerationError('the image exceeds the size limit')
+                    body.extend(chunk)
+                return bytes(body)
 
 
 def _refusal(content: bytes, status: int) -> str:

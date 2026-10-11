@@ -14,3 +14,4 @@ class ImageToolConfig(ToolConfig):
     base_url: Annotated[HttpUrl, Field()] = HttpUrl('https://api.openai.com')
     size: Annotated[ImageSize, Field()] = '1024x1024'
     quality: Annotated[str | None, Field()] = None
+    max_bytes: Annotated[int, Field(gt=0)] = 20 * 1024 * 1024

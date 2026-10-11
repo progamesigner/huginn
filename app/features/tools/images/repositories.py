@@ -33,6 +33,7 @@ class ImageRepository:
             api_key=config.api_key,
             base_url=str(config.base_url),
             model=config.model,
+            max_bytes=config.max_bytes,
         )
         try:
             generation = await client.generate(prompt, size, config.quality)

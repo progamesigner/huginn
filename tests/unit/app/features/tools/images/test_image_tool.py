@@ -192,3 +192,37 @@ async def test_an_image_asked_for_on_telegram_arrives_as_a_photo() -> None:
 
     assert photo.called
     assert _PNG in photo.calls.last.request.content
+
+
+@pytest.mark.parametrize('max_bytes', [0, -1])
+def test_image_config_requires_a_positive_size_limit(max_bytes: int) -> None:
+    with pytest.raises(ValueError, match='max_bytes'):
+        config(max_bytes=max_bytes)
+
+
+@pytest.mark.parametrize('linked', [False, True])
+@respx.mock
+async def test_an_oversized_image_is_not_stored(linked: bool) -> None:
+    if linked:
+        respx.post(f'{_VENDOR}/v1/images/generations').mock(
+            return_value=httpx.Response(
+                200,
+                json={'data': [{'url': 'https://storage.example/duck.png'}]},
+            ),
+        )
+        respx.get('https://storage.example/duck.png').mock(
+            return_value=httpx.Response(200, content=_PNG),
+        )
+    else:
+        vendor()
+    blobs = MemoryBlobs()
+    tool = build_images(
+        ImageRepository(HTTPClientManager()),
+        ArtifactWriter(blobs, _TTL),
+        config(max_bytes=len(_PNG) - 1),
+    )
+
+    with pytest.raises(ToolError, match='size limit'):
+        await tool.run(ImageParams(prompt='a duck'))
+
+    assert blobs.blobs == {}
