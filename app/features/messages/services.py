@@ -21,7 +21,7 @@ from lib.redis import RedisContract, RedisLock
 from lib.result import Err, Ok, Result
 
 from .attachments import AttachmentError, AttachmentIntake, Received, classify
-from .entities import AttachmentEvent, OpenedEvent, TurnEvent
+from .entities import AttachmentEvent, OpenedEvent, TextEvent, TurnEvent
 from .exceptions import (
     BlobNotFoundError,
     ConversationBusyError,
@@ -193,7 +193,11 @@ class ChatService:
             ):
                 async for event in events:
                     if isinstance(event, AttachmentEvent):
-                        await self._grant(event, prepared.request.channel)
+                        if not await self._grant(event, prepared.request.channel):
+                            yield TextEvent(
+                                text='\n\nThe attachment could not be made available.',
+                            )
+                            continue
                     yield event
         finally:
             await prepared.lock.release()
@@ -244,8 +248,11 @@ class ChatService:
         return Ok(found)
 
     # NOTE: the file is the key's to fetch before the reader is told it exists
-    async def _grant(self, event: AttachmentEvent, owner: str) -> None:
+    async def _grant(self, event: AttachmentEvent, owner: str) -> bool:
         try:
             await self.blobs.grant(UUID(event.blob), owner)
         except Exception:
             self.logger.exception('Could not grant %s to its reader', event.blob)
+            return False
+
+        return True

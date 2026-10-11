@@ -1,5 +1,8 @@
 import json
+from unittest.mock import AsyncMock
+from uuid import UUID
 
+import pytest
 from pydantic import SecretStr
 
 from app.contracts.channels import ReplyArtifact
@@ -101,6 +104,82 @@ async def test_a_produced_file_is_announced_without_its_bytes() -> None:
         'url': f'/v1/blobs/{artifact.blob}',
         'name': 'chart.png',
     }
+
+
+@pytest.mark.parametrize(
+    ('path', 'stream'),
+    [
+        ('/v1/chat', True),
+        ('/openai/v1/chat/completions', True),
+        ('/openai/v1/chat/completions', False),
+        ('/anthropic/v1/messages', True),
+        ('/anthropic/v1/messages', False),
+    ],
+)
+async def test_a_failed_grant_replaces_the_link_with_a_notice(
+    monkeypatch: pytest.MonkeyPatch,
+    path: str,
+    stream: bool,
+) -> None:
+    blobs = MemoryBlobs()
+    artifact = await produced(blobs)
+    grant = AsyncMock(side_effect=RuntimeError('grant failed'))
+    monkeypatch.setattr(blobs, 'grant', grant)
+    turns = StreamingTurns('here', artifacts=(artifact,))
+    payload = (
+        {'message': 'x'}
+        if path == '/v1/chat'
+        else {'messages': [{'role': 'user', 'content': 'x'}], 'stream': stream}
+    )
+
+    async with chat_client(
+        make_config(api_key(agent='scout')),
+        turns,
+        blobs=blobs,
+    ) as client:
+        response = await client.post(path, headers=bearer(), json=payload)
+
+    assert response.status_code == 200
+    grant.assert_awaited_once_with(UUID(artifact.blob), 'web')
+    assert artifact.blob not in response.text
+    assert '/v1/blobs/' not in response.text
+    notice = '\n\nThe attachment could not be made available.'
+    if path == '/v1/chat':
+        named = events(response.text)
+        assert [name for name, _ in named] == [
+            'opened',
+            'routed',
+            'delta',
+            'delta',
+            'done',
+        ]
+        assert json.loads(named[3][1]) == {'text': notice}
+    elif path == '/openai/v1/chat/completions':
+        if stream:
+            chunks = [
+                json.loads(data)
+                for _, data in events(response.text)
+                if data and data != '[DONE]'
+            ]
+            text = ''.join(
+                chunk['choices'][0]['delta'].get('content', '') for chunk in chunks
+            )
+            assert events(response.text)[-1][1] == '[DONE]'
+        else:
+            text = response.json()['choices'][0]['message']['content']
+        assert text == 'here' + notice
+    else:
+        if stream:
+            named = events(response.text)
+            text = ''.join(
+                json.loads(data)['delta']['text']
+                for name, data in named
+                if name == 'content_block_delta'
+            )
+            assert named[-1][0] == 'message_stop'
+        else:
+            text = response.json()['content'][0]['text']
+        assert text == 'here' + notice
 
 
 async def test_the_announced_url_serves_the_bytes_to_the_same_key() -> None:
