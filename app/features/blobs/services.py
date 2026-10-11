@@ -9,7 +9,7 @@ from lib.guid import GUIDContract
 from lib.temporal import ClockContract
 
 from .contracts import BlobServiceContract
-from .entities import Blob, BlobKind
+from .entities import Blob, BlobGrant, BlobKind
 from .repositories import BlobRepository
 
 
@@ -75,12 +75,22 @@ class BlobService(BlobServiceContract):
             return await BlobRepository(session, self.guid, self.clock).head(id)
 
     @override
-    async def grant(self, id: UUID, owner: str) -> None:
+    async def grant(
+        self,
+        id: UUID,
+        owner: str,
+        *,
+        filename: str | None = None,
+    ) -> None:
         async with self.database.transaction() as transaction:
-            await BlobRepository(transaction, self.guid, self.clock).grant(id, owner)
+            await BlobRepository(transaction, self.guid, self.clock).grant(
+                id,
+                owner,
+                filename=filename,
+            )
 
     @override
-    async def granted(self, id: UUID, owner: str) -> bool:
+    async def granted(self, id: UUID, owner: str) -> BlobGrant | None:
         async with self.database.session() as session:
             return await BlobRepository(session, self.guid, self.clock).granted(
                 id,

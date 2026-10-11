@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import defer
 
 from app.features.blobs.contracts import BlobReferenceSource
-from app.features.blobs.entities import Blob, BlobKind
+from app.features.blobs.entities import Blob, BlobGrant, BlobKind
 from app.features.blobs.exceptions import BlobError
 from app.features.blobs.sources.sqlalchemy import BlobGrantRecord, BlobRecord
 from lib.guid import GUIDContract
@@ -98,23 +98,47 @@ class BlobRepository:
         )
         return None if record is None else _to_blob(record)
 
-    async def grant(self, id: UUID, owner: str) -> None:
+    async def grant(
+        self,
+        id: UUID,
+        owner: str,
+        *,
+        filename: str | None = None,
+    ) -> None:
+        inserted = insert(BlobGrantRecord).values(
+            id=self.guid.generate(),
+            blob_id=id,
+            owner=owner,
+            filename=filename,
+        )
         await self.session.execute(
-            insert(BlobGrantRecord)
-            .values(id=self.guid.generate(), blob_id=id, owner=owner)
-            .on_conflict_do_nothing(
+            inserted.on_conflict_do_update(
                 index_elements=[BlobGrantRecord.blob_id, BlobGrantRecord.owner],
+                set_={
+                    'filename': func.coalesce(
+                        inserted.excluded.filename,
+                        BlobGrantRecord.filename,
+                    ),
+                },
             ),
         )
 
-    async def granted(self, id: UUID, owner: str) -> bool:
+    async def granted(self, id: UUID, owner: str) -> BlobGrant | None:
         found = await self.session.scalar(
-            select(BlobGrantRecord.id).where(
+            select(BlobGrantRecord).where(
                 BlobGrantRecord.blob_id == id,
                 BlobGrantRecord.owner == owner,
             ),
         )
-        return found is not None
+        return (
+            None
+            if found is None
+            else BlobGrant(
+                blob_id=found.blob_id,
+                owner=found.owner,
+                filename=found.filename,
+            )
+        )
 
     async def prune(
         self,

@@ -11,7 +11,7 @@ from app.features.agents.config import AgentConfig, ToolRef
 from app.features.agents.contracts import ToolOutput, ToolParams, TypedTool
 from app.features.agents.entities import TurnScope
 from app.features.blobs.contracts import BlobServiceContract
-from app.features.blobs.entities import Blob, BlobKind
+from app.features.blobs.entities import Blob, BlobGrant, BlobKind
 from app.features.tools.config import ToolConfig, ToolConfigList
 from app.features.tools.document.config import DocumentToolConfig
 from app.features.tools.document.tool import ReadDocumentTool, build_read_document
@@ -107,11 +107,17 @@ class DocumentBlobs(BlobServiceContract):
         raise NotImplementedError
 
     @override
-    async def grant(self, id: UUID, owner: str) -> None:
+    async def grant(
+        self,
+        id: UUID,
+        owner: str,
+        *,
+        filename: str | None = None,
+    ) -> None:
         raise NotImplementedError
 
     @override
-    async def granted(self, id: UUID, owner: str) -> bool:
+    async def granted(self, id: UUID, owner: str) -> BlobGrant | None:
         raise NotImplementedError
 
     @override

@@ -247,6 +247,39 @@ async def test_another_keys_blob_is_not_found() -> None:
     assert turns.requests == []
 
 
+async def test_the_same_bytes_keep_each_keys_own_name() -> None:
+    blobs = MemoryBlobs()
+    turns = StreamingTurns()
+
+    async with chat_client(two_keys(), turns, blobs=blobs) as client:
+        first = await client.post(
+            '/v1/blobs',
+            headers=bearer(_OTHER),
+            files={'file': ('secret-plan.csv', _CSV, 'text/csv')},
+        )
+        second = await client.post(
+            '/v1/blobs',
+            headers=bearer(),
+            files={'file': ('notes.csv', _CSV, 'text/csv')},
+        )
+        fetched = await client.get(
+            f'/v1/blobs/{second.json()["id"]}',
+            headers=bearer(),
+        )
+        await client.post(
+            '/v1/chat',
+            headers=bearer(),
+            json={'message': 'x', 'attachments': [{'blob': second.json()['id']}]},
+        )
+
+    assert first.json()['id'] == second.json()['id']
+    assert second.json()['name'] == 'notes.csv'
+    assert 'secret-plan' not in fetched.headers['content-disposition']
+    assert 'notes.csv' in fetched.headers['content-disposition']
+    (attachment,) = turns.requests[0].prompts[0].attachments
+    assert attachment.name == 'notes.csv'
+
+
 @pytest.mark.parametrize(
     ('attachment', 'status', 'error'),
     [

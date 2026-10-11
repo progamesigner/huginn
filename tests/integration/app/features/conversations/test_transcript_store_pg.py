@@ -13,7 +13,7 @@ from app.core.config.registry import HuginnConfig
 from app.features.agents.entities import PromptAttachment, TurnPrompt
 from app.features.blobs.config import BlobsConfig, RetentionConfig
 from app.features.blobs.contracts import BlobServiceContract
-from app.features.blobs.entities import Blob, BlobKind
+from app.features.blobs.entities import Blob, BlobGrant, BlobKind
 from app.features.blobs.repositories import BlobRepository
 from app.features.blobs.services import BlobService
 from app.features.blobs.sources.sqlalchemy import BlobRecord
@@ -105,11 +105,17 @@ class SessionBlobs(BlobServiceContract):
         raise NotImplementedError
 
     @override
-    async def grant(self, id: UUID, owner: str) -> None:
+    async def grant(
+        self,
+        id: UUID,
+        owner: str,
+        *,
+        filename: str | None = None,
+    ) -> None:
         raise NotImplementedError
 
     @override
-    async def granted(self, id: UUID, owner: str) -> bool:
+    async def granted(self, id: UUID, owner: str) -> BlobGrant | None:
         raise NotImplementedError
 
     @override
@@ -163,11 +169,17 @@ class FlakyBlobs(BlobServiceContract):
         raise NotImplementedError
 
     @override
-    async def grant(self, id: UUID, owner: str) -> None:
+    async def grant(
+        self,
+        id: UUID,
+        owner: str,
+        *,
+        filename: str | None = None,
+    ) -> None:
         raise NotImplementedError
 
     @override
-    async def granted(self, id: UUID, owner: str) -> bool:
+    async def granted(self, id: UUID, owner: str) -> BlobGrant | None:
         raise NotImplementedError
 
     @override

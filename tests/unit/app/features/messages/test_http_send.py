@@ -140,7 +140,11 @@ async def test_a_failed_grant_replaces_the_link_with_a_notice(
         response = await client.post(path, headers=bearer(), json=payload)
 
     assert response.status_code == 200
-    grant.assert_awaited_once_with(UUID(artifact.blob), 'web')
+    grant.assert_awaited_once_with(
+        UUID(artifact.blob),
+        'web',
+        filename='chart.png',
+    )
     assert artifact.blob not in response.text
     assert '/v1/blobs/' not in response.text
     notice = '\n\nThe attachment could not be made available.'

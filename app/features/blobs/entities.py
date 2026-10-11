@@ -18,3 +18,11 @@ class Blob(AppEntity):
     filename: Annotated[str | None, Field()] = None
     expires_at: Annotated[datetime | None, Field()] = None
     data: Annotated[bytes | None, Field()] = None
+
+
+# NOTE: the name a file arrived under is its sender's, so it lives on the grant
+# rather than on the blob every sender of the same bytes shares
+class BlobGrant(AppEntity):
+    blob_id: Annotated[UUID, Field()]
+    owner: Annotated[str, Field()]
+    filename: Annotated[str | None, Field()] = None

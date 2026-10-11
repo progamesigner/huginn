@@ -128,19 +128,20 @@ class AttachmentIntake:
         except ValueError:
             return missing
 
-        if not await self.blobs.granted(id_, client.key):
+        grant = await self.blobs.granted(id_, client.key)
+        if grant is None:
             return missing
 
         found = await self.blobs.load(id_)
         if found is None or found.data is None:
             return missing
 
-        received = classify(found.data, found.filename)
+        received = classify(found.data, grant.filename)
         if not isinstance(received, Received):
             return received
 
         return (
-            _inbound(received, str(found.id), found.sha256, found.filename),
+            _inbound(received, str(found.id), found.sha256, grant.filename),
             found.data,
         )
 

@@ -227,12 +227,11 @@ class ChatService:
             received.mime,
             data,
             kind=received.kind,
-            filename=name,
             ttl=self.uploads,
         )
-        await self.blobs.grant(blob.id, client.key)
+        await self.blobs.grant(blob.id, client.key, filename=name)
         self.logger.info('Stored an upload of %d bytes as %s', blob.size, blob.id)
-        return Ok(blob)
+        return Ok(blob.model_copy(update={'filename': name}))
 
     # NOTE: absent and forbidden answer alike, so an id says nothing about whether
     # the blob behind it exists
@@ -247,19 +246,20 @@ class ChatService:
         except ValueError:
             return missing
 
-        if not await self.blobs.granted(id_, client.key):
+        grant = await self.blobs.granted(id_, client.key)
+        if grant is None:
             return missing
 
         found = await self.blobs.load(id_)
         if found is None or found.data is None:
             return missing
 
-        return Ok(found)
+        return Ok(found.model_copy(update={'filename': grant.filename}))
 
     # NOTE: the file is the key's to fetch before the reader is told it exists
     async def _grant(self, event: AttachmentEvent, owner: str) -> bool:
         try:
-            await self.blobs.grant(UUID(event.blob), owner)
+            await self.blobs.grant(UUID(event.blob), owner, filename=event.name)
         except Exception:
             self.logger.exception('Could not grant %s to its reader', event.blob)
             return False

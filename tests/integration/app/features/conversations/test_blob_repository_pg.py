@@ -199,6 +199,26 @@ async def test_a_grant_names_one_owner_and_repeats_harmlessly(
     assert (await session.execute(count)).scalar_one() == 1
 
 
+async def test_each_grant_keeps_the_name_its_owner_gave(
+    session: AsyncSession,
+) -> None:
+    blobs = _blobs(session)
+    first = await blobs.store('image/jpeg', _PHOTO, kind='image')
+    second = await blobs.store('image/jpeg', _PHOTO, kind='image')
+
+    await blobs.grant(first.id, 'web-key', filename='holiday.jpg')
+    await blobs.grant(second.id, 'other-key', filename='receipt.jpg')
+    await blobs.grant(second.id, 'other-key')
+
+    mine = await blobs.granted(first.id, 'web-key')
+    theirs = await blobs.granted(second.id, 'other-key')
+    assert first.id == second.id
+    assert mine is not None
+    assert mine.filename == 'holiday.jpg'
+    assert theirs is not None
+    assert theirs.filename == 'receipt.jpg'
+
+
 async def test_pruning_a_granted_blob_takes_its_grants_along(
     session: AsyncSession,
 ) -> None:

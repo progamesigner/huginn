@@ -5,7 +5,7 @@ from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from .entities import Blob, BlobKind
+from .entities import Blob, BlobGrant, BlobKind
 
 
 class BlobServiceContract(ABC):
@@ -43,10 +43,16 @@ class BlobServiceContract(ABC):
 
     # NOTE: a grant names who may fetch a blob back; it never keeps one from lapsing
     @abstractmethod
-    async def grant(self, id: UUID, owner: str) -> None: ...
+    async def grant(
+        self,
+        id: UUID,
+        owner: str,
+        *,
+        filename: str | None = None,
+    ) -> None: ...
 
     @abstractmethod
-    async def granted(self, id: UUID, owner: str) -> bool: ...
+    async def granted(self, id: UUID, owner: str) -> BlobGrant | None: ...
 
 
 class BlobReferenceSource(ABC):

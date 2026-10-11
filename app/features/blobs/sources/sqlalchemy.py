@@ -44,4 +44,5 @@ class BlobGrantRecord(AppRecord):
         ForeignKey(BlobRecord.id, ondelete='CASCADE'),
     )
     owner: Mapped[str] = mapped_column()
+    filename: Mapped[str | None] = mapped_column(default=None)
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())
