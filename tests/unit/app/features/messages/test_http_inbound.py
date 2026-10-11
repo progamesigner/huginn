@@ -5,10 +5,18 @@ from collections.abc import AsyncIterator
 import pytest
 
 from app.features.messages import handlers
+from lib.redis.scripts import RELEASE
 from tests.helpers.blobs import MemoryBlobs
+from tests.helpers.redis import FakeClient, make_redis
 
 from .test_http_send import _OTHER, bearer, two_keys
-from .test_native_chat import StreamingTurns, api_key, chat_client, make_config
+from .test_native_chat import (
+    BusyClient,
+    StreamingTurns,
+    api_key,
+    chat_client,
+    make_config,
+)
 
 _PNG = b'\x89PNG\r\n\x1a\n not really a png'
 _CSV = b'name,qty\napple,3\n'
@@ -432,3 +440,84 @@ async def test_a_plain_text_request_carries_no_attachments() -> None:
 
     assert turns.requests[0].prompts[0].attachments == ()
     assert json.loads(turns.requests[0].model_dump_json())['prompts'][0]['text'] == 'hi'
+
+
+@pytest.mark.parametrize(
+    ('path', 'part'),
+    [
+        (
+            '/openai/v1/chat/completions',
+            {'type': 'input_audio', 'input_audio': {'data': 'T2dnUw=='}},
+        ),
+        (
+            '/anthropic/v1/messages',
+            {'type': 'document', 'source': {'type': 'base64', 'data': 'T2dnUw=='}},
+        ),
+    ],
+)
+async def test_a_compatible_message_over_the_attachment_limit_is_refused(
+    path: str,
+    part: dict[str, object],
+) -> None:
+    turns = StreamingTurns()
+
+    async with chat_client(make_config(api_key(agent='scout')), turns) as client:
+        response = await client.post(
+            path,
+            headers=bearer(),
+            json={'messages': [{'role': 'user', 'content': [part] * 11}]},
+        )
+
+    assert response.status_code == 422
+    assert turns.requests == []
+
+
+async def test_a_busy_conversation_is_refused_before_its_attachments_are_read() -> None:
+    # NOTE: reading an attachment can pay for a transcription; an unreadable one would
+    # answer 400 if it were read first
+    turns = StreamingTurns()
+
+    async with chat_client(
+        make_config(api_key(agent='scout')),
+        turns,
+        make_redis(BusyClient()),
+    ) as client:
+        response = await client.post(
+            '/v1/chat',
+            headers=bearer(),
+            json={
+                'message': 'x',
+                'conversation': 'c-1',
+                'attachments': [{'data': 'not base64!!'}],
+            },
+        )
+
+    assert (response.status_code, response.json()['error']) == (
+        409,
+        'CONVERSATION_BUSY',
+    )
+    assert turns.requests == []
+
+
+async def test_a_refused_attachment_frees_the_conversation() -> None:
+    redis = FakeClient()
+
+    async with chat_client(
+        make_config(api_key(agent='scout')),
+        StreamingTurns(),
+        make_redis(redis),
+    ) as client:
+        response = await client.post(
+            '/v1/chat',
+            headers=bearer(),
+            json={
+                'message': 'x',
+                'conversation': 'c-1',
+                'attachments': [{'data': 'not base64!!'}],
+            },
+        )
+
+    assert response.status_code == 400
+    assert [(script, keys) for script, keys, _ in redis.evaluated] == [
+        (RELEASE, ('messages:web:c-1',)),
+    ]

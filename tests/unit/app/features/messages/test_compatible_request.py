@@ -89,3 +89,36 @@ def test_canonical_token_limit_wins_when_both_names_are_sent() -> None:
 def test_compatible_token_limit_must_be_positive(value: int) -> None:
     with pytest.raises(ValidationError):
         CompatibleRequest.model_validate({'max_completion_tokens': value})
+
+
+def _parts(count: int) -> list[dict[str, object]]:
+    return [{'type': 'input_audio', 'input_audio': {'data': 'T2dnUw=='}}] * count
+
+
+def test_the_latest_message_carries_at_most_ten_attachments() -> None:
+    with pytest.raises(ValidationError):
+        CompatibleRequest.model_validate(
+            {'messages': [{'role': 'user', 'content': _parts(11)}]},
+        )
+
+
+def test_attachments_up_to_the_limit_are_accepted() -> None:
+    ask = CompatibleRequest.model_validate(
+        {'messages': [{'role': 'user', 'content': _parts(10)}]},
+    )
+
+    assert len(ask.latest_attachments()) == 10
+
+
+def test_attachments_on_earlier_messages_do_not_count() -> None:
+    # NOTE: a compatible client resends its history, but only the latest turn is read
+    ask = CompatibleRequest.model_validate(
+        {
+            'messages': [
+                {'role': 'user', 'content': _parts(11)},
+                {'role': 'user', 'content': 'and now?'},
+            ],
+        },
+    )
+
+    assert ask.latest() == 'and now?'

@@ -1,8 +1,10 @@
-from typing import Annotated, Literal
+from typing import Annotated, Literal, Self
 
-from pydantic import AliasChoices, Field
+from pydantic import AliasChoices, Field, model_validator
 
 from app.core.schema import AppRequest, AppResponse
+
+_ATTACHMENT_LIMIT = 10
 
 
 # NOTE: one shape for every way a file arrives; which fields are set says which way,
@@ -17,7 +19,10 @@ class AttachmentInput(AppRequest):
 
 class ChatRequest(AppRequest):
     message: Annotated[str, Field()]
-    attachments: Annotated[tuple[AttachmentInput, ...], Field(max_length=10)] = ()
+    attachments: Annotated[
+        tuple[AttachmentInput, ...],
+        Field(max_length=_ATTACHMENT_LIMIT),
+    ] = ()
     conversation: Annotated[str | None, Field()] = None
     agent: Annotated[str | None, Field()] = None
     max_completion_tokens: Annotated[int | None, Field(gt=0)] = None
@@ -128,6 +133,16 @@ class CompatibleRequest(AppRequest):
             validation_alias=AliasChoices('max_completion_tokens', 'max_tokens'),
         ),
     ] = None
+
+    # NOTE: only the latest user message is read, so only its attachments count
+    # against the same limit a native request has
+    @model_validator(mode='after')
+    def bounded_attachments(self) -> Self:
+        if len(self.latest_attachments()) > _ATTACHMENT_LIMIT:
+            raise ValueError(
+                f'a message carries at most {_ATTACHMENT_LIMIT} attachments',
+            )
+        return self
 
     def latest(self) -> str:
         message = self._latest()

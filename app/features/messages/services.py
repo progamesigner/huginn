@@ -135,14 +135,6 @@ class ChatService:
                 ),
             )
 
-        carried = await self.intake.take(client, attachments)
-        if not isinstance(carried, tuple):
-            return Err(carried)
-        if attachments and not message and not carried:
-            return Err(
-                InvalidAttachmentError('nothing in this request could be read'),
-            )
-
         thread = conversation or str(self.guid.generate())
         lock = RedisLock(
             self.redis,
@@ -153,6 +145,23 @@ class ChatService:
         if not await lock.acquire():
             return Err(
                 ConversationBusyError(f'conversation {thread!r} is already answering'),
+            )
+
+        # NOTE: reading an attachment can pay for a transcription, so a busy
+        # conversation is turned away before any of it is read
+        try:
+            async with lock.renew():
+                carried = await self.intake.take(client, attachments)
+        except BaseException:
+            await lock.release()
+            raise
+        if not isinstance(carried, tuple):
+            await lock.release()
+            return Err(carried)
+        if attachments and not message and not carried:
+            await lock.release()
+            return Err(
+                InvalidAttachmentError('nothing in this request could be read'),
             )
 
         return Ok(
