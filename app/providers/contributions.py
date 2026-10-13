@@ -40,7 +40,7 @@ from app.features.mcp.providers import MCPProvider
 from app.features.mcp.sources import MCPToolSource
 from app.features.skills.config import SKILLS
 from app.features.skills.providers import SkillsProvider
-from app.features.skills.repositories import SkillRepository
+from app.features.skills.repositories import SkillRepositories
 from app.features.skills.tools import SkillToolSource
 from app.features.tools.artifacts import ArtifactWriter
 from app.features.tools.config import build_sections as tool_sections
@@ -172,7 +172,7 @@ class SkillContributions(ProviderContract):
         container.contribute(
             ToolSource,
             lambda c: SkillToolSource(
-                lambda: c.resolve(SkillRepository),
+                lambda name: c.resolve(SkillRepositories).get(name),
                 c.resolve(HuginnConfig).section(SKILLS),
                 logger=c.resolve(Logger),
             ),

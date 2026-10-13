@@ -87,6 +87,7 @@ class RouterConfig(ConfigValue):
 
 
 class SkillsConfig(ConfigValue):
+    source: Annotated[str | None, Field(min_length=1)] = None
     enabled: Annotated[bool, Field()] = False
     allow: Annotated[tuple[str, ...], Field()] = ()
 

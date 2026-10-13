@@ -10,15 +10,14 @@ from lib.observability import Logger
 from lib.temporal import ClockContract
 
 from .config import SKILLS, FilesystemSkillSourceConfig, MCPSkillSourceConfig
-from .exceptions import SkillsNotConfiguredError
-from .repositories import SkillRepository
+from .repositories import SkillRepositories, SkillRepository
 from .sources.filesystem import FilesystemSkillSource
 from .sources.mcp import MCPSkillSource
 
 
-def _repository(container: ContainerContract) -> SkillRepository:
+def _repository(container: ContainerContract, name: str) -> SkillRepository:
     settings = container.resolve(HuginnConfig).section(SKILLS)
-    match settings.source:
+    match settings.resolve_source(name):
         case MCPSkillSourceConfig() as config:
             source = MCPSkillSource(
                 container.resolve(MCPClientContract),
@@ -34,8 +33,6 @@ def _repository(container: ContainerContract) -> SkillRepository:
                 config.glob,
                 logger=container.resolve(Logger),
             )
-        case None:
-            raise SkillsNotConfiguredError('skills.source is not configured')
 
     return SkillRepository(source, container.resolve(ClockContract))
 
@@ -45,4 +42,8 @@ class SkillsProvider(ProviderContract):
 
     @override
     def __call__(self, container: ContainerContract) -> None:
-        container.bind(SkillRepository, factory=_repository, shared=True)
+        container.bind(
+            SkillRepositories,
+            factory=lambda c: SkillRepositories(lambda name: _repository(c, name)),
+            shared=True,
+        )

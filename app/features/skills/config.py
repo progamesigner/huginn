@@ -3,6 +3,7 @@ from typing import Annotated, Literal, Self
 
 from pydantic import Field, model_validator
 
+from app.core.config.exceptions import ConfigError
 from app.core.config.registry import HuginnConfig, SectionSpec
 from app.core.config.schema import ConfigValue
 from app.features.agents.config import AGENTS, InjectionConfig
@@ -28,7 +29,7 @@ class FilesystemSkillSourceConfig(ConfigValue):
     @model_validator(mode='after')
     def contained_glob(self) -> Self:
         if Path(self.glob).is_absolute() or '..' in Path(self.glob).parts:
-            raise ValueError('skills.source.glob must stay within its root')
+            raise ValueError('skill source glob must stay within its root')
         return self
 
 
@@ -39,6 +40,9 @@ type SkillSourceConfig = Annotated[
 
 
 class SkillsConfig(ConfigValue):
+    sources: Annotated[dict[str, SkillSourceConfig], Field()] = Field(
+        default_factory=dict,
+    )
     source: Annotated[SkillSourceConfig | None, Field()] = None
 
     @model_validator(mode='before')
@@ -55,28 +59,62 @@ class SkillsConfig(ConfigValue):
             )
         return value
 
+    @model_validator(mode='after')
+    def unambiguous_default(self) -> Self:
+        if self.source is not None and 'default' in self.sources:
+            raise ValueError(
+                'skills.source and skills.sources.default cannot both be set;'
+                ' move the legacy source to skills.sources.default',
+            )
+        if any(not name for name in self.sources):
+            raise ValueError('skills.sources names must not be empty')
+        return self
+
+    @property
+    def named_sources(self) -> dict[str, SkillSourceConfig]:
+        return (
+            {'default': self.source, **self.sources}
+            if self.source is not None
+            else self.sources
+        )
+
+    def resolve_source(self, name: str) -> SkillSourceConfig:
+        if (source := self.named_sources.get(name)) is None:
+            raise SkillsNotConfiguredError(
+                f'skills.sources: source {name!r} is not configured',
+            )
+        return source
+
 
 def _describe_skills(config: HuginnConfig) -> list[str]:
-    source = config.section(SKILLS).source
-    if source is None:
-        return []
-    return [f'skills: kind={source.kind} glob={source.glob}']
+    return [
+        f'skills.{name}: kind={source.kind} glob={source.glob}'
+        for name, source in config.section(SKILLS).named_sources.items()
+    ]
 
 
 def _validate_skill_refs(config: HuginnConfig) -> None:
-    source = config.section(SKILLS).source
-    if isinstance(source, MCPSkillSourceConfig):
-        if source.server not in config.section(MCP_SERVERS).root:
-            raise UnknownMCPServerReferenceError(
-                f'skills.source.server: unknown mcp server {source.server!r}',
-            )
-    if source is not None:
-        return
+    sources = config.section(SKILLS).named_sources
+    for name, source in sources.items():
+        if isinstance(source, MCPSkillSourceConfig):
+            if source.server not in config.section(MCP_SERVERS).root:
+                raise UnknownMCPServerReferenceError(
+                    f'skills.sources.{name}.server: unknown mcp server {source.server!r}',
+                )
     for agent_name, agent in config.section(AGENTS).root.items():
+        name = agent.skills.source or 'default'
+        if name in sources:
+            continue
+        if agent.skills.source is not None:
+            raise ConfigError(
+                f'agents.{agent_name}.skills.source: unknown skill source {name!r};'
+                ' configure it in skills.sources',
+            )
         if agent.skills.enabled:
             raise SkillsNotConfiguredError(
-                f'agents.{agent_name}.skills.enabled is set'
-                f' but skills.source is not configured',
+                f'agents.{agent_name}.skills.enabled is set but skill source'
+                f' {name!r} is not configured; set skills.sources.default'
+                ' or select a named source with skills.source on the agent',
             )
 
 

@@ -7,6 +7,7 @@ from pydantic import JsonValue
 from app.features.agents.config import AgentConfig, SkillsConfig
 from app.features.agents.entities import TurnInput, TurnPrompt, TurnScope
 from app.features.agents.services import AgentRunner, build_tool_set
+from app.features.skills.config import MCPSkillSourceConfig
 from app.features.skills.config import SkillsConfig as SourceConfig
 from app.features.skills.entities import Skill, SkillMeta
 from app.features.skills.repositories import SkillRepository
@@ -69,8 +70,8 @@ async def test_agent_loads_a_skill_through_the_tool_loop() -> None:
     tools, _ = await build_tool_set(
         (
             SkillToolSource(
-                lambda: repository,
-                SourceConfig(),
+                lambda name: repository,
+                SourceConfig(source=MCPSkillSourceConfig(server='memory')),
                 logger=make_logger(),
             ),
         ),

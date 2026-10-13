@@ -1,5 +1,5 @@
 import json
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 
@@ -69,3 +69,14 @@ class SkillRepository:
         )
         # NOTE: full body is read fresh (uncached) so an edited skill takes effect
         return await self.source.load(meta.path, scope) if meta is not None else None
+
+
+class SkillRepositories:
+    def __init__(self, factory: Callable[[str], SkillRepository]) -> None:
+        self.factory = factory
+        self.repositories: dict[str, SkillRepository] = {}
+
+    def get(self, name: str) -> SkillRepository:
+        if name not in self.repositories:
+            self.repositories[name] = self.factory(name)
+        return self.repositories[name]

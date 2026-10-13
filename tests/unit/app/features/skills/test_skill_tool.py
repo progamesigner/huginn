@@ -99,8 +99,8 @@ def _source(*names: str) -> SkillToolSource:
     source = FakeSource(tuple(_meta(name) for name in names))
     repository = SkillRepository(source, FakeClock(), ttl=timedelta(minutes=15))
     return SkillToolSource(
-        lambda: repository,
-        SourceConfig(),
+        lambda name: repository,
+        SourceConfig(source=MCPSkillSourceConfig(server='memory')),
         logger=make_logger(),
     )
 
@@ -150,7 +150,7 @@ async def test_source_withholds_skills_when_a_bound_scope_is_missing() -> None:
     source = FakeSource((_meta('triage'),))
     repository = SkillRepository(source, FakeClock(), ttl=timedelta(minutes=15))
     tools = SkillToolSource(
-        lambda: repository,
+        lambda name: repository,
         SourceConfig(
             source=MCPSkillSourceConfig(server='memory', bind={'user': 'handle'}),
         ),
@@ -166,7 +166,7 @@ async def test_source_carries_bound_scope_from_inventory_into_load() -> None:
     source = FakeSource((_meta('triage'),))
     repository = SkillRepository(source, FakeClock(), ttl=timedelta(minutes=15))
     tools = SkillToolSource(
-        lambda: repository,
+        lambda name: repository,
         SourceConfig(
             source=MCPSkillSourceConfig(
                 server='memory',
@@ -199,8 +199,8 @@ async def test_a_source_that_cannot_read_the_inventory_offers_no_skills(
     caplog: pytest.LogCaptureFixture,
 ) -> None:
     source = SkillToolSource(
-        lambda: _broken_repository(),
-        SourceConfig(),
+        lambda name: _broken_repository(),
+        SourceConfig(source=MCPSkillSourceConfig(server='memory')),
         logger=make_logger(),
     )
 

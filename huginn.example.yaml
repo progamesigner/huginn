@@ -81,13 +81,14 @@ mcp_servers:
         env: MEMORY_MCP_TOKEN
 
 skills:
-  source:
-    kind: mcp
-    server: memory
-    inject:
-      agent: default
-    bind:
-      user: handle
+  sources:
+    default:
+      kind: mcp
+      server: memory
+      inject:
+        agent: default
+      bind:
+        user: handle
 
 # Shell hooks inherit only PATH, HOME and HUGINN_HOOK_* by default. bind values
 # become HUGINN_HOOK_<UPPERCASE_KEY> and override inherited values. inherit_env
@@ -135,6 +136,7 @@ agents:
         user: handle
     skills:
       enabled: true
+      source: default
 
   concierge:
     description: Fallback agent for chats with no specific binding.

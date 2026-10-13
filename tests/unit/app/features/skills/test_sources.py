@@ -12,7 +12,7 @@ from app.features.agents.config import AGENTS, AgentConfig
 from app.features.agents.config import SkillsConfig as AgentSkills
 from app.features.agents.entities import TurnScope
 from app.features.skills.config import SKILLS, FilesystemSkillSourceConfig, SkillsConfig
-from app.features.skills.repositories import SkillRepository
+from app.features.skills.repositories import SkillRepositories, SkillRepository
 from app.features.skills.sources.filesystem import FilesystemSkillSource
 from app.features.skills.sources.mcp import MCPSkillSource
 from app.features.skills.tools import SkillToolSource
@@ -148,9 +148,9 @@ async def test_filesystem_tool_enabled_allow_and_cached_inventory_without_mcp(
         CoreContributions(),
         SkillContributions(),
     )
-    repository = app.resolve(SkillRepository)
+    repository = app.resolve(SkillRepositories).get('default')
     tools = SkillToolSource(
-        lambda: repository,
+        lambda name: repository,
         SkillsConfig(
             source=FilesystemSkillSourceConfig(kind='filesystem', root=tmp_path),
         ),
@@ -187,7 +187,6 @@ async def test_local_inventory_failure_is_not_reported_as_unavailable(
 ) -> None:
     from unittest.mock import AsyncMock
 
-    from app.features.skills.repositories import SkillRepository
     from tests.helpers.clock import FakeClock
 
     source = FilesystemSkillSource(tmp_path, '**/SKILL.md', logger=make_logger())
@@ -198,7 +197,7 @@ async def test_local_inventory_failure_is_not_reported_as_unavailable(
     )
     repository = SkillRepository(source, FakeClock())
     tools = SkillToolSource(
-        lambda: repository,
+        lambda name: repository,
         SkillsConfig(
             source=FilesystemSkillSourceConfig(kind='filesystem', root=tmp_path),
         ),
@@ -230,3 +229,57 @@ async def test_frontmatter_delimiters_are_lines_and_empty_frontmatter_is_valid(
         'empty': 'empty',
         'triage': 'before---after',
     }
+
+
+async def test_named_filesystem_sources_keep_same_named_skills_separate(
+    tmp_path: Path,
+) -> None:
+    roots = {name: tmp_path / name for name in ('advisor', 'reviewer')}
+    for name, root in roots.items():
+        write_skill(
+            root,
+            content=f'---\nname: triage\ndescription: {name}\n---\n{name}',
+        )
+    path = tmp_path / 'config.yaml'
+    path.write_text(
+        json.dumps(
+            {
+                'defaults': {'model': 'test'},
+                'agents': {
+                    name: {
+                        'description': name,
+                        'instructions': 'Help',
+                        'skills': {'enabled': True, 'source': name},
+                    }
+                    for name in roots
+                },
+                'skills': {
+                    'sources': {
+                        name: {'kind': 'filesystem', 'root': str(root)}
+                        for name, root in roots.items()
+                    },
+                },
+            },
+        ),
+    )
+    app = app_with(make_settings(config_file=path)).build(
+        AgentContributions(),
+        CoreContributions(),
+        SkillContributions(),
+    )
+    from app.core.config.registry import HuginnConfig
+
+    config = app.resolve(HuginnConfig)
+    repositories = app.resolve(SkillRepositories)
+    tools = SkillToolSource(
+        repositories.get,
+        config.section(SKILLS),
+        logger=make_logger(),
+    )
+    for name in ('advisor', 'reviewer', 'advisor'):
+        harvest = await tools.collect(
+            config.section(AGENTS).root[name],
+            TurnScope(agent=name, actor='user:1', channel='test', chat='1'),
+        )
+        assert await harvest.tools[0][1].invoke('{"name":"triage"}') == name
+        assert name in harvest.tools[0][1].description

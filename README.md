@@ -99,6 +99,63 @@ Which LLM answers is a `(provider, model)` pair, resolved the same way everywher
 
 The real config is injected at deploy time, never committed: a Windmill secret script renders it, a kustomize `secretGenerator` turns that into a Kubernetes `Secret`, and it lands mounted at `/etc/huginn/config.yaml` inside the running pod. There is no live-reload — a config change means rerunning the Windmill script, `kubectl apply` on the regenerated `Secret`, and a rollout restart to pick it up.
 
+### Agent skill sources
+
+Declare skill libraries in `skills.sources` and select one with
+`agents.<name>.skills.source`. An agent with `skills.enabled: true` uses the source
+named `default` when it omits `source`; Huginn does not choose the first source or
+merge libraries. Enabled skills without that source fail config validation, as
+does an unknown explicit reference, even on an agent whose skills are disabled.
+Disabled skills with no reference need no source.
+
+```yaml
+skills:
+  sources:
+    advisor:
+      kind: mcp
+      server: memory
+      glob: Agents/skills/**/SKILL.md
+      inject:
+        agent: ${MUNINN_ADVISOR_SCOPE_AGENT}
+        user: ${MUNINN_ADVISOR_SCOPE_USER}
+    local:
+      kind: filesystem
+      root: /opt/huginn/skills
+      glob: '**/SKILL.md'
+agents:
+  advisor:
+    description: Advice and planning
+    instructions: Help the user plan their work.
+    skills:
+      enabled: true
+      source: advisor
+      allow: []
+```
+
+MCP sources accept `server`, `list_tool` (default `list_memory_notes`), `read_tool`
+(default `read_memory_note`), `glob`, `inject`, and `bind`. Like hook arguments,
+source values use the shared config loader: `${ENV}` interpolation and
+`value_from: {env: NAME}` or `value_from: {file: PATH}` work before validation,
+including nested `inject` values, globs, and filesystem roots. Missing variables
+fail with the field path. `bind` resolves turn identity fields (`account`, `actor`,
+`agent`, `channel`, `chat`, `handle`); its keys must not overlap `inject`. Missing
+bound identity fields omit the skill tool for that turn. Filesystem sources do
+not accept `inject` or `bind`, and their glob must stay within their root.
+
+Inventory discovery and skill loading use the same selected source and resolved
+scope. Each source has its own repository, with inventory cached for 15 minutes
+per complete scope; agents sharing a source and scope share that inventory.
+Different sources or scopes never share cached inventory. Skill bodies are read
+fresh on every load. An empty `allow` offers all skills in the selected library;
+a nonempty list narrows it. Remote inventory failures mark skills unavailable
+for the turn; local filesystem failures surface as errors.
+
+The legacy `skills.source` remains supported as `skills.sources.default`, so
+existing configurations continue to work. It can coexist with other named
+sources, but setting it together with `skills.sources.default` is rejected with
+a migration message. Move the old source unchanged beneath
+`skills.sources.default` to adopt the named form.
+
 ## HTTP chat API
 
 A browser front end talks to Huginn over HTTP, streaming the answer with Server-Sent Events. Three surfaces sit on the same service, the same authentication, and the same turn pipeline; only the wire dialect differs, so an agent gains all three at once.

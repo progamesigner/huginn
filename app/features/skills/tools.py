@@ -93,11 +93,11 @@ class SkillTool(TypedTool[SkillParams]):
 class SkillToolSource(ToolSource):
     logger: Logger
     config: SkillsConfig
-    repository: Callable[[], SkillRepository]
+    repository: Callable[[str], SkillRepository]
 
     def __init__(
         self,
-        repository: Callable[[], SkillRepository],
+        repository: Callable[[str], SkillRepository],
         config: SkillsConfig,
         *,
         logger: Logger,
@@ -111,7 +111,8 @@ class SkillToolSource(ToolSource):
         if not agent.skills.enabled:
             return ToolHarvest()
 
-        source = self.config.source
+        source_name = agent.skills.source or 'default'
+        source = self.config.resolve_source(source_name)
         inject = (
             resolve_bindings(source.inject, source.bind, scope)
             if isinstance(source, MCPSkillSourceConfig)
@@ -128,7 +129,7 @@ class SkillToolSource(ToolSource):
 
         try:
             tool = await _build_agent_skills(
-                self.repository(),
+                self.repository(source_name),
                 agent.skills.allow,
                 inject,
             )
