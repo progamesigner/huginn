@@ -28,6 +28,8 @@ class CommandManager(CommandContract):
             callback=initialize,
             add_completion=False,
             no_args_is_help=True,
+            # NOTE: locals can hold resolved secrets
+            pretty_exceptions_show_locals=False,
         )
 
     @property

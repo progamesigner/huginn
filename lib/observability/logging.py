@@ -5,6 +5,8 @@ from collections.abc import Sequence
 import structlog
 from structlog.stdlib import BoundLogger as Logger
 
+from .redaction import RedactingFormatter
+
 
 def configure_logging(
     *,
@@ -39,7 +41,7 @@ def configure_logging(
 
     handler = logging.StreamHandler(sys.stderr)
     handler.setFormatter(
-        structlog.stdlib.ProcessorFormatter(
+        RedactingFormatter(
             foreign_pre_chain=processors,
             processors=[
                 structlog.stdlib.ProcessorFormatter.remove_processors_meta,

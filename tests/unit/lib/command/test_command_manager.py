@@ -71,3 +71,9 @@ def test_resolve_uses_command_container() -> None:
 
     assert result.exit_code == 0
     assert result.output == 'from container\n'
+
+
+def test_crash_reports_leave_out_local_variables() -> None:
+    manager = CommandManager(Container())
+
+    assert manager.app.pretty_exceptions_show_locals is False

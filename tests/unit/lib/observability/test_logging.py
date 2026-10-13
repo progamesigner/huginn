@@ -5,7 +5,7 @@ from collections.abc import Iterator
 import pytest
 import structlog
 
-from lib.observability import Logger, configure_logging, create_logger
+from lib.observability import Logger, configure_logging, create_logger, redact
 
 
 @pytest.fixture(autouse=True)
@@ -100,3 +100,67 @@ def test_create_logger_returns_bound_logger() -> None:
     configure_logging(develop=False)
 
     assert isinstance(create_logger('app').bind(), Logger)
+
+
+_BOT_TOKEN = '123456789:AAHdqTcvCH1vGWJxfSeofSAs0K5PALDsaw4'  # noqa: S105
+
+
+def test_httpx_request_lines_hide_the_telegram_bot_token(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    configure_logging(develop=False)
+
+    logging.getLogger('httpx').info(
+        'HTTP Request: %s %s "%s %d %s"',
+        'POST',
+        f'https://api.telegram.org/bot{_BOT_TOKEN}/sendMessage',
+        'HTTP/2',
+        200,
+        'OK',
+    )
+
+    line = json.loads(capsys.readouterr().err)
+    assert _BOT_TOKEN not in line['event']
+    assert 'api.telegram.org/bot[REDACTED]/sendMessage' in line['event']
+
+
+@pytest.mark.parametrize('develop', [False, True])
+def test_tracebacks_hide_the_telegram_bot_token(
+    capsys: pytest.CaptureFixture[str],
+    develop: bool,
+) -> None:
+    configure_logging(develop=develop)
+    url = f'https://api.telegram.org/file/bot{_BOT_TOKEN}/photos/1.jpg'
+
+    try:
+        raise RuntimeError(f'download failed for {url}')
+    except RuntimeError:
+        create_logger('app').exception('Turn failed', token=_BOT_TOKEN)
+
+    err = capsys.readouterr().err
+    assert 'download failed' in err
+    assert _BOT_TOKEN not in err
+    assert _BOT_TOKEN.split(':')[1] not in err
+
+
+@pytest.mark.parametrize(
+    ('text', 'secret'),
+    [
+        (f'https://api.telegram.org/bot{_BOT_TOKEN}/getMe', _BOT_TOKEN),
+        ('https://api.telegram.org/botshort-token/getMe', 'short-token'),
+        (f'token is {_BOT_TOKEN}', _BOT_TOKEN),
+        ("{'Authorization': 'Bearer sk-live-abc123'}", 'sk-live-abc123'),
+        ("{'x-goog-api-key': 'AIzaSecret'}", 'AIzaSecret'),
+        ('xi-api-key: el-secret', 'el-secret'),
+        ('https://example.com/v1/models?key=AIzaSecret&alt=json', 'AIzaSecret'),
+    ],
+)
+def test_redact_masks_known_secret_shapes(text: str, secret: str) -> None:
+    assert secret not in redact(text)
+    assert '[REDACTED]' in redact(text)
+
+
+def test_redact_leaves_ordinary_text_alone() -> None:
+    text = 'Acknowledged 42 after 0.120s at 12:30:45 via https://api.example.com/x'
+
+    assert redact(text) == text

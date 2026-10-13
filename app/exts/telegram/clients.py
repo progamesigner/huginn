@@ -1,6 +1,7 @@
 import asyncio
 from collections.abc import Sequence
 
+import httpx
 from pydantic import JsonValue, SecretStr, TypeAdapter
 
 from app.contracts.channels import ATTACHMENT_LIMITS
@@ -40,6 +41,18 @@ def _formatting(entities: Sequence[MessageEntity]) -> dict[str, JsonValue]:
         return {}
 
     return {'entities': [entity.model_dump(exclude_none=True) for entity in entities]}
+
+
+# NOTE: httpx's message names the full url, which carries the bot token
+def _checked(response: httpx.Response, path: str) -> httpx.Response:
+    try:
+        return response.raise_for_status()
+    except httpx.HTTPStatusError as error:
+        raise httpx.HTTPStatusError(
+            f'telegram answered {response.status_code} to {path}',
+            request=error.request,
+            response=error.response,
+        ) from None
 
 
 class TelegramClient:
@@ -226,5 +239,5 @@ class TelegramClient:
                             retry_after = parameters.get('retry_after', retry_after)
                         await asyncio.sleep(float(retry_after))
                         continue
-                return response.raise_for_status().content
+                return _checked(response, path).content
         raise RuntimeError('telegram request exhausted retries')

@@ -482,3 +482,18 @@ async def test_send_file_shares_the_rate_limit_retry(
 
     assert route.call_count == 2
     assert sleeps == [2.0]
+
+
+@respx.mock
+async def test_http_errors_do_not_name_the_bot_token() -> None:
+    respx.post(f'{_BASE_URL}/sendMessage').mock(
+        return_value=httpx.Response(401),
+    )
+
+    with pytest.raises(httpx.HTTPStatusError) as raised:
+        await make_client().send_message(123, 'hello')
+
+    assert raised.value.response.status_code == 401
+    assert str(raised.value) == 'telegram answered 401 to sendMessage'
+    assert raised.value.__cause__ is None
+    assert raised.value.__suppress_context__
