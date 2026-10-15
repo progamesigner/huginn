@@ -188,15 +188,18 @@ channels:
 
 # A decision provider answers agent routing with a structured judgement instead of
 # generated text. It sits in providers with type: decision; entries without a type
-# are llm providers as above. The typesafe adapter speaks TypeSafe's own format and
-# defaults to its public endpoint; point url elsewhere for a service speaking the
-# same format, such as OpenRouter at https://openrouter.ai/api/alpha/decisions.
-# The bifrost adapter speaks Bifrost's decisions api and always needs its url.
+# are llm providers as above. The bifrost adapter speaks Bifrost's native
+# /v1/decisions format and requires url. The typesafe adapter speaks TypeSafe's own
+# format and defaults to its public endpoint; point url elsewhere for a service
+# speaking the same format, such as OpenRouter at
+# https://openrouter.ai/api/alpha/decisions. The openai adapter speaks OpenAI's
+# decisions API and defaults to https://api.openai.com/v1/decisions; Bifrost v2.3.0+
+# serves that format at /openai/v1/decisions.
 # providers:
 #   jev:
 #     type: decision
-#     adapter: bifrost  # bifrost | typesafe
-#     url: http://bifrost.default.svc.cluster.local:8080/v1/decisions
+#     adapter: openai  # bifrost | openai | typesafe
+#     url: http://bifrost.default.svc.cluster.local:8080/openai/v1/decisions
 #     api_key:
 #       value_from:
 #         env: BIFROST_API_KEY

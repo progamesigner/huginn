@@ -12,17 +12,19 @@ from pydantic import JsonValue, SecretStr
 from lib.decision import (
     Adapter,
     ChoiceQuestion,
+    DecisionClient,
     DecisionHTTPError,
+    DecisionManager,
     DecisionProviderConfig,
+    DecisionRef,
     DecisionRequest,
     DecisionResponseError,
     DecisionTimeoutError,
     DecisionTransportError,
 )
-from lib.decision.adapters.base import HTTPDecisionAdapter
-from lib.decision.adapters.bifrost import BifrostAdapter
 from lib.decision.adapters.typesafe import TypeSafeAdapter
 from lib.http import HTTPClientContract
+from tests.helpers.logging import make_logger
 
 FIXTURES = Path(__file__).parent / 'fixtures'
 
@@ -60,11 +62,18 @@ class MockHTTP(HTTPClientContract):
             yield client
 
 
-type Route = Literal['typesafe', 'openrouter', 'bifrost']
+type Route = Literal['bifrost', 'typesafe', 'openrouter', 'openai']
 
 # NOTE: OpenRouter speaks TypeSafe's own format, so it is the typesafe adapter pointed
-# at another url; only Bifrost's decisions api needs an adapter of its own
+# at another url; Bifrost's native and OpenAI-compatible decision endpoints use their
+# respective adapters
 ROUTES: dict[Route, tuple[Adapter, str | None, str, str]] = {
+    'bifrost': (
+        'bifrost',
+        'http://bifrost:8080/v1/decisions',
+        'bifrost_choice.json',
+        'http://bifrost:8080/v1/decisions',
+    ),
     'typesafe': (
         'typesafe',
         None,
@@ -77,23 +86,19 @@ ROUTES: dict[Route, tuple[Adapter, str | None, str, str]] = {
         'openrouter_choice.json',
         'https://openrouter.ai/api/alpha/decisions',
     ),
-    'bifrost': (
-        'bifrost',
-        'http://bifrost:8080/v1/decisions',
-        'bifrost_choice.json',
-        'http://bifrost:8080/v1/decisions',
+    'openai': (
+        'openai',
+        None,
+        'openai_choice.json',
+        'https://api.openai.com/v1/decisions',
     ),
-}
-_ADAPTERS: dict[Adapter, type[HTTPDecisionAdapter]] = {
-    'bifrost': BifrostAdapter,
-    'typesafe': TypeSafeAdapter,
 }
 
 
 def _adapter(
     route: Route,
     handler: Handler,
-) -> tuple[HTTPDecisionAdapter, MockHTTP]:
+) -> tuple[DecisionClient, MockHTTP]:
     http = MockHTTP(handler)
     adapter, url, _, _ = ROUTES[route]
     provider = DecisionProviderConfig(
@@ -104,7 +109,10 @@ def _adapter(
         url=url,
         timeout=2.5,
     )
-    return _ADAPTERS[adapter](provider, http), http
+    manager = DecisionManager((provider,), http, logger=make_logger())
+    client = manager.client_for(DecisionRef(model='jev', provider=route))
+    assert client is not None
+    return client, http
 
 
 def _request() -> DecisionRequest:
@@ -147,17 +155,14 @@ async def test_adapter_maps_a_recorded_choice(route: Route) -> None:
 
     recorded = _recorded(route)
     assert isinstance(recorded, dict)
-    answers = recorded['answers']
     usage = recorded['usage']
-    assert isinstance(answers, dict)
     assert isinstance(usage, dict)
-    expected = answers['agent']
-    assert isinstance(expected, dict)
+    expected = _recorded_answer(route)
     answer = result.answers['agent']
     assert answer.choice == 'assistant-advanced'
-    assert answer.choice == expected[_answer_field(route)]
+    assert answer.choice == expected.get('choice', expected.get('value'))
     assert answer.confidence == expected['confidence']
-    assert answer.probabilities == expected['probabilities']
+    assert answer.probabilities == _weights(expected['probabilities'])
     assert result.model == recorded['model']
     assert result.usage is not None
     assert result.usage.input_tokens == 507
@@ -170,24 +175,107 @@ async def test_adapter_maps_a_recorded_choice(route: Route) -> None:
     assert sent.headers['Authorization'] == 'Bearer secret'
 
 
-@pytest.mark.parametrize('route', list(ROUTES))
-async def test_adapter_sends_the_question_in_its_wire_shape(route: Route) -> None:
+@pytest.mark.parametrize('route', ['bifrost', 'typesafe', 'openrouter'])
+async def test_gateway_sends_the_question_in_its_wire_shape(route: Route) -> None:
     client, http = _adapter(route, _answering(_recorded(route)))
 
     await client.decide(_request())
 
     body = json.loads(http.requests[0].content)
     question = body['questions']['agent']
-    field = 'kind' if route == 'bifrost' else 'type'
-    assert question[field] == 'choice'
+    assert question['kind' if route == 'bifrost' else 'type'] == 'choice'
     assert '__none__' in question['criteria']
     assert body['state'] == _request().state
     assert body['model'] == 'jev'
 
 
+async def test_openai_sends_the_question_in_its_wire_shape() -> None:
+    client, http = _adapter('openai', _answering(_recorded('openai')))
+
+    await client.decide(_request())
+
+    body = json.loads(http.requests[0].content)
+    recorded = _fixture('openai_choice.json')['request']
+    assert isinstance(recorded, dict)
+    assert body['questions'] == recorded['questions']
+    assert body['input'] == recorded['input']
+    assert json.loads(body['input']) == _request().state
+    assert body['model'] == 'jev'
+    assert 'state' not in body
+
+
+async def test_openai_sends_text_state_as_the_input_itself() -> None:
+    client, http = _adapter('openai', _answering(_recorded('openai')))
+
+    await client.decide(_request().model_copy(update={'state': 'hello'}))
+
+    assert json.loads(http.requests[0].content)['input'] == 'hello'
+
+
+async def test_openai_matches_an_unnamed_answer_by_its_position() -> None:
+    payload = _with_answer('openai', name=None)
+    client, _ = _adapter('openai', _answering(payload))
+
+    result = await client.decide(_request())
+
+    assert result.answers['agent'].choice == 'assistant-advanced'
+
+
+async def test_openai_refuses_a_question_the_model_declined() -> None:
+    payload = _recorded('openai')
+    assert isinstance(payload, dict)
+    client, _ = _adapter(
+        'openai',
+        _answering({**payload, 'answers': [{'type': 'refusal', 'name': 'agent'}]}),
+    )
+
+    with pytest.raises(DecisionResponseError, match="'agent' was refused"):
+        await client.decide(_request())
+
+
+async def test_openai_refuses_extra_answers() -> None:
+    payload = _recorded('openai')
+    assert isinstance(payload, dict)
+    answers = payload['answers']
+    assert isinstance(answers, list)
+    assert len(answers) == 1
+    client, _ = _adapter(
+        'openai',
+        _answering({**payload, 'answers': [*answers, answers[0]]}),
+    )
+
+    with pytest.raises(DecisionResponseError, match='unexpected number of answers'):
+        await client.decide(_request())
+
+
+async def test_openai_refuses_answers_named_for_the_wrong_question() -> None:
+    payload = _recorded('openai')
+    assert isinstance(payload, dict)
+    answer = _recorded_answer('openai')
+    request = _request()
+    question = request.questions['agent']
+    two_questions = DecisionRequest(
+        model=request.model,
+        state=request.state,
+        questions={'agent': question, 'other': question},
+    )
+    client, _ = _adapter(
+        'openai',
+        _answering({**payload, 'answers': [{**answer, 'name': 'other'}, answer]}),
+    )
+
+    with pytest.raises(DecisionResponseError, match="as 'other'"):
+        await client.decide(two_questions)
+
+
 @pytest.mark.parametrize(
     ('route', 'upstream'),
-    [('bifrost', 'typesafe'), ('openrouter', 'TypeSafe'), ('typesafe', None)],
+    [
+        ('bifrost', 'typesafe'),
+        ('openai', None),
+        ('openrouter', 'TypeSafe'),
+        ('typesafe', None),
+    ],
 )
 async def test_adapter_reports_the_upstream_a_gateway_names(
     route: Route,
@@ -198,49 +286,74 @@ async def test_adapter_reports_the_upstream_a_gateway_names(
     assert (await client.decide(_request())).upstream == upstream
 
 
-async def test_bifrost_refuses_an_answer_emulated_by_another_provider() -> None:
-    payload = _recorded('bifrost')
+def _recorded_answer(route: Route) -> dict[str, JsonValue]:
+    payload = _recorded(route)
     assert isinstance(payload, dict)
-    client, _ = _adapter(
-        'bifrost',
-        _answering({**payload, 'extra_fields': {'provider': 'openai'}}),
-    )
+    match payload['answers']:
+        case [dict() as answer]:
+            return answer
+        case {'agent': dict() as answer}:
+            return answer
+        case _:
+            raise AssertionError(f'{route} fixture has no answer for agent')
 
-    with pytest.raises(DecisionResponseError, match='openai'):
-        await client.decide(_request())
+
+def _weights(probabilities: JsonValue) -> dict[str, JsonValue]:
+    # NOTE: OpenAI weighs options as a list of {value, probability}; TypeSafe as a map
+    match probabilities:
+        case list():
+            return {
+                weighed['value']: weighed['probability']
+                for weighed in probabilities
+                if isinstance(weighed, dict) and isinstance(weighed['value'], str)
+            }
+        case dict():
+            return probabilities
+        case _:
+            raise AssertionError('probabilities are neither a list nor a map')
+
+
+def _weighing(route: Route, weights: dict[str, float]) -> JsonValue:
+    if route == 'openai':
+        return [
+            {'value': value, 'probability': probability}
+            for value, probability in weights.items()
+        ]
+
+    return dict(weights)
 
 
 def _without_answers(route: Route) -> JsonValue:
     payload = _recorded(route)
     assert isinstance(payload, dict)
-    return {**payload, 'answers': {}}
-
-
-def _answer_field(route: Route) -> str:
-    return 'value' if route == 'bifrost' else 'choice'
+    return {**payload, 'answers': [] if route == 'openai' else {}}
 
 
 def _with_answer(route: Route, **changes: JsonValue) -> JsonValue:
     payload = _recorded(route)
     assert isinstance(payload, dict)
-    answers = payload['answers']
-    assert isinstance(answers, dict)
-    answer = answers['agent']
-    assert isinstance(answer, dict)
-    return {**payload, 'answers': {'agent': {**answer, **changes}}}
+    answer = {**_recorded_answer(route), **changes}
+    return {**payload, 'answers': [answer] if route == 'openai' else {'agent': answer}}
 
 
 def _broken(route: Route, broken: str) -> JsonValue:
+    answer_field = 'value' if route == 'bifrost' else 'choice'
     kind_field = 'kind' if route == 'bifrost' else 'type'
     match broken:
         case 'missing':
             return _without_answers(route)
         case 'foreign':
-            return _with_answer(route, **{_answer_field(route): 'intruder'})
+            return _with_answer(route, **{answer_field: 'intruder'})
         case 'weighed':
-            return _with_answer(route, probabilities={'intruder': 0.5})
+            return _with_answer(
+                route,
+                probabilities=_weighing(route, {'intruder': 0.5}),
+            )
         case 'overweight':
-            return _with_answer(route, probabilities={'assistant-fast': 1.5})
+            return _with_answer(
+                route,
+                probabilities=_weighing(route, {'assistant-fast': 1.5}),
+            )
         case 'kind':
             return _with_answer(route, **{kind_field: 'noul'})
         case _:
@@ -266,7 +379,12 @@ async def test_adapter_refuses_an_answer_that_breaks_the_question(
 ) -> None:
     client, _ = _adapter(route, _answering(_broken(route, broken)))
 
-    with pytest.raises(DecisionResponseError, match=reason):
+    expected = (
+        'unexpected number of answers'
+        if route == 'openai' and broken == 'missing'
+        else reason
+    )
+    with pytest.raises(DecisionResponseError, match=expected):
         await client.decide(_request())
 
 
@@ -281,17 +399,20 @@ async def test_adapter_refuses_a_body_that_is_not_json(route: Route) -> None:
 @pytest.mark.parametrize(
     ('route', 'error', 'status', 'message'),
     [
-        ('typesafe', 'bad_model', 400, 'Unknown model: jev-nope'),
-        ('typesafe', 'bad_key', 401, 'Cannot authenticate'),
-        ('typesafe', 'too_many', 400, 'Too many choices'),
         ('bifrost', 'missing_key', 401, 'virtual key is required'),
         ('bifrost', 'provider_blocked', 403, "Provider 'typesafe' is not allowed"),
         ('bifrost', 'native_provider_blocked', 403, "Provider 'typesafe' is not"),
+        ('typesafe', 'bad_model', 400, 'Unknown model: jev-nope'),
+        ('typesafe', 'bad_key', 401, 'Cannot authenticate'),
+        ('typesafe', 'too_many', 400, 'Too many choices'),
+        ('openai', 'bad_model', 404, 'The model `gpt-nope` does not exist'),
+        ('openai', 'bad_key', 401, 'Incorrect API key provided'),
+        ('openai', 'gateway_missing_key', 401, 'virtual key is required'),
+        ('openai', 'gateway_provider_blocked', 403, "Provider 'typesafe' is not"),
         ('openrouter', 'bad_model', 400, 'typesafe/jev-nope does not exist'),
         ('openrouter', 'bad_key', 401, 'Missing Authentication header'),
         ('openrouter', 'too_many', 400, 'Too many choices'),
         ('openrouter', 'kind_field', 400, 'invalid_union'),
-        ('bifrost', 'upstream_auth', 401, 'Cannot authenticate'),
     ],
 )
 async def test_adapter_surfaces_recorded_errors(

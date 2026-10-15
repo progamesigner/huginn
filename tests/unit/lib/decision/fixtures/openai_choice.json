@@ -1,0 +1,74 @@
+{
+  "source": "Shaped after the openai 3.29.0 SDK's Decision types (decision_create_params.py, decision.py) with synthetic routing text; not a live recording.",
+  "request": {
+    "model": "gpt-6-luna",
+    "input": "{\"summary\": null, \"previous_turns\": [{\"handled_by\": \"assistant-advanced\", \"user\": [\"幫我分析這段 Rust 程式為什麼會 deadlock\"], \"assistant\": \"問題出在兩個 Mutex 的取得順序不一致……\"}], \"current\": [\"照剛剛那個繼續，把修正後的版本寫出來\"]}",
+    "questions": [
+      {
+        "type": "choice",
+        "name": "agent",
+        "instructions": "Which agent should handle the current message? Use previous turns to judge follow-ups.",
+        "choices": [
+          {
+            "value": "assistant-fast",
+            "description": "Quick everyday questions, short answers, casual chat."
+          },
+          {
+            "value": "assistant-balanced",
+            "description": "General tasks needing moderate reasoning: planning, writing, summarising."
+          },
+          {
+            "value": "assistant-advanced",
+            "description": "Hard problems: multi-step reasoning, deep analysis, complex code."
+          },
+          {
+            "value": "__none__",
+            "description": "None of the agents fit, or the request is too vague to decide."
+          }
+        ]
+      }
+    ]
+  },
+  "status": 200,
+  "response": {
+    "model": "gpt-6-luna",
+    "answers": [
+      {
+        "type": "choice",
+        "name": "agent",
+        "choice": "assistant-advanced",
+        "confidence": 0.96,
+        "probabilities": [
+          {
+            "value": "assistant-advanced",
+            "probability": 0.97
+          },
+          {
+            "value": "assistant-balanced",
+            "probability": 0.03
+          },
+          {
+            "value": "assistant-fast",
+            "probability": 0.0
+          },
+          {
+            "value": "__none__",
+            "probability": 0.0
+          }
+        ]
+      }
+    ],
+    "usage": {
+      "input_tokens": 507,
+      "input_tokens_details": {
+        "cache_write_tokens": 0,
+        "cached_tokens": 0
+      },
+      "output_tokens": 57,
+      "output_tokens_details": {
+        "reasoning_tokens": 0
+      },
+      "total_tokens": 564
+    }
+  }
+}

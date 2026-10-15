@@ -76,7 +76,18 @@ def test_choice_answer_margin_is_the_gap_between_the_top_two() -> None:
     assert ChoiceAnswer(choice='a').margin is None
 
 
-def test_gateway_provider_needs_a_url() -> None:
+def test_openai_falls_back_to_its_public_endpoint() -> None:
+    provider = DecisionProviderConfig(
+        name='openai',
+        adapter='openai',
+        api_key=SecretStr('secret'),
+        models=('gpt-6-luna',),
+    )
+
+    assert provider.endpoint == 'https://api.openai.com/v1/decisions'
+
+
+def test_bifrost_provider_requires_an_endpoint_url() -> None:
     with pytest.raises(ValidationError, match='needs a url'):
         DecisionProviderConfig(
             name='bifrost',

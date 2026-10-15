@@ -5,14 +5,14 @@ from structlog.stdlib import BoundLogger
 
 from .types import DecisionRef, DecisionRequest, DecisionResult, DecisionValue
 
-type Adapter = Literal['bifrost', 'typesafe']
+type Adapter = Literal['bifrost', 'openai', 'typesafe']
 
 _DEFAULT_TIMEOUT = 5.0
 
-# NOTE: TypeSafe's own format is the default wire; anything that speaks it, such as
-# OpenRouter, is reached by url alone. A Bifrost gateway is self-hosted, so it has no
-# address to fall back to
+# NOTE: each format defaults to its vendor; anything else that speaks one, such as
+# OpenRouter for TypeSafe's or a Bifrost gateway for OpenAI's, is reached by url alone
 DEFAULT_URLS: dict[Adapter, str] = {
+    'openai': 'https://api.openai.com/v1/decisions',
     'typesafe': 'https://api.typesafe.ai/v1/systemone',
 }
 
@@ -27,9 +27,8 @@ class DecisionProviderConfig(DecisionValue):
 
     @model_validator(mode='after')
     def _addressable(self) -> Self:
-        if self.url is None and self.adapter not in DEFAULT_URLS:
-            raise ValueError(f'the {self.adapter!r} adapter needs a url')
-
+        if self.adapter == 'bifrost' and not self.url:
+            raise ValueError('the bifrost adapter needs a url')
         return self
 
     @property

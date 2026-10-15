@@ -166,6 +166,30 @@ async def test_oversized_base64_is_rejected_before_decoding(
     decode.assert_not_called()
 
 
+@pytest.mark.parametrize('headers', [{}, {'content-length': '1'}])
+@respx.mock
+async def test_generate_stops_reading_an_oversized_json_response(
+    headers: dict[str, str],
+) -> None:
+    body = (
+        b' ' * 65_536
+        + b' ' * 1_024
+        + json.dumps(
+            {'data': [{'b64_json': b64encode(b'x' * 10).decode()}]},
+        ).encode()
+    )
+    stream = ImageStream((body[:65_536], body[65_536:66_560], body[66_560:]))
+    respx.post(f'{_BASE_URL}/v1/images/generations').mock(
+        return_value=httpx.Response(200, headers=headers, stream=stream),
+    )
+
+    with pytest.raises(ImageGenerationError, match='response exceeds the size limit'):
+        await make_client(8).generate('a duck', '1024x1024')
+
+    assert stream.read == 2
+    assert stream.closed
+
+
 class ImageStream(httpx.AsyncByteStream):
     def __init__(self, chunks: tuple[bytes, ...]) -> None:
         self.chunks = chunks

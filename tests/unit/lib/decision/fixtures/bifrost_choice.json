@@ -7,15 +7,11 @@
       "previous_turns": [
         {
           "handled_by": "assistant-advanced",
-          "user": [
-            "幫我分析這段 Rust 程式為什麼會 deadlock"
-          ],
+          "user": ["幫我分析這段 Rust 程式為什麼會 deadlock"],
           "assistant": "問題出在兩個 Mutex 的取得順序不一致……"
         }
       ],
-      "current": [
-        "照剛剛那個繼續，把修正後的版本寫出來"
-      ]
+      "current": ["照剛剛那個繼續，把修正後的版本寫出來"]
     },
     "questions": {
       "agent": {

@@ -12,9 +12,6 @@ from lib.decision.types import (
 
 from .base import HTTPDecisionAdapter, WirePayload
 
-# NOTE: Bifrost can answer /v1/decisions by emulating it over chat tool calls on a
-# provider that has no native decisions API; that answer has the right shape but is
-# not a Jev judgment, so only this upstream is trusted
 _JUDGE = 'typesafe'
 
 
@@ -58,7 +55,7 @@ class BifrostAdapter(HTTPDecisionAdapter):
         }
 
     @override
-    def decode(self, payload: JsonValue) -> DecisionResult:
+    def decode(self, request: DecisionRequest, payload: JsonValue) -> DecisionResult:
         response = BifrostResponse.model_validate(payload)
         upstream = (
             None if response.extra_fields is None else response.extra_fields.provider

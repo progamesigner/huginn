@@ -19,6 +19,7 @@ pytestmark = pytest.mark.integration
 _TYPESAFE_MODEL = 'jev-1.13.0'
 _OPENROUTER_MODEL = 'typesafe/jev-1.13'
 _OPENROUTER_URL = 'https://openrouter.ai/api/alpha/decisions'
+_OPENAI_MODEL = 'gpt-6-luna'
 _BIFROST_MODEL = 'typesafe/jev-1.13.0'
 
 _CRITERIA = {
@@ -33,6 +34,7 @@ class LiveCredentials(BaseSettings):
 
     typesafe_api_key: Annotated[SecretStr | None, Field()] = None
     openrouter_api_key: Annotated[SecretStr | None, Field()] = None
+    openai_api_key: Annotated[SecretStr | None, Field()] = None
     bifrost_api_key: Annotated[SecretStr | None, Field()] = None
     bifrost_base_url: Annotated[str | None, Field()] = None
 
@@ -55,6 +57,13 @@ def _provider(name: str) -> tuple[DecisionProviderConfig, str]:
                 models=(_OPENROUTER_MODEL,),
                 url=_OPENROUTER_URL,
             ), _OPENROUTER_MODEL
+        case 'openai' if credentials.openai_api_key is not None:
+            return DecisionProviderConfig(
+                name=name,
+                adapter='openai',
+                api_key=credentials.openai_api_key,
+                models=(_OPENAI_MODEL,),
+            ), _OPENAI_MODEL
         case 'bifrost' if (
             credentials.bifrost_api_key is not None
             and credentials.bifrost_base_url is not None
@@ -64,13 +73,27 @@ def _provider(name: str) -> tuple[DecisionProviderConfig, str]:
                 adapter='bifrost',
                 api_key=credentials.bifrost_api_key,
                 models=(_BIFROST_MODEL,),
-                url=f'{credentials.bifrost_base_url}/v1/decisions',
+                url=f'{credentials.bifrost_base_url.rstrip("/")}/v1/decisions',
+            ), _BIFROST_MODEL
+        case 'bifrost-openai' if (
+            credentials.bifrost_api_key is not None
+            and credentials.bifrost_base_url is not None
+        ):
+            return DecisionProviderConfig(
+                name=name,
+                adapter='openai',
+                api_key=credentials.bifrost_api_key,
+                models=(_BIFROST_MODEL,),
+                url=(f'{credentials.bifrost_base_url.rstrip("/")}/openai/v1/decisions'),
             ), _BIFROST_MODEL
         case _:
             pytest.skip(f'credentials for {name} not set')
 
 
-@pytest.mark.parametrize('name', ['typesafe', 'openrouter', 'bifrost'])
+@pytest.mark.parametrize(
+    'name',
+    ['typesafe', 'openrouter', 'openai', 'bifrost', 'bifrost-openai'],
+)
 async def test_live_choice_picks_one_of_the_offered_options(name: str) -> None:
     provider, model = _provider(name)
     client = DecisionManager(

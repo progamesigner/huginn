@@ -4,6 +4,7 @@ from structlog.stdlib import BoundLogger
 
 from .adapters.base import HTTPDecisionAdapter
 from .adapters.bifrost import BifrostAdapter
+from .adapters.openai import OpenAIAdapter
 from .adapters.typesafe import TypeSafeAdapter
 from .client import DecisionClient, DecisionProviderConfig, DecisionProviderRegistry
 from .contracts import DecisionContract, HTTPConnector
@@ -17,6 +18,8 @@ def build_adapter(
     match provider.adapter:
         case 'bifrost':
             return BifrostAdapter(provider, http)
+        case 'openai':
+            return OpenAIAdapter(provider, http)
         case 'typesafe':
             return TypeSafeAdapter(provider, http)
 

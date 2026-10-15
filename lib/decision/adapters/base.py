@@ -75,7 +75,7 @@ class HTTPDecisionAdapter(ABC):
             ) from error
 
         try:
-            result = self.decode(payload)
+            result = self.decode(request, payload)
         except ValidationError as error:
             raise DecisionResponseError(
                 f'{self.provider.name} answered in an unexpected shape: '
@@ -88,10 +88,20 @@ class HTTPDecisionAdapter(ABC):
     def encode(self, request: DecisionRequest) -> dict[str, JsonValue]: ...
 
     @abstractmethod
-    def decode(self, payload: JsonValue) -> DecisionResult: ...
+    def decode(
+        self,
+        request: DecisionRequest,
+        payload: JsonValue,
+    ) -> DecisionResult: ...
 
 
 def checked(request: DecisionRequest, result: DecisionResult) -> DecisionResult:
+    unexpected = set(result.answers).difference(request.questions)
+    if unexpected:
+        raise DecisionResponseError(
+            f'questions {sorted(unexpected)!r} were not requested',
+        )
+
     for name, question in request.questions.items():
         answer = result.answers.get(name)
         if answer is None:
@@ -114,8 +124,8 @@ def _error_message(response: Response) -> str:
     except ValueError:
         return response.text[:_ERROR_TEXT_LIMIT] or response.reason_phrase
 
-    # NOTE: TypeSafe says {"detail": str | {"message"}}; Bifrost's own errors say
-    # {"error": {"message"}} -- both reach a caller through a gateway
+    # NOTE: TypeSafe says {"detail": str | {"message"}}; OpenAI and the gateways in
+    # front of either say {"error": {"message"}}
     match payload:
         case {'detail': str(message)}:
             return message[:_ERROR_TEXT_LIMIT]

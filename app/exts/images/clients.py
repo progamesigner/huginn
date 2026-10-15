@@ -2,6 +2,7 @@ from base64 import b64decode
 from dataclasses import dataclass
 from typing import Annotated
 
+from httpx import Response
 from pydantic import BaseModel, ConfigDict, Field, SecretStr
 
 from lib.http import HTTPClientContract
@@ -10,6 +11,7 @@ from .exceptions import ImageGenerationError
 
 _GENERATION_TIMEOUT = 120.0
 _DEFAULT_MAX_BYTES = 20 * 1024 * 1024
+_RESPONSE_OVERHEAD = 64 * 1024
 
 
 class ImagesValue(BaseModel):
@@ -76,21 +78,25 @@ class ImagesClient:
         }
 
         async with self.http.connect(self.base_url, self.headers) as client:
-            response = await client.post(
+            async with client.stream(
+                'POST',
                 '/v1/images/generations',
                 json=payload,
                 timeout=_GENERATION_TIMEOUT,
-            )
-            if response.is_client_error:
-                raise ImageGenerationError(
-                    _refusal(response.content, response.status_code),
-                )
+            ) as response:
+                if response.is_client_error:
+                    raise ImageGenerationError(
+                        _refusal(
+                            await _read_capped(response, _RESPONSE_OVERHEAD),
+                            response.status_code,
+                        ),
+                    )
 
-            images = GenerationResponse.model_validate_json(
-                response.raise_for_status().content,
-            ).data
-            if not images:
-                raise ImageGenerationError('the vendor returned no image')
+                response.raise_for_status()
+                body = await _read_capped(response, self._response_limit())
+                images = GenerationResponse.model_validate_json(body).data
+                if not images:
+                    raise ImageGenerationError('the vendor returned no image')
 
         image = images[0]
         if image.b64_json is not None:
@@ -110,6 +116,10 @@ class ImagesClient:
             )
 
         raise ImageGenerationError('the vendor returned neither bytes nor a link')
+
+    def _response_limit(self) -> int:
+        encoded = 4 * ((self.max_bytes + 2) // 3)
+        return encoded + _RESPONSE_OVERHEAD
 
     # NOTE: the link points at the vendor's storage, not its api, so the key stays home
     async def _download(self, url: str) -> bytes:
@@ -139,3 +149,16 @@ def _refusal(content: bytes, status: int) -> str:
 
     detail = f': {message}' if message else ''
     return f'the vendor refused the request ({status}){detail}'
+
+
+async def _read_capped(response: Response, limit: int) -> bytes:
+    declared = response.headers.get('content-length')
+    if declared is not None and declared.isdigit() and int(declared) > limit:
+        raise ImageGenerationError('the response exceeds the size limit')
+
+    body = bytearray()
+    async for chunk in response.aiter_bytes():
+        if len(body) + len(chunk) > limit:
+            raise ImageGenerationError('the response exceeds the size limit')
+        body.extend(chunk)
+    return bytes(body)

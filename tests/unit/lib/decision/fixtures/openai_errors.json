@@ -1,0 +1,57 @@
+{
+  "source": "bad_model and bad_key follow OpenAI's documented {\"error\": {...}} envelope; the gateway_* entries were recorded from the deployed Bifrost gateway on 2026-09-24, which answers in front of either format.",
+  "errors": {
+    "bad_model": {
+      "status": 404,
+      "response": {
+        "error": {
+          "message": "The model `gpt-nope` does not exist or you do not have access to it.",
+          "type": "invalid_request_error",
+          "param": null,
+          "code": "model_not_found"
+        }
+      }
+    },
+    "bad_key": {
+      "status": 401,
+      "response": {
+        "error": {
+          "message": "Incorrect API key provided: sk-test.",
+          "type": "invalid_request_error",
+          "param": null,
+          "code": "invalid_api_key"
+        }
+      }
+    },
+    "gateway_missing_key": {
+      "status": 401,
+      "response": {
+        "type": "virtual_key_required",
+        "is_bifrost_error": false,
+        "status_code": 401,
+        "error": {
+          "message": "virtual key is required. Provide a virtual key via the x-bf-vk header."
+        }
+      }
+    },
+    "gateway_provider_blocked": {
+      "status": 403,
+      "response": {
+        "type": "provider_blocked",
+        "is_bifrost_error": false,
+        "status_code": 403,
+        "error": {
+          "message": "Provider 'typesafe' is not allowed for virtual key 'default'"
+        },
+        "extra_fields": {
+          "routing_info": {},
+          "provider": "typesafe",
+          "original_model_requested": "jev-1.13.0",
+          "resolved_model_used": "jev-1.13.0",
+          "request_type": "decisions",
+          "error_type": "policy_provider_blocked"
+        }
+      }
+    }
+  }
+}

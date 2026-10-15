@@ -2,6 +2,7 @@ from pydantic import SecretStr
 
 from lib.decision import DecisionManager, DecisionProviderConfig, DecisionRef
 from lib.decision.adapters.bifrost import BifrostAdapter
+from lib.decision.adapters.openai import OpenAIAdapter
 from lib.decision.adapters.typesafe import TypeSafeAdapter
 from lib.http import HTTPClientManager
 from tests.helpers.logging import make_logger
@@ -15,6 +16,12 @@ def _providers() -> tuple[DecisionProviderConfig, ...]:
             api_key=SecretStr('secret'),
             models=('typesafe/jev-1.13.0',),
             url='http://bifrost:8080/v1/decisions',
+        ),
+        DecisionProviderConfig(
+            name='openai',
+            adapter='openai',
+            api_key=SecretStr('secret'),
+            models=('gpt-6-luna',),
         ),
         DecisionProviderConfig(
             name='openrouter',
@@ -35,13 +42,17 @@ def _providers() -> tuple[DecisionProviderConfig, ...]:
 def test_manager_builds_the_adapter_each_provider_names() -> None:
     manager = DecisionManager(_providers(), HTTPClientManager(), logger=make_logger())
 
-    bifrost = manager.client_for(DecisionRef(model='typesafe/jev-1.13.0'))
+    bifrost = manager.client_for(
+        DecisionRef(model='typesafe/jev-1.13.0', provider='bifrost'),
+    )
     openrouter = manager.client_for(DecisionRef(model='typesafe/jev-1.13'))
     typesafe = manager.client_for(DecisionRef(model='jev-1.13.0', provider='typesafe'))
+    openai = manager.client_for(DecisionRef(model='gpt-6-luna', provider='openai'))
 
     assert isinstance(bifrost, BifrostAdapter)
     assert isinstance(openrouter, TypeSafeAdapter)
     assert isinstance(typesafe, TypeSafeAdapter)
+    assert isinstance(openai, OpenAIAdapter)
 
 
 def test_manager_reuses_one_client_per_provider() -> None:

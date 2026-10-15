@@ -48,6 +48,7 @@ def test_decision_container(tmp_path: Path, configured: bool) -> None:
         {'timeout': float('inf')},
         {'adapter': 'unknown'},
         {'adapter': 'bifrost'},
+        {'url': ''},
     ],
 )
 def test_invalid_decision_config(changes: dict[str, object]) -> None:
@@ -68,10 +69,10 @@ def test_a_provider_without_a_type_is_an_llm_provider() -> None:
             'chat': {'adapter': 'openai', 'api_key': 'test', 'models': ('gpt',)},
             'jev': {
                 'type': 'decision',
-                'adapter': 'bifrost',
+                'adapter': 'openai',
                 'api_key': 'test',
                 'models': ('typesafe/jev-1.13.0',),
-                'url': 'http://bifrost:8080/v1/decisions',
+                'url': 'http://bifrost:8080/openai/v1/decisions',
             },
         },
     ).root

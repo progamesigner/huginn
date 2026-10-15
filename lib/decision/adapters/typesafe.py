@@ -77,5 +77,5 @@ class TypeSafeAdapter(HTTPDecisionAdapter):
         return encode_native(request)
 
     @override
-    def decode(self, payload: JsonValue) -> DecisionResult:
+    def decode(self, request: DecisionRequest, payload: JsonValue) -> DecisionResult:
         return decode_native(payload)
