@@ -12,6 +12,7 @@ class User(AppEntity):
     id: Annotated[UUID, Field()]
     handle: Annotated[str, Field()]
     display_name: Annotated[str, Field()]
+    memory_scope: Annotated[str | None, Field()] = None
     created_at: Annotated[datetime | None, Field()] = None
     updated_at: Annotated[datetime | None, Field()] = None
 
@@ -40,13 +41,17 @@ class IdentityAuditEvent(AppEntity):
 
 class IdentityLinkInvite(AppEntity):
     id: Annotated[UUID, Field()]
-    user_id: Annotated[UUID, Field()]
+    user_id: Annotated[UUID | None, Field()]
+    kind: Annotated[str, Field()] = 'link'
+    reserved_handle: Annotated[str | None, Field()] = None
+    pending_external_user_id: Annotated[str | None, Field()] = None
     provider: Annotated[str, Field()]
     realm: Annotated[str, Field()]
     expires_at: Annotated[datetime, Field()]
     created_by: Annotated[str, Field()]
     consumed_at: Annotated[datetime | None, Field()] = None
     revoked_at: Annotated[datetime | None, Field()] = None
+    memory_scope: Annotated[str | None, Field()] = None
     created_at: Annotated[datetime | None, Field()] = None
 
 
@@ -54,6 +59,8 @@ class LinkedPrincipal(AppValue):
     user_id: Annotated[UUID, Field()]
     external_identity_id: Annotated[UUID, Field()]
     handle: Annotated[str, Field()]
+    memory_scope: Annotated[str | None, Field()] = None
+    display_name: Annotated[str | None, Field()] = None
 
     @property
     def stable_key(self) -> str:
@@ -76,6 +83,7 @@ type Principal = LinkedPrincipal | AnonymousPrincipal
 
 
 class IssuedIdentityLinkInvite(AppValue):
+    invite_id: Annotated[UUID | None, Field()] = None
     token: Annotated[str, Field(repr=False)]
     short_code: Annotated[str, Field(repr=False)]
     expires_at: Annotated[datetime, Field()]

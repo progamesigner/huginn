@@ -64,6 +64,7 @@ class IdentityLinkingService:
             metadata={'invite_id': str(invite.id), 'created_by': created_by},
         )
         return IssuedIdentityLinkInvite(
+            invite_id=invite.id,
             token=token,
             short_code=short_code,
             expires_at=invite.expires_at,
@@ -83,6 +84,9 @@ class IdentityLinkingService:
         )
         if invite is None:
             return Err(InvalidIdentityLinkError('unknown_token'))
+
+        if invite.kind != 'link' or invite.user_id is None:
+            return Err(InvalidIdentityLinkError('link_required'))
 
         reason = self._invalid_reason(invite, provider, realm)
         if reason is not None:

@@ -312,3 +312,42 @@ def test_migration_history_has_a_single_head() -> None:
     # `upgrade head` becomes ambiguous; alembic only reports it when you run it
     assert len(heads) == 1, f'divergent migration branches: {sorted(heads)}'
     assert len(bases) == 1, f'disconnected migration roots: {sorted(bases)}'
+
+
+@_integration
+async def test_identity_migration_refuses_unsafe_handles_before_schema_changes(
+    database_url: str,
+) -> None:
+    from sqlalchemy.exc import DBAPIError
+
+    engine = create_async_engine(database_url)
+    try:
+        await _drive(engine, 'down', 'default@base')
+        await _drive(engine, 'up', '5c2e8a1f7b34')
+        async with engine.begin() as connection:
+            await connection.execute(
+                text(
+                    'INSERT INTO users (id, handle, display_name, created_at, updated_at) '
+                    "VALUES (:id, '../unsafe', 'Fictional Person', now(), now())",
+                ),
+                {'id': UUID(int=91)},
+            )
+        with pytest.raises(DBAPIError, match='Invalid existing handles'):
+            await _drive(engine, 'up', 'default@head')
+        async with engine.connect() as connection:
+            columns = (
+                (
+                    await connection.execute(
+                        text(
+                            'SELECT column_name FROM information_schema.columns '
+                            "WHERE table_schema = 'public' AND table_name = 'users'",
+                        ),
+                    )
+                )
+                .scalars()
+                .all()
+            )
+            assert 'memory_scope' not in columns
+    finally:
+        await _drive(engine, 'down', 'default@base')
+        await engine.dispose()

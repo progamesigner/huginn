@@ -4,7 +4,7 @@ from typing import cast
 from uuid import UUID
 
 from pydantic import JsonValue
-from sqlalchemy import select
+from sqlalchemy import or_, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.features.identities.entities import (
@@ -20,6 +20,7 @@ from app.features.identities.sources.sqlalchemy import (
     IdentityLinkInviteRecord,
     UserRecord,
 )
+from app.features.identities.validation import normalize_handle, validate_scope
 from lib.guid import GUIDContract
 from lib.temporal import ClockContract
 
@@ -29,6 +30,7 @@ def _to_user(record: UserRecord) -> User:
         id=record.id,
         handle=record.handle,
         display_name=record.display_name,
+        memory_scope=record.memory_scope,
         created_at=record.created_at,
         updated_at=record.updated_at,
     )
@@ -66,6 +68,10 @@ def _to_invite(
     return IdentityLinkInvite(
         id=record.id,
         user_id=record.user_id,
+        kind=record.kind,
+        memory_scope=record.memory_scope,
+        reserved_handle=record.reserved_handle,
+        pending_external_user_id=record.pending_external_user_id,
         provider=record.provider,
         realm=record.realm,
         expires_at=record.expires_at,
@@ -87,14 +93,45 @@ class IdentityRepository:
         self.guid = guid
         self.clock = clock
 
-    async def create_user(self, handle: str, display_name: str) -> User:
-        normalized = handle.strip().lower()
-        if not normalized:
-            raise ValueError('handle must not be empty')
+    async def namespace_lock(self) -> None:
+        await self.session.execute(text('SELECT pg_advisory_xact_lock(726451201)'))
+
+    async def namespace_taken(self, value: str) -> bool:
+        query = select(UserRecord.id).where(
+            or_(UserRecord.handle == value, UserRecord.memory_scope == value),
+        )
+        return (await self.session.execute(query)).first() is not None
+
+    async def create_user(
+        self,
+        handle: str,
+        display_name: str,
+        *,
+        memory_scope: str | None = None,
+        registration_invite_id: UUID | None = None,
+    ) -> User:
+        normalized = normalize_handle(handle)
+        scope = validate_scope(memory_scope or normalized)
+        await self.namespace_lock()
+        if await self.namespace_taken(scope) or await self.namespace_taken(normalized):
+            raise ValueError('handle or memory scope is already owned')
+        pending = select(IdentityLinkInviteRecord.id).where(
+            IdentityLinkInviteRecord.memory_scope.in_({scope, normalized}),
+            IdentityLinkInviteRecord.consumed_at.is_(None),
+            IdentityLinkInviteRecord.revoked_at.is_(None),
+            IdentityLinkInviteRecord.expires_at > self.clock.now(),
+        )
+        if registration_invite_id is not None:
+            pending = pending.where(
+                IdentityLinkInviteRecord.id != registration_invite_id,
+            )
+        if (await self.session.execute(pending)).first() is not None:
+            raise ValueError('handle or memory scope is reserved by an invitation')
         now = self.clock.now()
         record = UserRecord(
             id=self.guid.generate(),
             handle=normalized,
+            memory_scope=scope,
             display_name=display_name,
             created_at=now,
             updated_at=now,
@@ -119,6 +156,8 @@ class IdentityRepository:
                 ExternalIdentityRecord.user_id,
                 ExternalIdentityRecord.id,
                 UserRecord.handle,
+                UserRecord.memory_scope,
+                UserRecord.display_name,
             )
             .join(UserRecord, UserRecord.id == ExternalIdentityRecord.user_id)
             .where(
@@ -135,6 +174,8 @@ class IdentityRepository:
                 user_id=row.user_id,
                 external_identity_id=row.id,
                 handle=row.handle,
+                memory_scope=row.memory_scope,
+                display_name=row.display_name,
             )
         )
 
@@ -279,3 +320,42 @@ class IdentityRepository:
         record.revoked_at = revoked_at
         await self.session.flush()
         return _to_invite(record)
+
+    async def stage_registration(self, invite_id: UUID, external: str) -> None:
+        record = await self.session.get(IdentityLinkInviteRecord, invite_id)
+        if record is None:
+            raise LookupError('identity transaction lost its record')
+        record.pending_external_user_id = external
+        await self.session.flush()
+
+    async def pending_registration(
+        self,
+        provider: str,
+        realm: str,
+        external: str,
+    ) -> IdentityLinkInvite | None:
+        query = (
+            select(IdentityLinkInviteRecord)
+            .where(
+                IdentityLinkInviteRecord.provider == provider,
+                IdentityLinkInviteRecord.realm == realm,
+                IdentityLinkInviteRecord.pending_external_user_id == external,
+                IdentityLinkInviteRecord.user_id.is_(None),
+                IdentityLinkInviteRecord.revoked_at.is_(None),
+                IdentityLinkInviteRecord.expires_at > self.clock.now(),
+            )
+            .order_by(IdentityLinkInviteRecord.created_at.desc())
+            .with_for_update()
+        )
+        record = (await self.session.execute(query)).scalars().first()
+        return _to_invite(record) if record else None
+
+    async def update_display_name(self, user_id: UUID, name: str) -> None:
+        if not name.strip() or len(name) > 128:
+            raise ValueError('display name must contain 1 to 128 characters')
+        record = await self.session.get(UserRecord, user_id)
+        if record is None:
+            raise LookupError('user not found')
+        record.display_name = name.strip()
+        record.updated_at = self.clock.now()
+        await self.session.flush()

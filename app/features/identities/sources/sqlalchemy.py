@@ -24,13 +24,15 @@ class UserRecord(TimestampRecordMixin, AppRecord):
     __tablename__ = 'users'
     __table_args__ = (
         CheckConstraint(
-            'handle = lower(btrim(handle)) AND length(handle) > 0',
+            'handle = lower(btrim(handle)) AND handle ~ '
+            "'^[a-z0-9._-]{1,64}$' AND handle NOT IN ('.', '..')",
             name='handle_normalized',
         ),
     )
 
     handle: Mapped[str] = mapped_column(unique=True)
     display_name: Mapped[str] = mapped_column()
+    memory_scope: Mapped[str] = mapped_column(unique=True)
 
 
 class ExternalIdentityRecord(AppRecord):
@@ -89,7 +91,7 @@ class IdentityLinkInviteRecord(AppRecord):
         Index('ix_identity_link_invites_user_created', 'user_id', 'created_at'),
     )
 
-    user_id: Mapped[UUID] = mapped_column(
+    user_id: Mapped[UUID | None] = mapped_column(
         ForeignKey(UserRecord.id, ondelete='CASCADE'),
     )
     provider: Mapped[str] = mapped_column()
@@ -100,3 +102,7 @@ class IdentityLinkInviteRecord(AppRecord):
     revoked_at: Mapped[datetime | None] = mapped_column(Timestamp())
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())
     created_by: Mapped[str] = mapped_column()
+    kind: Mapped[str] = mapped_column(server_default='link')
+    memory_scope: Mapped[str | None] = mapped_column()
+    reserved_handle: Mapped[str | None] = mapped_column()
+    pending_external_user_id: Mapped[str | None] = mapped_column()

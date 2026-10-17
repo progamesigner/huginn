@@ -23,7 +23,7 @@ async def test_user_handle_is_normalized_and_globally_unique(
     assert user.handle == 'alice'
     assert await identities.find_user('ALICE') == user
 
-    with pytest.raises(IntegrityError):
+    with pytest.raises(ValueError, match='already owned'):
         await identities.create_user('alice', 'Someone else')
 
 
@@ -91,6 +91,12 @@ async def test_find_linked_reads_the_principal_with_its_handle(
     linked = await identities.link(user.id, 'telegram', 'primary', '77')
 
     assert await identities.find_linked('telegram', 'primary', '77') == (
-        LinkedPrincipal(user_id=user.id, external_identity_id=linked.id, handle='carol')
+        LinkedPrincipal(
+            user_id=user.id,
+            external_identity_id=linked.id,
+            handle='carol',
+            memory_scope='carol',
+            display_name='Carol',
+        )
     )
     assert await identities.find_linked('telegram', 'primary', '78') is None
