@@ -26,6 +26,7 @@ class ApiClient:
     agent: str | None = None
     routing: ApiRouting | None = None
     denied_tools: frozenset[str] = field(default_factory=frozenset)
+    asserted_user: str | None = None
 
 
 class AuthContract(ABC):

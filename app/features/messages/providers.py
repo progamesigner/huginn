@@ -13,6 +13,8 @@ from app.features.blobs.contracts import BlobServiceContract
 from app.features.blobs.providers import BlobProvider
 from app.features.channels.contracts import AttachmentReadingServiceContract
 from app.features.channels.providers import ChannelProvider
+from app.features.identities.contracts import IdentityResolutionServiceContract
+from app.features.identities.providers import IdentityProvider
 from lib.container import ContainerContract, ProviderContract
 from lib.guid import GUIDContract
 from lib.observability import Logger
@@ -43,6 +45,7 @@ def _service(container: ContainerContract) -> ChatService:
             container.resolve(BlobServiceContract),
             container.resolve(AttachmentReadingServiceContract),
         ),
+        identities=lambda: container.resolve(IdentityResolutionServiceContract),
         uploads=container.resolve(HuginnConfig).section(BLOBS).retention.generated,
         logger=container.resolve(Logger),
     )
@@ -51,6 +54,7 @@ def _service(container: ContainerContract) -> ChatService:
 class MessageProvider(ProviderContract):
     dependencies = (
         AuthProvider,
+        IdentityProvider,
         BlobProvider,
         ChannelProvider,
         ClockProvider,

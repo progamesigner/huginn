@@ -1,4 +1,5 @@
-from collections.abc import AsyncGenerator
+import hashlib
+from collections.abc import AsyncGenerator, Callable
 from contextlib import aclosing
 from dataclasses import dataclass
 from datetime import timedelta
@@ -15,6 +16,8 @@ from app.features.agents.entities import (
 )
 from app.features.blobs.contracts import BlobServiceContract
 from app.features.blobs.entities import Blob
+from app.features.identities.contracts import IdentityResolutionServiceContract
+from app.features.identities.entities import LinkedPrincipal
 from lib.guid import GUIDContract
 from lib.observability import Logger
 from lib.redis import RedisContract, RedisLock
@@ -46,6 +49,7 @@ class PreparedTurn:
     conversation: str
     request: TurnRequest
     lock: RedisLock
+    owner: str | None = None
 
 
 def _actor(client: ApiClient) -> str:
@@ -100,6 +104,7 @@ class ChatService:
         intake: AttachmentIntake,
         *,
         uploads: timedelta,
+        identities: Callable[[], IdentityResolutionServiceContract] | None = None,
         ttl: timedelta = _LOCK_TTL,
         logger: Logger,
     ) -> None:
@@ -107,6 +112,7 @@ class ChatService:
         self.blobs = blobs
         self.intake = intake
         self.uploads = uploads
+        self.identities = identities
         self.guid = guid
         self.redis = redis
         self.turns = turns
@@ -136,9 +142,21 @@ class ChatService:
             )
 
         thread = conversation or str(self.guid.generate())
+        channel = client.key
+        principal = None
+        if client.asserted_user is not None:
+            if self.identities is None:
+                raise RuntimeError('asserted identity resolution is unavailable')
+            principal = await self.identities().resolve(
+                'http',
+                client.key,
+                client.asserted_user,
+            )
+            digest = hashlib.sha256(client.asserted_user.encode()).hexdigest()
+            channel = f'http:{len(client.key)}:{client.key}:user:{digest}'
         lock = RedisLock(
             self.redis,
-            f'messages:{client.key}:{thread}',
+            f'messages:{channel}:{thread}',
             ttl=self.ttl,
             logger=self.logger,
         )
@@ -168,13 +186,24 @@ class ChatService:
             PreparedTurn(
                 conversation=thread,
                 request=TurnRequest(
-                    channel=client.key,
+                    channel=channel,
                     chat=thread,
                     policy=_policy(agent, client),
                     prompts=(
                         TurnPrompt(
                             text=message,
-                            actor=_actor(client),
+                            actor=principal.stable_key
+                            if principal is not None
+                            else _actor(client),
+                            account=str(principal.user_id)
+                            if isinstance(principal, LinkedPrincipal)
+                            else None,
+                            handle=principal.handle
+                            if isinstance(principal, LinkedPrincipal)
+                            else None,
+                            memory_scope=principal.memory_scope
+                            if isinstance(principal, LinkedPrincipal)
+                            else None,
                             attachments=carried,
                         ),
                     ),
@@ -182,6 +211,7 @@ class ChatService:
                     max_completion_tokens=max_completion_tokens,
                 ),
                 lock=lock,
+                owner=client.key,
             ),
         )
 
@@ -202,7 +232,10 @@ class ChatService:
             ):
                 async for event in events:
                     if isinstance(event, AttachmentEvent):
-                        if not await self._grant(event, prepared.request.channel):
+                        if not await self._grant(
+                            event,
+                            prepared.owner or prepared.request.channel,
+                        ):
                             yield TextEvent(
                                 text='\n\nThe attachment could not be made available.',
                             )

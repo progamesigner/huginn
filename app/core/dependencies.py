@@ -1,11 +1,11 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import cast
 
 from app.contracts.auth import ApiClient, AuthContract
 from lib.container import Container
 from lib.router import Request
 
-from .exceptions import UnauthorizedError
+from .exceptions import InvalidRequestError, UnauthorizedError
 
 _SCHEME = 'bearer'
 _CHALLENGE = {'WWW-Authenticate': 'Bearer'}
@@ -34,4 +34,15 @@ class Authenticated:
                 headers=_CHALLENGE,
             )
 
+        asserted = request.headers.get('x-huginn-user')
+        if asserted is not None:
+            if (
+                not asserted.strip()
+                or len(asserted) > 256
+                or any(ord(c) < 32 or ord(c) == 127 for c in asserted)
+            ):
+                raise InvalidRequestError(
+                    'X-Huginn-User must contain 1 to 256 printable characters',
+                )
+            client = replace(client, asserted_user=asserted)
         return client

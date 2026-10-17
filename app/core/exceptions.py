@@ -24,3 +24,8 @@ class InternalServerError(AppError):
 class UnauthorizedError(AppError):
     status = 401
     code = Code.UNAUTHORIZED
+
+
+class InvalidRequestError(AppError):
+    status = 400
+    code = Code.INVALID_REQUEST
