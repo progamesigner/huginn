@@ -64,6 +64,7 @@ class InboundMessage(BaseModel):
     attachments: tuple[InboundAttachment, ...] = ()
     command: InboundCommand | None = None
     user: str | None = None
+    private: bool = False
 
 
 class ChannelMessageHandlerContract(ABC):

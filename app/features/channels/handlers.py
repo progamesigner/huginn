@@ -4,6 +4,7 @@ from app.contracts.channels import InboundCommand, InboundMessage
 from app.features.conversations.contracts import ConversationServiceContract
 from app.features.identities.contracts import (
     IdentityLinkingServiceContract,
+    IdentityManagementServiceContract,
     IdentityResolutionServiceContract,
 )
 from app.features.identities.entities import AnonymousPrincipal, LinkedPrincipal
@@ -53,16 +54,21 @@ class CommandHandlers:
         linking: LinkerFactory,
         conversations: ControlFactory,
         registry: RegistryFactory,
+        management: Callable[[], IdentityManagementServiceContract] | None = None,
     ) -> None:
         self.conversations = conversations
         self.identities = identities
         self.linking = linking
         self.registry = registry
+        self.management = management
 
     def commands(self) -> Iterator[Command]:
         yield Command('compact', _COMPACT, self.compact)
         yield Command('help', _HELP, self.help)
         yield Command('new', _NEW, self.new)
+        yield Command('iam', 'Claim your invited handle.', self.iam)
+        yield Command('invite', 'Link your account to another channel.', self.invite)
+        yield Command('displayname', 'Update your display name.', self.display_name)
         yield Command('identity', _IDENTITY, self.identity)
         yield Command('register', _REGISTER, self.register)
         yield Command('start', _START, self.start)
@@ -81,6 +87,8 @@ class CommandHandlers:
         return '\n'.join(('Here is what I understand:', *lines))
 
     async def identity(self, command: InboundCommand, message: InboundMessage) -> str:
+        if not message.private:
+            return 'Manage your identity in a private chat.'
         if message.user is None:
             return _UNIDENTIFIED
 
@@ -107,14 +115,31 @@ class CommandHandlers:
         return await self._link(command.args, message)
 
     async def start(self, command: InboundCommand, message: InboundMessage) -> str:
+        if command.args.startswith('register_'):
+            return await self._link(command.args.removeprefix('register_'), message)
         if command.args.startswith(_LINK_PREFIX):
             return await self._link(command.args.removeprefix(_LINK_PREFIX), message)
 
         return _WELCOME
 
     async def _link(self, credential: str, message: InboundMessage) -> str:
+        if not message.private:
+            return 'Manage your identity in a private chat.'
         if message.user is None:
             return _UNIDENTIFIED
+
+        if self.management is not None:
+            registered = await self.management().register(
+                credential,
+                message.kind,
+                message.channel,
+                message.user,
+            )
+            if isinstance(registered, Err):
+                return str(registered.error)
+            if registered.value is None:
+                return 'Invite accepted. Send /iam <handle> to finish registration.'
+            return f'Done. This chat is linked to account {registered.value.user_id}.'
 
         linked = await self.linking().link(
             credential,
@@ -126,3 +151,67 @@ class CommandHandlers:
             return str(linked.error)
 
         return f'Done. This chat is linked to account {linked.value.user_id}.'
+
+    async def iam(self, command: InboundCommand, message: InboundMessage) -> str:
+        if not message.private:
+            return 'Manage your identity in a private chat.'
+        if message.user is None:
+            return _UNIDENTIFIED
+        principal = await self.identities().resolve(
+            message.kind,
+            message.channel,
+            message.user,
+        )
+        if isinstance(principal, LinkedPrincipal):
+            return f'You are {principal.handle} ({principal.user_id}).'
+        if not command.args or self.management is None:
+            return 'Send /register <code>, then /iam <handle>.'
+        result = await self.management().claim(
+            message.kind,
+            message.channel,
+            message.user,
+            command.args,
+        )
+        if isinstance(result, Err):
+            return str(result.error)
+        return f'Registered as {result.value.handle}.'
+
+    async def invite(self, command: InboundCommand, message: InboundMessage) -> str:
+        if not message.private:
+            return 'Manage your identity in a private chat.'
+        if message.user is None:
+            return _UNIDENTIFIED
+        if not command.args or self.management is None:
+            return 'Send /invite <channel name or http:application>.'
+        try:
+            issued = await self.management().invite(
+                message.kind,
+                message.channel,
+                message.user,
+                command.args,
+            )
+        except ValueError as error:
+            return str(error)
+        return f'On {command.args}, send /register {issued.short_code}. Expires at {issued.expires_at.isoformat()}.'
+
+    async def display_name(
+        self,
+        command: InboundCommand,
+        message: InboundMessage,
+    ) -> str:
+        if not message.private:
+            return 'Manage your identity in a private chat.'
+        if message.user is None:
+            return _UNIDENTIFIED
+        if self.management is None:
+            return 'Identity management is unavailable.'
+        try:
+            await self.management().display_name(
+                message.kind,
+                message.channel,
+                message.user,
+                command.args,
+            )
+        except ValueError as error:
+            return str(error)
+        return 'Display name updated.'

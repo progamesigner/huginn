@@ -118,6 +118,7 @@ def inbound(user: str | None = '77') -> InboundMessage:
         kind='telegram',
         text='/start',
         user=user,
+        private=True,
     )
 
 
@@ -148,8 +149,11 @@ async def test_help_lists_every_registered_command_with_its_description() -> Non
     assert answer.splitlines() == [
         'Here is what I understand:',
         '/compact — Summarise this chat now to free up context.',
+        '/displayname — Update your display name.',
         '/help — List the commands I understand.',
+        '/iam — Claim your invited handle.',
         '/identity — Show which account this chat is linked to.',
+        '/invite — Link your account to another channel.',
         '/new — Start over: forget what we have said so far.',
         '/register — Link this chat to your account with a one-time code.',
         '/start — Say hello and explain how to get started.',
@@ -283,3 +287,55 @@ async def test_compact_says_so_when_there_was_nothing_to_fold() -> None:
     answer = await handlers.compact(command('compact'), inbound())
 
     assert 'nothing' in answer
+
+
+async def test_identity_commands_refuse_group_chats_before_resolving_or_linking() -> (
+    None
+):
+    identities, linking = FakeIdentities(), FakeLinking()
+    handlers, _ = make_handlers(identities=identities, linking=linking)
+    group = inbound().model_copy(update={'private': False})
+    for name in ('identity', 'iam', 'invite', 'register', 'display_name'):
+        answer = await getattr(handlers, name)(command(name, 'a-code'), group)
+        assert 'private chat' in answer
+    assert identities.calls == []
+    assert linking.calls == []
+
+
+async def test_registration_flows_through_invitation_management() -> None:
+    from unittest.mock import AsyncMock, MagicMock
+
+    from app.features.identities.contracts import IdentityManagementServiceContract
+
+    management = MagicMock(spec=IdentityManagementServiceContract)
+    management.register = AsyncMock(return_value=Ok(None))
+    management.claim = AsyncMock(
+        return_value=Ok(
+            LinkedPrincipal(
+                user_id=_LINKED,
+                external_identity_id=_IDENTITY,
+                handle='fictional',
+                memory_scope='prior-memory',
+            ),
+        ),
+    )
+    identities = FakeIdentities()
+    handlers, _ = make_handlers(identities=identities)
+    handlers.management = lambda: management
+    registered = await handlers.start(command('start', 'register_CODE'), inbound())
+    assert '/iam' in registered
+    assert identities.calls == []
+    management.register.assert_awaited_once_with(
+        'CODE',
+        'telegram',
+        'support_bot',
+        '77',
+    )
+    claimed = await handlers.iam(command('iam', 'fictional'), inbound())
+    assert 'fictional' in claimed
+    management.claim.assert_awaited_once_with(
+        'telegram',
+        'support_bot',
+        '77',
+        'fictional',
+    )

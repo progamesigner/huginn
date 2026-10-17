@@ -13,8 +13,11 @@ async def test_the_channel_provider_registers_the_command_set() -> None:
 
     assert registry.names() == (
         'compact',
+        'displayname',
         'help',
+        'iam',
         'identity',
+        'invite',
         'new',
         'register',
         'start',

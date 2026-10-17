@@ -32,6 +32,7 @@ from app.features.hooks.providers import HooksProvider
 from app.features.hooks.sources.configured import ConfiguredHookSource
 from app.features.identities.contracts import (
     IdentityLinkingServiceContract,
+    IdentityManagementServiceContract,
     IdentityResolutionServiceContract,
 )
 from app.features.identities.providers import IdentityProvider
@@ -128,6 +129,7 @@ class ChannelContributions(ProviderContract):
             lambda: container.resolve(IdentityLinkingServiceContract),
             lambda: container.resolve(ConversationServiceContract),
             lambda: container.resolve(CommandRegistry),
+            lambda: container.resolve(IdentityManagementServiceContract),
         )
         for command in handlers.commands():
             container.contribute(Command, lambda _, command=command: command)

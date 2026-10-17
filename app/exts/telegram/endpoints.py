@@ -114,6 +114,7 @@ def _inbound(channel: str, body: bytes, *, logger: Logger) -> InboundMessage | N
         event=str(update.update_id),
         id=str(message.message_id),
         kind=_KIND,
+        private=message.chat.type == 'private',
         text=message.text or message.caption or '',
         attachments=tuple(_attachments(message, logger=logger)),
         command=_command(message),
