@@ -161,3 +161,70 @@ def unlink(
     except LookupError as error:
         echo('Linked identity was not found.', err=True)
         raise Exit(1) from error
+
+
+@cli.command('registration-invite')
+def registration_invite(
+    target: Annotated[str, Argument(help='Configured channel or http:<API key name>.')],
+    created_by: Annotated[str, Argument(help='Operator authorizing memory ownership.')],
+    new_user: str | None = None,
+    existing_scope: str | None = None,
+    ttl: str = '10m',
+    confirm_new_scope: bool = False,
+) -> None:
+    from .contracts import IdentityTargetServiceContract
+    from .registration import RegistrationService
+
+    async def issue(repository: IdentityRepository) -> str | None:
+        try:
+            if new_user is not None and not confirm_new_scope:
+                raise ValueError(
+                    'verify this scope is unused in Muninn, then pass --confirm-new-scope',
+                )
+            provider, realm = resolve(IdentityTargetServiceContract).resolve(target)
+            issued = await RegistrationService(
+                repository,
+                resolve(IdentityTokenCodec),
+            ).issue(
+                provider,
+                realm,
+                _ttl(ttl),
+                created_by,
+                new_user=new_user,
+                existing_scope=existing_scope,
+            )
+        except ValueError as error:
+            await repository.record_audit(
+                'registration_invite_failed',
+                'operator',
+                target,
+                metadata={'created_by': created_by, 'reason': str(error)},
+            )
+            return str(error)
+        echo(f'Invite ID: {issued.invite_id}')
+        echo(f'Deep-link payload: register_{issued.token}')
+        echo(f'Short code: {issued.short_code}')
+        echo(f'Expires at: {issued.expires_at.isoformat()}')
+        return None
+
+    failure = _run(issue)
+    if failure is not None:
+        echo(failure, err=True)
+        raise Exit(1)
+
+
+@cli.command('revoke')
+def revoke_invite(
+    invite_id: Annotated[str, Argument(help='Invite UUID from the identity audit.')],
+) -> None:
+    from uuid import UUID
+
+    async def revoke(repository: IdentityRepository) -> None:
+        changed = await _linking(repository).revoke(UUID(invite_id))
+        echo('Revoked.' if changed else 'No active invite found.')
+
+    try:
+        _run(revoke)
+    except ValueError as error:
+        echo('Invalid invite UUID.', err=True)
+        raise Exit(1) from error
