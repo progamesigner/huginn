@@ -225,7 +225,76 @@ Identity linking requires PostgreSQL and a dedicated HMAC secret of at least 32 
 - `HUGINN_DATABASE_URL` points to the migrated Huginn database.
 - `HUGINN_IDENTITY_LINK_SECRET` is generated independently of database and legacy registration credentials. Store it in the deployment secret manager; never log or commit it.
 
-Create canonical users before issuing short-lived, provider- and realm-bound invites:
+Registration is invitation-only. An operator chooses the target and approves the
+memory ownership before a recipient claims an account:
+
+```sh
+# Verify that this user scope is unused in Muninn before authorizing fresh memory.
+huginn identities registration-invite primary operator --new-user example-user --confirm-new-scope
+# Continue an unowned, existing memory scope; the recipient chooses their handle.
+huginn identities registration-invite http:web operator --existing-scope prior-memory
+# Revoke an unused registration or link invite by the printed UUID.
+huginn identities revoke <invite-id>
+```
+
+`--new-user` locks both the approved handle and its new memory user scope. The
+operator must check Muninn before passing `--confirm-new-scope`: absence from
+Huginn's database does not prove that a vault is unused. `--existing-scope`
+locks the existing scope instead. These options are mutually exclusive, and
+neither may name memory already owned by another Huginn account; that account
+must issue a link invite. Reserved names such as `default`, `shared`, `admin`,
+`system`, `root`, and `anonymous` cannot be new scopes or handles. An operator
+may explicitly authorize an unowned existing scope with such a name. Live invitations reserve
+their scope until expiry or revocation. Registration expires in 10 minutes by
+default, with a maximum lifetime of 1 day.
+
+Targets are configured channel names or API key names. Use `channel:<name>` or
+`http:<key-name>` when a name is ambiguous. An invite cannot be redeemed through
+a different provider or realm. Only the operator CLI issues registration
+invites; self-service `/invite` always links the sender's existing account.
+The credentials are printed once, and only their HMAC digest is stored.
+
+In a Telegram private chat, send `/register <code>` or open
+`https://t.me/<bot>?start=register_<token>`, then `/iam <handle>` to finish
+registration. `/iam` on a linked identity reports its existing handle.
+`/identity` reports the link, `/invite <target>` issues a 10-minute link code,
+and `/displayname <name>` updates the display name independently. Identity
+commands refuse group chats. Legacy `link_<token>` deep links remain supported.
+
+HTTP clients use the same bearer token as chat and send `X-Huginn-User` with the
+application's stable user ID (1 to 256 printable characters). Identity resolves
+as `(http, API key name, asserted ID)`. The API key holder is trusted to assert
+this ID; the header is not an individual login credential.
+
+- `POST /v1/identity/claim`: `{"code":"...","handle":"example-user","display_name":"Example Person"}`.
+- `POST /v1/identity/link`: `{"code":"..."}` for an existing account's link invite.
+- `GET /v1/identity`: show the current link.
+- `POST /v1/identity/invite`: `{"target":"primary"}` to link your own account.
+- `PATCH /v1/identity`: `{"display_name":"New Display Name"}`.
+
+Claim and link requests reject extra fields, so recipients cannot change the
+invite's target or memory mode. Account creation, external identity, memory
+binding, and invite consumption commit together. Repeated successful redemption
+by the same external identity is safe; another identity cannot reuse the code.
+Expected registration failures leave an audit record without gaining memory
+access. Handles use `[a-z0-9._-]{1,64}`, excluding `.` and `..`; migration refuses
+incompatible existing handles before altering the schema.
+
+All three chat surfaces honor `X-Huginn-User`. Asserted users get separate
+conversation namespaces within the application; compatible `user` still names
+the conversation when `conversation` is absent. Omitting the header retains the
+existing machine actor and conversation namespace. File grants remain shared
+within an API key, including uploads and generated files: this feature does not
+provide individual file isolation. The application must enforce its own user
+authentication and file access policy.
+
+Accounts retain their approved memory user scope. Binding `user: memory_scope`
+selects it explicitly; deployed `user: handle` bindings also use that approved
+scope. Other `handle` bindings retain the actual handle. The agent axis remains
+controlled by source configuration. Unlinked senders have no personal memory
+binding. Handle renaming and memory migration are not supported.
+
+Operators can still administer canonical accounts and existing links directly:
 
 ```sh
 huginn identities user create alice "Alice Example"
@@ -233,8 +302,6 @@ huginn identities invite alice telegram primary 10m operator --bot-username hugi
 huginn identities list alice
 huginn identities unlink telegram primary 123456789
 ```
-
-The invite command prints the plaintext credential once. With `--bot-username` it prints a Telegram deep link; without it, it prints the `link_<token>` payload for the transport layer. It always prints the fallback short code. The database stores only an HMAC digest.
 
 For the legacy registration cutover:
 
