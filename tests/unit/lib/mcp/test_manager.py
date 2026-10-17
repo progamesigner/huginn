@@ -235,7 +235,7 @@ async def test_a_server_that_stays_down_is_announced_once_not_once_per_attempt(
         logger=make_logger(),
     )
 
-    with caplog.at_level('INFO', logger='lib.mcp.manager'):
+    with caplog.at_level('INFO', logger='tests'):
         await manager.start()
         try:
             await manager.refresh()
@@ -260,7 +260,7 @@ async def test_a_server_that_comes_back_says_so(
         logger=make_logger(),
     )
 
-    with caplog.at_level('INFO', logger='lib.mcp.manager'):
+    with caplog.at_level('INFO', logger='tests'):
         await manager.start()
         try:
             await manager.refresh()
@@ -300,7 +300,7 @@ async def test_degraded_start_logs_the_underlying_error(
         logger=make_logger(),
     )
 
-    with caplog.at_level('WARNING', logger='lib.mcp.manager'):
+    with caplog.at_level('WARNING', logger='tests'):
         await manager.start()
     try:
         assert manager.unavailable() == ('memory',)
@@ -344,3 +344,57 @@ def test_structured_only_tools_retain_their_payload() -> None:
             CallToolResult(content=[], structuredContent={'rendered': 'whole context'}),
         ),
     ) == {'rendered': 'whole context'}
+
+
+def test_structured_results_preserve_versions_without_changing_text_calls() -> None:
+    import json
+
+    from lib.mcp.manager import _render
+
+    result = CallToolResult(
+        content=[TextContent(type='text', text='brief body')],
+        structuredContent={'content': 'brief body', 'version': 'opaque'},
+    )
+    assert _render(result) == 'brief body'
+    assert json.loads(_render(result, structured=True)) == {
+        'content': 'brief body',
+        'version': 'opaque',
+    }
+
+
+@pytest.mark.parametrize('structured', [False, True])
+def test_tool_errors_retain_only_the_structured_discriminator(structured: bool) -> None:
+    from lib.mcp import MCPToolError
+    from lib.mcp.manager import _render
+
+    with pytest.raises(MCPToolError) as caught:
+        _render(
+            CallToolResult(
+                isError=True,
+                content=[TextContent(type='text', text='private')],
+                structuredContent={'code': 'conflict', 'message': 'private'},
+            ),
+            structured=structured,
+        )
+    assert caught.value.code == 'conflict'
+    assert 'private' not in str(caught.value)
+
+
+async def test_machine_calls_use_structured_payloads_and_text_calls_stay_compatible() -> (
+    None
+):
+    import json
+
+    manager = MCPManager(
+        [MCPServer('memory', 'http://memory.test')],
+        _memory_connector(_echo_server()),
+        logger=make_logger(),
+    )
+    await manager.start()
+    try:
+        assert await manager.call_tool('memory', 'echo', {'text': 'hi'}) == 'echoed: hi'
+        assert json.loads(
+            await manager.call_tool_result('memory', 'echo', {'text': 'hi'}),
+        ) == {'result': 'echoed: hi'}
+    finally:
+        await manager.dispose()

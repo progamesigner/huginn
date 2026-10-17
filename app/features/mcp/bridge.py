@@ -114,7 +114,22 @@ _MUTATIONS = frozenset(
 
 def _targets_brief(value: JsonValue) -> bool:
     if isinstance(value, dict):
-        return any(_targets_brief(item) for item in value.values())
+        return any(
+            _targets_brief(item)
+            for key, item in value.items()
+            if key
+            not in {
+                'content',
+                'body',
+                'text',
+                'replacement',
+                'old_string',
+                'new_string',
+                'agent',
+                'user',
+                'description',
+            }
+        )
     if isinstance(value, list):
         return any(_targets_brief(item) for item in value)
     if isinstance(value, str):

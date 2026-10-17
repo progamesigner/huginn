@@ -12,7 +12,7 @@ from pydantic import JsonValue
 from structlog.stdlib import BoundLogger
 
 from .contracts import HTTPConnector, MCPClientContract
-from .exceptions import MCPConnectionError, MCPError, UnknownMCPServerError
+from .exceptions import MCPConnectionError, MCPToolError, UnknownMCPServerError
 from .types import MCPServer, MCPToolInfo
 
 type Connector = Callable[[MCPServer], AbstractAsyncContextManager[ClientSession]]
@@ -52,9 +52,13 @@ def _describe(error: BaseException | None) -> str:
     return f'{type(error).__name__}: {error}'
 
 
-def _render(result: CallToolResult) -> str:
+def _render(result: CallToolResult, *, structured: bool = False) -> str:
     if result.isError:
-        raise MCPError('MCP tool returned an error')
+        payload = result.structuredContent
+        code = payload.get('code') if isinstance(payload, dict) else None
+        raise MCPToolError(code if isinstance(code, str) else None)
+    if structured and result.structuredContent is not None:
+        return json.dumps(result.structuredContent)
     text = '\n'.join(
         block.text for block in result.content if isinstance(block, TextContent)
     )
@@ -129,9 +133,15 @@ class _Connection:
 
             self._recovered()
 
-    async def call_tool(self, tool: str, arguments: Mapping[str, JsonValue]) -> str:
+    async def call_tool(
+        self,
+        tool: str,
+        arguments: Mapping[str, JsonValue],
+        *,
+        structured: bool = False,
+    ) -> str:
         result = await self._require().call_tool(tool, dict(arguments))
-        return _render(result)
+        return _render(result, structured=structured)
 
     async def list_tools(self) -> tuple[MCPToolInfo, ...]:
         result = await self._require().list_tools()
@@ -242,6 +252,17 @@ class MCPManager(MCPClientContract):
         connection = self._connection(server)
         await connection.ensure()
         return await connection.call_tool(tool, arguments)
+
+    @override
+    async def call_tool_result(
+        self,
+        server: str,
+        tool: str,
+        arguments: Mapping[str, JsonValue],
+    ) -> str:
+        connection = self._connection(server)
+        await connection.ensure()
+        return await connection.call_tool(tool, arguments, structured=True)
 
     @override
     async def list_tools(self, server: str) -> tuple[MCPToolInfo, ...]:

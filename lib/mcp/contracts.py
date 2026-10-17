@@ -18,6 +18,15 @@ class MCPClientContract(ABC):
         arguments: Mapping[str, JsonValue],
     ) -> str: ...
 
+    async def call_tool_result(
+        self,
+        server: str,
+        tool: str,
+        arguments: Mapping[str, JsonValue],
+    ) -> str:
+        """Prefer structured JSON when available; text-only clients remain valid."""
+        return await self.call_tool(server, tool, arguments)
+
     @abstractmethod
     async def list_tools(self, server: str) -> tuple[MCPToolInfo, ...]: ...
 

@@ -121,6 +121,8 @@ class BriefConfig(ConfigValue):
     enabled: Annotated[bool, Field()] = False
     writable: Annotated[bool, Field()] = False
     source: Annotated[str | None, Field(min_length=1)] = None
+    # Handles that may update a shared brief, one not bound to the sender.
+    writers: Annotated[tuple[str, ...], Field()] = ()
 
     @model_validator(mode='after')
     def write_needs_read(self) -> Self:

@@ -21,6 +21,8 @@ from app.features.auth.providers import AuthProvider
 from app.features.blobs.config import BLOBS
 from app.features.blobs.contracts import BlobReferenceSource, BlobServiceContract
 from app.features.blobs.providers import BlobProvider
+from app.features.briefs.providers import BriefsProvider
+from app.features.briefs.tools import BriefToolSource
 from app.features.channels.config import build_sections as channel_sections
 from app.features.channels.handlers import CommandHandlers
 from app.features.channels.providers import ChannelProvider
@@ -306,7 +308,7 @@ class HookContributions(ProviderContract):
 
 
 class SubagentContributions(ProviderContract):
-    dependencies = (SubagentsProvider,)
+    dependencies = (SubagentsProvider, AssetContributions)
 
     @override
     def __call__(self, container: ContainerContract) -> None:
@@ -316,6 +318,22 @@ class SubagentContributions(ProviderContract):
                 c.resolve(AssetsServiceContract),
                 asset_settings(c.resolve(HuginnConfig)),
                 c.resolve(SubagentServiceContract),
+                logger=c.resolve(Logger),
+            ),
+        )
+
+
+class BriefContributions(ProviderContract):
+    dependencies = (BriefsProvider, AssetContributions)
+
+    @override
+    def __call__(self, container: ContainerContract) -> None:
+        container.contribute(
+            ToolSource,
+            lambda c: BriefToolSource(
+                c.resolve(AssetsServiceContract),
+                asset_settings(c.resolve(HuginnConfig)),
+                c.resolve(MCPClientContract),
                 logger=c.resolve(Logger),
             ),
         )

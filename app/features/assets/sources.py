@@ -8,7 +8,7 @@ from typing import cast
 import yaml
 from pydantic import JsonValue, TypeAdapter
 
-from lib.mcp import MCPClientContract
+from lib.mcp import MCPClientContract, MCPError, MCPToolError
 from lib.observability import Logger
 
 from .config import AssetSourceConfig, FilesystemAssetSourceConfig
@@ -133,13 +133,40 @@ class AssetSource:
                 )
             except FileNotFoundError:
                 return None
-        raw = _payload(
-            await self._client().call_tool(
-                self.config.server,
-                self.config.read_tool,
-                {**scope, 'path': path},
-            ),
+        arguments = {**scope, 'path': path}
+        if path == 'Agents/AGENTS.md':
+            # Older memory services can still supply a read-only brief. Request
+            # versions only when the read schema advertises the opt-in field.
+            try:
+                infos = await self._client().list_tools(self.config.server)
+            except MCPError:
+                infos = ()
+            for info in infos:
+                if info.name != self.config.read_tool or not isinstance(
+                    info.input_schema,
+                    dict,
+                ):
+                    continue
+                properties = info.input_schema.get('properties')
+                if isinstance(properties, dict) and 'include_version' in properties:
+                    arguments['include_version'] = True
+        read = (
+            self._client().call_tool_result
+            if arguments.get('include_version')
+            else self._client().call_tool
         )
+        try:
+            raw = _payload(
+                await read(
+                    self.config.server,
+                    self.config.read_tool,
+                    arguments,
+                ),
+            )
+        except MCPToolError as error:
+            if error.code == 'not_found':
+                return None
+            raise
         if isinstance(raw, dict):
             if raw.get('code') == 'not_found':
                 return None
