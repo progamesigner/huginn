@@ -26,6 +26,7 @@ from .contributions import (
     SkillContributions,
     ToolContributions,
 )
+from .identities import IdentityTargetsProvider
 from .telegram import TelegramGatewayProvider
 
 
@@ -38,6 +39,7 @@ class HuginnProvider(ProviderContract):
         ChannelProvider,
         ConversationProvider,
         IdentityProvider,
+        IdentityTargetsProvider,
         MCPProvider,
         MessageProvider,
         SkillsProvider,

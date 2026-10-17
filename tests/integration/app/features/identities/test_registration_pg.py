@@ -1,18 +1,26 @@
+import asyncio
 from datetime import timedelta
+from unittest.mock import MagicMock
 from uuid import uuid4
 
 import pytest
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.features.identities.contracts import IdentityTargetServiceContract
+from app.features.identities.entities import LinkedPrincipal
+from app.features.identities.management import IdentityManagementService
 from app.features.identities.registration import RegistrationService
 from app.features.identities.repositories import IdentityRepository
-from app.features.identities.services import IdentityLinkingService
+from app.features.identities.services import IdentityLinkingService, PrincipalLinker
 from app.features.identities.sources.sqlalchemy import (
+    ExternalIdentityRecord,
+    IdentityAuditEventRecord,
     IdentityLinkInviteRecord,
     UserRecord,
 )
 from app.features.identities.tokens import IdentityTokenCodec
+from lib.database import DatabaseManager
 from lib.guid import GUIDManager
 from lib.result import Err, Ok
 from lib.temporal import ClockManager
@@ -222,6 +230,83 @@ async def test_display_name_preserves_handle_uuid_and_memory(
         principal.user_id,
         scope,
     )
+
+
+@pytest.mark.usefixtures('_migrated')
+async def test_concurrent_redemption_commits_one_owner_and_audits_both_results(
+    database_url: str,
+) -> None:
+    database = DatabaseManager({None: database_url})
+    targets = MagicMock(spec=IdentityTargetServiceContract)
+    targets.resolve.return_value = ('telegram', 'next-bot')
+    management = IdentityManagementService(
+        database,
+        GUIDManager(),
+        ClockManager(),
+        _TOKENS,
+        targets,
+    )
+    try:
+        async with database.transaction() as transaction:
+            handle, invite = await issued(transaction)
+        results = await asyncio.gather(
+            *(
+                management.claim(
+                    'http',
+                    'portal',
+                    external,
+                    handle,
+                    credential=invite.token,
+                )
+                for external in ('first-' + handle, 'second-' + handle)
+            ),
+        )
+        assert sum(isinstance(result, Ok) for result in results) == 1
+        winner = next(result.unwrap() for result in results if isinstance(result, Ok))
+        assert isinstance(winner, LinkedPrincipal)
+        async with database.session() as session:
+            assert (
+                await session.scalar(
+                    select(func.count())
+                    .select_from(UserRecord)
+                    .where(UserRecord.handle == handle),
+                )
+                == 1
+            )
+            assert (
+                await session.scalar(
+                    select(func.count())
+                    .select_from(ExternalIdentityRecord)
+                    .where(ExternalIdentityRecord.user_id == winner.user_id),
+                )
+                == 1
+            )
+            audit = (
+                await session.scalars(
+                    select(IdentityAuditEventRecord).where(
+                        IdentityAuditEventRecord.event_type == 'registration_failed',
+                    ),
+                )
+            ).all()
+            assert any(
+                isinstance(event.metadata_, dict)
+                and event.metadata_.get('external_user_id')
+                in {'first-' + handle, 'second-' + handle}
+                for event in audit
+            )
+        issued_link = await management.invite(
+            'http',
+            'portal',
+            'first-' + handle if isinstance(results[0], Ok) else 'second-' + handle,
+            'next-bot',
+        )
+        linker = PrincipalLinker(database, GUIDManager(), ClockManager(), _TOKENS)
+        linked = (
+            await linker.link(issued_link.token, 'telegram', 'next-bot', handle)
+        ).unwrap()
+        assert (linked.user_id, linked.memory_scope) == (winner.user_id, handle)
+    finally:
+        await database.dispose()
 
 
 async def test_operator_can_continue_an_unowned_existing_default_scope(
