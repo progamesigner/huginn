@@ -11,7 +11,10 @@ from app.core.providers.config import ConfigProvider
 from app.core.providers.http import HTTPClientProvider
 from app.core.providers.redis import RedisProvider
 from app.core.providers.temporal import ClockProvider
-from app.features.agents.contracts import TurnServiceContract
+from app.features.agents.contracts import (
+    ScopedCommandsServiceContract,
+    TurnServiceContract,
+)
 from app.features.agents.providers import TurnProvider
 from app.features.channels.contracts import TranscriptionServiceContract
 from app.features.channels.registry import CommandRegistry
@@ -26,6 +29,7 @@ from lib.redis import RedisContract
 from lib.temporal import ClockContract
 
 from .actor import TelegramChatActor
+from .menus import TelegramMenuService
 from .service import TelegramMessageHandler
 from .turns import TelegramTurnProcessor
 
@@ -50,6 +54,12 @@ def _turns(container: ContainerContract) -> TelegramTurnProcessor:
         gateway=lambda channel: gateways.gateway(channel.token),
         transcription=container.resolve(TranscriptionServiceContract),
         logger=container.resolve(Logger),
+        scoped_commands=container.resolve(ScopedCommandsServiceContract)
+        if container.bound(ScopedCommandsServiceContract)
+        else None,
+        menus=container.resolve(TelegramMenuService)
+        if container.bound(ScopedCommandsServiceContract)
+        else None,
     )
 
 
@@ -85,6 +95,17 @@ class TelegramProvider(ProviderContract):
                 grace=_TURN_GRACE,
                 logger=container.resolve(Logger).bind(component='telegram'),
             ),
+        )
+        container.bind(
+            TelegramMenuService,
+            factory=lambda c: TelegramMenuService(
+                c.resolve(ScopedCommandsServiceContract),
+                c.resolve(CommandRegistry),
+                c.resolve(IdentityResolutionServiceContract),
+                c.resolve(ChannelGatewayFactoryContract),
+                logger=c.resolve(Logger),
+            ),
+            shared=True,
         )
         container.bind(TelegramTurnProcessor, factory=_turns)
         container.bind(TelegramChatActor, factory=_actor)

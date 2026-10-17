@@ -1,5 +1,5 @@
 import asyncio
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 
 import httpx
 from pydantic import JsonValue, SecretStr, TypeAdapter
@@ -159,14 +159,36 @@ class TelegramClient:
             Message,
         )
 
-    async def set_my_commands(self, commands: Sequence[tuple[str, str]]) -> bool:
+    async def set_my_commands(
+        self,
+        commands: Sequence[tuple[str, str]],
+        *,
+        scope: Mapping[str, JsonValue] | None = None,
+        language: str = '',
+    ) -> bool:
         menu = [
             BotCommand(command=name, description=description)
             for name, description in commands
         ]
         return await self._post(
             'setMyCommands',
-            {'commands': [entry.model_dump() for entry in menu]},
+            {
+                'commands': [entry.model_dump() for entry in menu],
+                **({'scope': dict(scope)} if scope is not None else {}),
+                **({'language_code': language} if language else {}),
+            },
+            bool,
+        )
+
+    async def delete_my_commands(
+        self,
+        *,
+        scope: Mapping[str, JsonValue],
+        language: str = '',
+    ) -> bool:
+        return await self._post(
+            'deleteMyCommands',
+            {'scope': dict(scope), **({'language_code': language} if language else {})},
             bool,
         )
 

@@ -8,6 +8,7 @@ from app.core.providers.config import ConfigProvider
 from app.features.agents.config import build_sections as agent_sections
 from app.features.agents.contracts import (
     HookSource,
+    ScopedCommandsServiceContract,
     SubagentServiceContract,
     ToolSource,
 )
@@ -29,6 +30,7 @@ from app.features.channels.registry import (
     Command,
     CommandRegistry,
 )
+from app.features.channels.scoped_commands import ScopedCommands
 from app.features.channels.telegram.config import TelegramChannelConfig
 from app.features.conversations.config import COMPACTION
 from app.features.conversations.contracts import ConversationServiceContract
@@ -145,6 +147,18 @@ class ChannelContributions(ProviderContract):
         )
         for spec in channel_sections(lambda: container.resolve(ChannelRegistry)):
             _section(container, spec)
+
+        container.bind(
+            ScopedCommandsServiceContract,
+            factory=lambda c: ScopedCommands(
+                c.resolve(HuginnConfig),
+                asset_settings(c.resolve(HuginnConfig)),
+                c.resolve(AssetsServiceContract),
+                frozenset(c.resolve(CommandRegistry).names()),
+                logger=c.resolve(Logger),
+            ),
+            shared=True,
+        )
 
         handlers = CommandHandlers(
             lambda: container.resolve(IdentityResolutionServiceContract),

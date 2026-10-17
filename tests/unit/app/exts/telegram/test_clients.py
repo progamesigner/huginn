@@ -497,3 +497,30 @@ async def test_http_errors_do_not_name_the_bot_token() -> None:
     assert str(raised.value) == 'telegram answered 401 to sendMessage'
     assert raised.value.__cause__ is None
     assert raised.value.__suppress_context__
+
+
+@respx.mock
+async def test_personal_menu_scope_and_language_payload() -> None:
+    scope = {'type': 'chat_member', 'chat_id': '-100', 'user_id': 77}
+    set_route = respx.post(f'{_BASE_URL}/setMyCommands').mock(
+        return_value=httpx.Response(200, json={'ok': True, 'result': True}),
+    )
+    delete_route = respx.post(f'{_BASE_URL}/deleteMyCommands').mock(
+        return_value=httpx.Response(200, json={'ok': True, 'result': True}),
+    )
+    client = make_client()
+    await client.set_my_commands(
+        (('review', 'Review work'),),
+        scope=scope,
+        language='zh',
+    )
+    await client.delete_my_commands(scope=scope, language='zh')
+    assert json.loads(set_route.calls.last.request.content) == {
+        'commands': [{'command': 'review', 'description': 'Review work'}],
+        'scope': scope,
+        'language_code': 'zh',
+    }
+    assert json.loads(delete_route.calls.last.request.content) == {
+        'scope': scope,
+        'language_code': 'zh',
+    }

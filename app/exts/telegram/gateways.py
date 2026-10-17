@@ -5,12 +5,13 @@ from datetime import timedelta
 from typing import override
 
 import httpx
-from pydantic import SecretStr
+from pydantic import JsonValue, SecretStr
 
 from app.contracts.channels import (
     ATTACHMENT_LIMITS,
     ChannelGatewayContract,
     ChannelGatewayFactoryContract,
+    ChannelMenuContract,
     ChannelReplyContract,
     InboundAttachment,
     InboundMessage,
@@ -278,7 +279,7 @@ class TelegramReply(ChannelReplyContract):
         self.timer = self.clock.timer()
 
 
-class TelegramGateway(ChannelGatewayContract):
+class TelegramGateway(ChannelGatewayContract, ChannelMenuContract):
     logger: Logger
     client: TelegramClient
     clock: ClockContract
@@ -313,6 +314,32 @@ class TelegramGateway(ChannelGatewayContract):
     def reply(self, message: InboundMessage) -> ChannelReplyContract:
         return TelegramReply(self.client, message.chat, self.clock, logger=self.logger)
 
+    @override
+    async def set_commands(
+        self,
+        chat: str,
+        member: str | None,
+        commands: tuple[tuple[str, str], ...],
+        language: str = '',
+    ) -> None:
+        await self.client.set_my_commands(
+            commands,
+            scope=_command_scope(chat, member),
+            language=language,
+        )
+
+    @override
+    async def delete_commands(
+        self,
+        chat: str,
+        member: str | None,
+        language: str = '',
+    ) -> None:
+        await self.client.delete_my_commands(
+            scope=_command_scope(chat, member),
+            language=language,
+        )
+
 
 class TelegramGatewayFactory(ChannelGatewayFactoryContract):
     logger: Logger
@@ -337,3 +364,9 @@ class TelegramGatewayFactory(ChannelGatewayFactoryContract):
             self.clock,
             logger=self.logger,
         )
+
+
+def _command_scope(chat: str, member: str | None) -> dict[str, JsonValue]:
+    if member is None:
+        return {'type': 'chat', 'chat_id': chat}
+    return {'type': 'chat_member', 'chat_id': chat, 'user_id': int(member)}

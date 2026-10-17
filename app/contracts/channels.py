@@ -118,3 +118,22 @@ class ChannelGatewayContract(ABC):
 class ChannelGatewayFactoryContract(ABC):
     @abstractmethod
     def gateway(self, token: SecretStr) -> ChannelGatewayContract: ...
+
+
+class ChannelMenuContract(ABC):
+    @abstractmethod
+    async def set_commands(
+        self,
+        chat: str,
+        member: str | None,
+        commands: tuple[tuple[str, str], ...],
+        language: str = '',
+    ) -> None: ...
+
+    @abstractmethod
+    async def delete_commands(
+        self,
+        chat: str,
+        member: str | None,
+        language: str = '',
+    ) -> None: ...

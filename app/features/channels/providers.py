@@ -4,6 +4,7 @@ from app.contracts.channels import ChannelResolverContract
 from app.core.config.registry import HuginnConfig
 from app.core.providers.config import ConfigProvider
 from app.core.providers.http import HTTPClientProvider
+from app.features.assets.providers import AssetsProvider
 from app.features.conversations.providers import ConversationProvider
 from app.features.identities.providers import IdentityProvider
 from lib.container import ContainerContract, ProviderContract
@@ -55,6 +56,7 @@ class ChannelRegistryProvider(ProviderContract):
 
 class ChannelProvider(ProviderContract):
     dependencies = (
+        AssetsProvider,
         ChannelRegistryProvider,
         ConfigProvider,
         ConversationProvider,

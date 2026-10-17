@@ -192,6 +192,10 @@ def message(message_id: int) -> httpx.Response:
 
 @asynccontextmanager
 async def pipeline(turns: TurnServiceContract) -> AsyncIterator[httpx.AsyncClient]:
+    for method in ('setMyCommands', 'deleteMyCommands'):
+        respx.post(f'{_BASE_URL}/{method}').mock(
+            return_value=httpx.Response(200, json={'ok': True, 'result': True}),
+        )
     application = build()
     with (
         application.use(HuginnConfig, make_config()),

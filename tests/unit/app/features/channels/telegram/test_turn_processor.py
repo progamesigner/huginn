@@ -11,8 +11,12 @@ from app.contracts.channels import (
     InboundCommand,
     InboundMessage,
 )
-from app.features.agents.contracts import TurnServiceContract
-from app.features.agents.entities import TurnRequest
+from app.features.agents.contracts import (
+    CommandInfo,
+    ScopedCommandsServiceContract,
+    TurnServiceContract,
+)
+from app.features.agents.entities import RoutingPolicy, TurnRequest
 from app.features.channels.contracts import TranscriptionServiceContract
 from app.features.channels.exceptions import TranscriptionUnavailableError
 from app.features.channels.registry import Command, CommandRegistry
@@ -695,3 +699,91 @@ async def test_a_failed_report_leaves_the_round_finished() -> None:
     )
 
     await processor.process(channel(), (inbound(1),))
+
+
+class FakeScopedCommands(ScopedCommandsServiceContract):
+    def __init__(self, *, enabled: bool = True) -> None:
+        self.active = enabled
+        self.listed = 0
+
+    @override
+    def enabled(self, policy: RoutingPolicy) -> bool:
+        return self.active
+
+    @override
+    async def inventory(self, request: TurnRequest) -> tuple[CommandInfo, ...]:
+        self.listed += 1
+        return (CommandInfo('review', 'Review work'),)
+
+    @override
+    async def resolve(self, request: TurnRequest) -> TurnRequest:
+        return request
+
+
+@pytest.mark.parametrize(
+    ('enabled', 'name', 'reaches_turn'),
+    [
+        (True, 'review', True),
+        (True, 'reboot', False),
+        (False, 'review', False),
+    ],
+)
+async def test_only_a_listed_personal_command_enters_the_turn_pipeline(
+    enabled: bool,
+    name: str,
+    reaches_turn: bool,
+) -> None:
+    gateway = FakeGateway()
+    turns = FakeTurns()
+    scoped = FakeScopedCommands(enabled=enabled)
+    processor = make_processor(turns, FakeIdentities(), gateway)
+    processor.scoped_commands = scoped
+
+    await processor.process(channel(), (commanded(1, name, 'draft'),))
+
+    assert bool(turns.requests) is reaches_turn
+    if reaches_turn:
+        assert turns.requests[0].prompts[0].text == f'/{name} draft'
+    else:
+        assert gateway.replies[0].fragments == [
+            f'/{name} is not a command I know. Available: /new.',
+        ]
+    assert scoped.listed == (1 if enabled else 0)
+
+
+async def test_identity_failure_while_checking_a_personal_command_is_reported() -> None:
+    class Failing(FakeIdentities):
+        @override
+        async def resolve(
+            self,
+            provider: str,
+            realm: str,
+            external_user_id: str,
+        ) -> Principal:
+            raise RuntimeError('identity store down')
+
+    gateway = FakeGateway()
+    processor = make_processor(FakeTurns(), Failing(), gateway)
+    processor.scoped_commands = FakeScopedCommands()
+
+    await processor.process(channel(), (commanded(1, 'review'),))
+
+    assert gateway.abandoned == ['1']
+
+
+async def test_a_personal_command_resolves_the_sender_once() -> None:
+    identities = FakeIdentities()
+    turns = FakeTurns()
+    processor = make_processor(turns, identities, FakeGateway())
+    processor.scoped_commands = FakeScopedCommands()
+
+    await processor.process(
+        channel(),
+        (commanded(1, 'review', 'draft'), inbound(2, text='and this')),
+    )
+
+    assert len(identities.calls) == 1
+    assert [prompt.text for prompt in turns.requests[0].prompts] == [
+        '/review draft',
+        'and this',
+    ]

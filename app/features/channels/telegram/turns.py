@@ -8,7 +8,10 @@ from app.contracts.channels import (
     InboundCommand,
     InboundMessage,
 )
-from app.features.agents.contracts import TurnServiceContract
+from app.features.agents.contracts import (
+    ScopedCommandsServiceContract,
+    TurnServiceContract,
+)
 from app.features.agents.entities import PromptAttachment, TurnPrompt, TurnRequest
 from app.features.channels.config import routing_policy
 from app.features.channels.contracts import TranscriptionServiceContract
@@ -21,6 +24,7 @@ from lib.documents import SUPPORTED_MIMES
 from lib.observability import Logger
 
 from .config import TelegramChannelConfig
+from .menus import TelegramMenuService
 
 type GatewayFactory = Callable[[TelegramChannelConfig], ChannelGatewayContract]
 
@@ -87,7 +91,11 @@ class TelegramTurnProcessor:
         commands: CommandRegistry,
         *,
         logger: Logger,
+        scoped_commands: ScopedCommandsServiceContract | None = None,
+        menus: TelegramMenuService | None = None,
     ) -> None:
+        self.scoped_commands = scoped_commands
+        self.menus = menus
         self.logger = logger.bind(component='telegram')
         self.commands = commands
         self.gateway = gateway
@@ -104,17 +112,29 @@ class TelegramTurnProcessor:
             return
 
         gateway = self.gateway(channel)
-        for message in messages:
+        # One identity lookup per sender serves command checks and the turn.
+        actors = dict[str, Principal | None]()
+        scoped = set[int]()
+        for index, message in enumerate(messages):
             if (command := message.command) is not None:
-                await self._command(gateway, command, message)
+                if await self._scoped(channel, command, message, actors):
+                    scoped.add(index)
+                else:
+                    await self._command(gateway, command, message, channel)
+            if self.menus is not None:
+                self.menus.schedule(channel, message)
 
-        said = tuple(message for message in messages if message.command is None)
+        said = tuple(
+            message
+            for index, message in enumerate(messages)
+            if message.command is None or index in scoped
+        )
         if not said:
             return
 
         reply = gateway.reply(said[-1])
         try:
-            request = await self._request(channel, gateway, said)
+            request = await self._request(channel, gateway, said, actors)
             if not request.prompts:
                 await self._decline(reply, said)
                 return
@@ -123,6 +143,41 @@ class TelegramTurnProcessor:
         except Exception:
             self.logger.exception('Turn failed for chat %s', said[-1].chat)
             await self._abandon(gateway, reply, said)
+
+    async def _scoped(
+        self,
+        channel: TelegramChannelConfig,
+        command: InboundCommand,
+        message: InboundMessage,
+        actors: dict[str, Principal | None],
+    ) -> bool:
+        # Only a personal command the sender can use enters the turn pipeline;
+        # anything else keeps the built-in unknown-command answer.
+        if (
+            self.scoped_commands is None
+            or command.name in self.commands.names()
+            or not self.scoped_commands.enabled(routing_policy(channel))
+        ):
+            return False
+        try:
+            key = message.user or _UNATTRIBUTED
+            if key not in actors:
+                actors[key] = await self._actor(channel, message)
+            request = TurnRequest(
+                channel=message.channel,
+                chat=message.chat,
+                policy=routing_policy(channel),
+                prompts=(_prompt('', (), actors[key]),),
+            )
+            listing = await self.scoped_commands.inventory(request)
+        except Exception:
+            # Let the turn pipeline report the failure on this message.
+            self.logger.warning(
+                'Could not list personal commands for /%s',
+                command.name,
+            )
+            return True
+        return any(item.name == command.name for item in listing)
 
     async def _abandon(
         self,
@@ -220,10 +275,35 @@ class TelegramTurnProcessor:
         gateway: ChannelGatewayContract,
         command: InboundCommand,
         message: InboundMessage,
+        channel: TelegramChannelConfig | None = None,
     ) -> None:
         self.logger.info('Handling /%s for chat %s', command.name, message.chat)
         try:
-            answer = await self.commands.dispatch(command, message)
+            if (
+                command.name == 'help'
+                and self.scoped_commands is not None
+                and channel is not None
+            ):
+                principal = await self._actor(channel, message)
+                request = TurnRequest(
+                    channel=message.channel,
+                    chat=message.chat,
+                    policy=routing_policy(channel),
+                    prompts=(_prompt('', (), principal),),
+                )
+                listing = await self.scoped_commands.inventory(request)
+                answer = '\n'.join(
+                    (
+                        'Here is what I understand:',
+                        *(
+                            f'/{item.name} — {item.description}'
+                            for item in (*self.commands.listing(), *listing)
+                        ),
+                        'Some commands may require /help instead of appearing in the Telegram menu.',
+                    ),
+                )
+            else:
+                answer = await self.commands.dispatch(command, message)
         except Exception:
             self.logger.exception(
                 'Command /%s failed for chat %s',
@@ -272,8 +352,9 @@ class TelegramTurnProcessor:
         channel: TelegramChannelConfig,
         gateway: ChannelGatewayContract,
         messages: tuple[InboundMessage, ...],
+        actors: dict[str, Principal | None] | None = None,
     ) -> TurnRequest:
-        actors = {}
+        actors = {} if actors is None else actors
         prompts = []
         for message in messages:
             attachments = await self._attachments(gateway, message)
@@ -283,7 +364,18 @@ class TelegramTurnProcessor:
             key = message.user or _UNATTRIBUTED
             if key not in actors:
                 actors[key] = await self._actor(channel, message)
-            prompts.append(_prompt(message.text, attachments, actors[key]))
+            text = message.text
+            if message.command is not None:
+                text = (
+                    '/'
+                    + message.command.name
+                    + (' ' + message.command.args if message.command.args else '')
+                )
+            prompts.append(
+                _prompt(text, attachments, actors[key]).model_copy(
+                    update={'message_id': message.id},
+                ),
+            )
 
         return TurnRequest(
             channel=messages[-1].channel,
