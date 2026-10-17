@@ -60,6 +60,8 @@ class MCPToolSource(ToolSource):
                     ref.server,
                     list(ref.allow),
                 )
-            collected.extend((tool.name, tool) for tool in tools)
+            collected.extend(
+                (tool.name, tool) for tool in tools if not tool.writes_brief
+            )
 
         return ToolHarvest(tools=tuple(collected), unreachable=tuple(unreachable))

@@ -19,13 +19,15 @@ from .config import AGENTS, DEFAULTS, DefaultsConfig
 from .contracts import (
     HookRegistry,
     HookSource,
+    ScopedCommandsServiceContract,
+    SubagentServiceContract,
     ToolSource,
     ToolSourceRegistry,
     TranscriptServiceContract,
     TurnServiceContract,
 )
 from .router import Router
-from .services import TurnHandler
+from .services import SubagentRunner, TurnHandler
 
 # NOTE: a shadow decision is advisory, so only a few run at once against a slow
 # gateway and shutdown does not wait long for the rest
@@ -62,6 +64,9 @@ def _turns(container: ContainerContract) -> TurnHandler:
         router=container.resolve(Router),
         sources=container.resolve(ToolSourceRegistry),
         hooks=container.resolve(HookRegistry),
+        commands=container.resolve(ScopedCommandsServiceContract)
+        if container.bound(ScopedCommandsServiceContract)
+        else None,
         store=container.resolve(TranscriptServiceContract),
         clock=container.resolve(ClockContract),
         defaults=defaults,
@@ -86,6 +91,15 @@ class AgentProvider(ProviderContract):
             shared=True,
         )
         container.bind(Router, factory=_router, shared=True)
+        container.bind(
+            SubagentServiceContract,
+            factory=lambda c: SubagentRunner(
+                c.resolve(LLMContract),
+                c.resolve(ClockContract),
+                logger=c.resolve(Logger),
+            ),
+            shared=True,
+        )
 
 
 class TurnProvider(ProviderContract):

@@ -113,7 +113,14 @@ def test_section_contributions_add_up_to_their_own_sections() -> None:
 
     keys = {spec.key for spec in app.resolve(SectionRegistry)}
 
-    assert keys == {'agents', 'channels', 'defaults', 'providers', 'transcription'}
+    assert keys == {
+        'agents',
+        'assets',
+        'channels',
+        'defaults',
+        'providers',
+        'transcription',
+    }
 
 
 def test_agents_config_provider_accepts_valid_tool_overlay(tmp_path: Path) -> None:

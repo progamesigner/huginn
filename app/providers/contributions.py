@@ -6,9 +6,14 @@ from app.core.config.providers import PROVIDERS
 from app.core.config.registry import HuginnConfig, SectionSpec
 from app.core.providers.config import ConfigProvider
 from app.features.agents.config import build_sections as agent_sections
-from app.features.agents.contracts import HookSource, ToolSource
+from app.features.agents.contracts import (
+    HookSource,
+    SubagentServiceContract,
+    ToolSource,
+)
 from app.features.agents.providers import AgentProvider
-from app.features.assets.config import ASSETS
+from app.features.assets.config import ASSETS, asset_settings
+from app.features.assets.contracts import AssetsServiceContract
 from app.features.assets.providers import AssetsProvider
 from app.features.auth.config import build_sections as auth_sections
 from app.features.auth.providers import AuthProvider
@@ -45,6 +50,8 @@ from app.features.skills.config import SKILLS, effective_skills
 from app.features.skills.providers import SkillsProvider
 from app.features.skills.repositories import SkillRepositories
 from app.features.skills.tools import SkillToolSource
+from app.features.subagents.providers import SubagentsProvider
+from app.features.subagents.tools import SubagentToolSource
 from app.features.tools.artifacts import ArtifactWriter
 from app.features.tools.config import build_sections as tool_sections
 from app.features.tools.document.config import DocumentToolConfig
@@ -114,8 +121,21 @@ class BlobContributions(ProviderContract):
         _section(container, BLOBS)
 
 
+class AssetContributions(ProviderContract):
+    dependencies = (AssetsProvider,)
+
+    @override
+    def __call__(self, container: ContainerContract) -> None:
+        _section(container, ASSETS)
+
+
 class ChannelContributions(ProviderContract):
-    dependencies = (ChannelProvider, ConversationProvider, IdentityProvider)
+    dependencies = (
+        AssetContributions,
+        ChannelProvider,
+        ConversationProvider,
+        IdentityProvider,
+    )
 
     @override
     def __call__(self, container: ContainerContract) -> None:
@@ -168,11 +188,10 @@ class MCPContributions(ProviderContract):
 
 
 class SkillContributions(ProviderContract):
-    dependencies = (AgentProvider, AssetsProvider, SkillsProvider)
+    dependencies = (AgentProvider, AssetContributions, SkillsProvider)
 
     @override
     def __call__(self, container: ContainerContract) -> None:
-        _section(container, ASSETS)
         _section(container, SKILLS)
         container.contribute(
             ToolSource,
@@ -269,4 +288,20 @@ class HookContributions(ProviderContract):
         container.contribute(
             HookSource,
             lambda c: c.resolve(ConfiguredHookSource),
+        )
+
+
+class SubagentContributions(ProviderContract):
+    dependencies = (SubagentsProvider,)
+
+    @override
+    def __call__(self, container: ContainerContract) -> None:
+        container.contribute(
+            ToolSource,
+            lambda c: SubagentToolSource(
+                c.resolve(AssetsServiceContract),
+                asset_settings(c.resolve(HuginnConfig)),
+                c.resolve(SubagentServiceContract),
+                logger=c.resolve(Logger),
+            ),
         )

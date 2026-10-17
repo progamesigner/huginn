@@ -24,6 +24,7 @@ from .contributions import (
     HookContributions,
     MCPContributions,
     SkillContributions,
+    SubagentContributions,
     ToolContributions,
 )
 from .identities import IdentityTargetsProvider
@@ -54,6 +55,7 @@ class HuginnProvider(ProviderContract):
         HookContributions,
         MCPContributions,
         SkillContributions,
+        SubagentContributions,
         ToolContributions,
         TelegramGatewayProvider,
     )

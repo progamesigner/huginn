@@ -100,6 +100,35 @@ class SkillsConfig(ConfigValue):
     allow: Annotated[tuple[str, ...], Field()] = ()
 
 
+class SubagentDefinitionConfig(ConfigValue):
+    description: Annotated[str, Field(min_length=1)]
+    instructions: Annotated[str, Field(min_length=1)]
+    model: Annotated[str | None, Field()] = None
+    tools: Annotated[tuple[str, ...] | None, Field()] = None
+    max_iterations: Annotated[int | None, Field(gt=0)] = None
+    max_completion_tokens: Annotated[int | None, Field(gt=0)] = None
+    turn_timeout: Annotated[float | None, Field(gt=0)] = None
+
+
+class SubagentsConfig(SkillsConfig):
+    max_concurrency: Annotated[int, Field(gt=0)] = 1
+    definitions: Annotated[dict[str, SubagentDefinitionConfig], Field()] = Field(
+        default_factory=dict,
+    )
+
+
+class BriefConfig(ConfigValue):
+    enabled: Annotated[bool, Field()] = False
+    writable: Annotated[bool, Field()] = False
+    source: Annotated[str | None, Field(min_length=1)] = None
+
+    @model_validator(mode='after')
+    def write_needs_read(self) -> Self:
+        if self.writable and not self.enabled:
+            raise ValueError('brief.writable requires brief.enabled')
+        return self
+
+
 class AgentConfig(ConfigValue):
     description: Annotated[str, Field()]
     model: Annotated[str | None, Field()] = None
@@ -114,6 +143,11 @@ class AgentConfig(ConfigValue):
     mcp: Annotated[tuple[MCPRef, ...], Field()] = ()
     hooks: Annotated[tuple[str, ...], Field()] = ()
     skills: Annotated[SkillsConfig, Field()] = Field(default_factory=SkillsConfig)
+    commands: Annotated[SkillsConfig, Field()] = Field(default_factory=SkillsConfig)
+    subagents: Annotated[SubagentsConfig, Field()] = Field(
+        default_factory=SubagentsConfig,
+    )
+    brief: Annotated[BriefConfig, Field()] = Field(default_factory=BriefConfig)
 
 
 class AgentConfigList(RootModel[dict[str, AgentConfig]]):

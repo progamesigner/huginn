@@ -22,6 +22,7 @@ class ReadDocumentParams(ToolParams):
 
 class ReadDocumentTool(TypedTool[ReadDocumentParams]):
     name = 'read_document'
+    inherits_to_child = False
     description = (
         'Read a bounded section of an extracted document from this conversation.'
         ' The first line gives the character range, the total length and the offset'

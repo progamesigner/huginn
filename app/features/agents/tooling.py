@@ -25,6 +25,7 @@ class ToolSet:
     ) -> None:
         self.logger = logger.bind(component='tools')
         self.tools = dict(tools or {})
+        self.dynamic_instructions: list[str] = []
 
     def add(self, name: str, tool: Tool) -> None:
         if name in self.tools:

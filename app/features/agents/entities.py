@@ -1,7 +1,7 @@
 import re
 from collections.abc import Mapping
 from datetime import datetime
-from typing import Annotated
+from typing import Annotated, Literal
 
 from pydantic import Field, JsonValue
 
@@ -86,6 +86,9 @@ class PromptAttachment(AppValue):
 
 
 class TurnPrompt(AppValue):
+    origin: Annotated[Literal['user', 'template', 'delegated'], Field()] = 'user'
+    original_text: Annotated[str | None, Field()] = None
+    message_id: Annotated[str | None, Field()] = None
     text: Annotated[str, Field()]
     actor: Annotated[str, Field()]
     attachments: Annotated[tuple[PromptAttachment, ...], Field()] = ()
@@ -186,6 +189,7 @@ class TurnInput(AppValue):
     channel: Annotated[str, Field()]
     capabilities: Annotated[ModelCapabilities, Field()]
     prior_turns: Annotated[tuple[Message, ...], Field()] = ()
+    dynamic_instructions: Annotated[tuple[str, ...], Field()] = ()
     max_completion_tokens: Annotated[int | None, Field()] = None
     budget: Annotated[TurnBudget, Field()] = Field(default_factory=TurnBudget)
 

@@ -1009,3 +1009,16 @@ async def test_a_turn_records_the_artifacts_its_tools_produced() -> None:
     assert reply.artifacts == [ARTIFACT]
     assert store.artifacts == [ARTIFACT]
     assert store.transcript.recorded == [(('draw me a chart',), 'here it is')]
+
+
+async def test_a_dependency_timeout_is_a_failure_not_the_turn_deadline() -> None:
+    class Stalled(ToolSource):
+        @override
+        async def collect(self, agent: AgentConfig, scope: TurnScope) -> ToolHarvest:
+            raise TimeoutError('memory service timed out')
+
+    reply = RecordingReply()
+    handler = configured_handler(FakeLLM([]), FakeStore(), Stalled())
+    with pytest.raises(TimeoutError):
+        await handler.handle(request('hello'), reply)
+    assert 'timeout' not in reply.endings

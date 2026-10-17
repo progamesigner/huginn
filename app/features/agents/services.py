@@ -36,7 +36,12 @@ from .config import (
     resolve_selection,
 )
 from .contracts import (
+    ExecutionContext,
     HookRegistry,
+    ScopedCommandsServiceContract,
+    SubagentDefinition,
+    SubagentServiceContract,
+    SubagentStream,
     ToolSource,
     ToolSourceRegistry,
     TranscriptServiceContract,
@@ -56,6 +61,7 @@ from .entities import (
     resolve_budget,
 )
 from .exceptions import MalformedToolCallError, UnservableModelError
+from .execution import current_execution, execution
 from .router import Router
 from .tooling import ToolSet
 
@@ -205,6 +211,8 @@ def _build_messages(turn: TurnInput, *, logger: Logger) -> Iterator[Message]:
         segments=(TextSegment(text=turn.instructions),),
         cacheable=True,
     )
+    for content in turn.dynamic_instructions:
+        yield Message(role='system', segments=(TextSegment(text=content),))
     yield from turn.prior_turns
     dt = isoformat(turn.now)
     for prompt in turn.prompts:
@@ -249,11 +257,26 @@ async def _execute(
 ) -> tuple[ToolResultSegment, ToolExecution]:
     timer = clock.timer()
     await sink.on_tool(call.name, 'started')
+    timeout = tool_timeout
     try:
-        async with asyncio.timeout(tool_timeout):
+        context = current_execution()
+        tool = tools.tools.get(call.name)
+        timeout = (
+            max(
+                0.0,
+                context.deadline
+                - asyncio.get_running_loop().time()
+                - context.budget.min_iteration_budget,
+            )
+            if context is not None
+            and tool is not None
+            and tool.execution_policy == 'delegation'
+            else tool_timeout
+        )
+        async with asyncio.timeout(timeout):
             result, artifacts = await tools.execute(call)
     except TimeoutError:
-        logger.warning('Tool %s timed out after %.1fs', call.name, tool_timeout)
+        logger.warning('Tool %s timed out after %.1fs', call.name, timeout)
         result, artifacts = (
             ToolResultSegment(
                 tool_call_id=call.id,
@@ -291,13 +314,16 @@ async def _execute_calls(
     *,
     logger: Logger,
 ) -> tuple[tuple[ToolResultSegment, ...], Step]:
-    tasks = (
-        _execute(tools, call, tool_timeout, clock, sink, logger=logger)
-        for call in calls
-    )
+    async with asyncio.TaskGroup() as group:
+        tasks = [
+            group.create_task(
+                _execute(tools, call, tool_timeout, clock, sink, logger=logger),
+            )
+            for call in calls
+        ]
     results, records = cast(
         tuple[tuple[ToolResultSegment, ...], tuple[ToolExecution, ...]],
-        zip(*await asyncio.gather(*tasks), strict=True),
+        zip(*(task.result() for task in tasks), strict=True),
     )
     return results, Step(tools=records)
 
@@ -357,7 +383,12 @@ class AgentRunner:
         history = list(_build_messages(turn, logger=self.logger))
         steps = []
         text = ''
-        deadline = asyncio.get_running_loop().time() + budget.turn_timeout
+        context = current_execution()
+        deadline = (
+            context.deadline
+            if context is not None
+            else asyncio.get_running_loop().time() + budget.turn_timeout
+        )
 
         for iteration in range(budget.max_iterations):
             # NOTE: the first iteration always opens -- a turn that never reached the
@@ -453,7 +484,9 @@ class TurnHandler(TurnServiceContract):
         *,
         logger: Logger,
         hooks: HookRegistry | None = None,
+        commands: ScopedCommandsServiceContract | None = None,
     ) -> None:
+        self.commands = commands
         self.hooks = hooks or HookRegistry()
         self.logger = logger.bind(component='turns')
         self.clock = clock
@@ -469,6 +502,14 @@ class TurnHandler(TurnServiceContract):
         if not request.prompts:
             self.logger.info('Nothing to answer for chat %s', request.chat)
             return
+
+        if self.commands is not None:
+            try:
+                request = await self.commands.resolve(request)
+            except ValueError as error:
+                await reply.on_text(str(error))
+                await reply.finish()
+                return
 
         context = RoutingContext(current=request.prompts)
         selection = request.policy.selection
@@ -526,50 +567,84 @@ class TurnHandler(TurnServiceContract):
     ) -> None:
         history = await self.store.history(request.channel, request.chat)
         witness = AnswerRecorder(reply)
+        deadline = None
         try:
             document_blobs = await self.store.document_blobs(
                 request.channel,
                 request.chat,
             )
             scope = _turn_scope(request, agent.name, document_blobs, logger=self.logger)
-            tools, unreachable = await build_tool_set(
-                self.sources.sources(),
-                agent.config,
-                scope,
-                request.denied_tools,
-                logger=self.logger,
+            budget = resolve_budget(agent.config, self.defaults)
+            limit = (
+                request.max_completion_tokens
+                or agent.config.max_completion_tokens
+                or self.default_max_completion_tokens
             )
-            extra = []
-            missing_hooks = []
-            for source in self.hooks.sources():
-                harvest = await source.collect(agent.config, scope)
-                if harvest.content:
-                    extra.append(harvest.content)
-                missing_hooks.extend(harvest.unreachable)
-            runner = AgentRunner(client, tools, self.clock, logger=self.logger)
-            output = await runner.run(
-                TurnInput(
-                    instructions=_instructions(
-                        agent.config,
-                        (*unreachable, *missing_hooks),
-                        logger=self.logger,
-                        extra=extra,
-                    ),
-                    prompts=request.prompts,
-                    model=ref.model,
-                    capabilities=self.llm.capabilities(ref),
-                    now=self.clock.now(),
-                    channel=request.channel,
-                    prior_turns=history,
-                    max_completion_tokens=(
-                        request.max_completion_tokens
-                        or agent.config.max_completion_tokens
-                        or self.default_max_completion_tokens
-                    ),
-                    budget=resolve_budget(agent.config, self.defaults),
+            context = ExecutionContext(
+                deadline=asyncio.get_running_loop().time() + budget.turn_timeout,
+                semaphore=asyncio.Semaphore(agent.config.subagents.max_concurrency),
+                scope=scope,
+                model=ref,
+                budget=budget,
+                max_completion_tokens=limit,
+                tools={},
+                user_messages=tuple(
+                    prompt for prompt in request.prompts if prompt.origin == 'user'
                 ),
-                witness,
             )
+            with execution(context):
+                async with asyncio.timeout_at(context.deadline) as deadline:
+                    tools, unreachable = await build_tool_set(
+                        self.sources.sources(),
+                        agent.config,
+                        scope,
+                        request.denied_tools,
+                        logger=self.logger,
+                    )
+                    extra = []
+                    missing_hooks = []
+                    for source in self.hooks.sources():
+                        harvest = await source.collect(agent.config, scope)
+                        if harvest.content:
+                            extra.append(harvest.content)
+                        missing_hooks.extend(harvest.unreachable)
+                    context.tools = tools.tools
+                    runner = AgentRunner(client, tools, self.clock, logger=self.logger)
+                    output = await runner.run(
+                        TurnInput(
+                            instructions=_instructions(
+                                agent.config,
+                                (*unreachable, *missing_hooks),
+                                logger=self.logger,
+                                extra=extra,
+                            ),
+                            prompts=request.prompts,
+                            model=ref.model,
+                            capabilities=self.llm.capabilities(ref),
+                            now=self.clock.now(),
+                            channel=request.channel,
+                            prior_turns=history,
+                            max_completion_tokens=(
+                                request.max_completion_tokens
+                                or agent.config.max_completion_tokens
+                                or self.default_max_completion_tokens
+                            ),
+                            budget=budget,
+                            dynamic_instructions=tuple(tools.dynamic_instructions),
+                        ),
+                        witness,
+                    )
+        except TimeoutError:
+            if deadline is None or not deadline.expired():
+                # A dependency's own timeout is a failure, not the turn deadline.
+                await self._salvage(
+                    request,
+                    agent.name,
+                    witness.answer,
+                    witness.artifacts,
+                )
+                raise
+            output = TurnOutput(text=witness.answer, ending='timeout')
         except Exception:
             await self._salvage(
                 request,
@@ -629,6 +704,7 @@ async def build_tool_set(
     for source in sources:
         harvest = await source.collect(agent, scope)
         unreachable.extend(harvest.unreachable)
+        tools.dynamic_instructions.extend(harvest.context)
         for name, tool in harvest.tools:
             if name in denied:
                 logger.info('Tool %s is denied for this turn', name)
@@ -666,3 +742,117 @@ def _turn_scope(
         memory_scope=memory_scope,
         document_blobs=document_blobs,
     )
+
+
+class SubagentRunner(SubagentServiceContract):
+    def __init__(
+        self,
+        llm: LLMContract,
+        clock: ClockContract,
+        *,
+        logger: Logger,
+    ) -> None:
+        self.llm = llm
+        self.clock = clock
+        self.logger = logger.bind(component='subagents')
+
+    @override
+    async def execute(
+        self,
+        definition: SubagentDefinition,
+        task: str,
+        context: ExecutionContext,
+        stream: TurnStream | None = None,
+    ) -> TurnOutput:
+        if context.depth >= 1:
+            raise ValueError('nested delegation is disabled')
+        model = definition.model or context.model.model
+        parent = self.llm.provider_for(context.model)
+        ref = ModelRef(
+            model=model,
+            provider=parent.name if parent is not None else context.model.provider,
+        )
+        child = self.llm.provider_for(ref)
+        client = self.llm.client_for(ref)
+        if (
+            parent is None
+            or child is None
+            or child.name != parent.name
+            or client is None
+        ):
+            raise ValueError('subagent model is not available from the parent provider')
+        if definition.tools is not None and not set(definition.tools).issubset(
+            context.tools,
+        ):
+            raise ValueError('subagent requests tools unavailable to its parent')
+        selected = {
+            name: tool
+            for name, tool in context.tools.items()
+            if tool.inherits_to_child
+            and tool.execution_policy != 'delegation'
+            and not tool.writes_brief
+            and (definition.tools is None or name in definition.tools)
+        }
+        deadline = context.deadline - context.budget.min_iteration_budget
+        if definition.turn_timeout is not None:
+            deadline = min(
+                deadline,
+                asyncio.get_running_loop().time() + definition.turn_timeout,
+            )
+        if (
+            deadline - asyncio.get_running_loop().time()
+            < context.budget.min_iteration_budget
+        ):
+            raise ValueError('insufficient time to delegate and collect an answer')
+        limits = [
+            limit
+            for limit in (
+                definition.max_completion_tokens,
+                context.max_completion_tokens,
+            )
+            if limit is not None
+        ]
+        budget = context.budget.model_copy(
+            update={
+                'max_iterations': min(
+                    definition.max_iterations or context.budget.max_iterations,
+                    context.budget.max_iterations,
+                ),
+                'turn_timeout': deadline - asyncio.get_running_loop().time(),
+            },
+        )
+        child_context = ExecutionContext(
+            deadline=deadline,
+            semaphore=context.semaphore,
+            scope=context.scope.model_copy(update={'document_blobs': frozenset()}),
+            model=ref,
+            budget=budget,
+            max_completion_tokens=min(limits) if limits else None,
+            tools=selected,
+            depth=1,
+        )
+        with execution(child_context):
+            return await AgentRunner(
+                client,
+                ToolSet(selected, logger=self.logger),
+                self.clock,
+                logger=self.logger,
+            ).run(
+                TurnInput(
+                    instructions=definition.instructions,
+                    prompts=(
+                        TurnPrompt(
+                            text=task,
+                            actor=context.scope.actor,
+                            origin='delegated',
+                        ),
+                    ),
+                    model=model,
+                    now=self.clock.now(),
+                    channel=context.scope.channel,
+                    capabilities=self.llm.capabilities(ref),
+                    max_completion_tokens=child_context.max_completion_tokens,
+                    budget=budget,
+                ),
+                stream or SubagentStream(),
+            )
