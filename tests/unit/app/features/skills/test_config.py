@@ -245,3 +245,52 @@ def test_named_filesystem_source_resolves_root_and_glob_values(tmp_path: Path) -
     assert isinstance(source, FilesystemSkillSourceConfig)
     assert source.root == tmp_path
     assert source.glob == '**/SKILL.md'
+
+
+@pytest.mark.parametrize('legacy_shape', ['source', 'sources'])
+async def test_migrated_asset_sources_preserve_effective_role_bindings(
+    tmp_path: Path,
+    legacy_shape: str,
+) -> None:
+    from app.features.assets.config import ASSETS
+    from app.features.skills.config import effective_skills
+
+    original = {
+        'kind': 'mcp',
+        'server': 'memory',
+        'glob': 'Agents/custom/**/SKILL.md',
+        'inject': {'agent': 'advisor'},
+        'bind': {'user': 'handle'},
+    }
+    payload = {
+        'agents': {
+            'advisor': {
+                'description': 'Advice',
+                'instructions': 'Help',
+                'skills': {'enabled': True, 'source': 'default', 'allow': ['review']},
+            },
+        },
+        'mcp_servers': {'memory': {'transport': 'http', 'url': 'https://memory.test'}},
+        'skills': {
+            legacy_shape: original
+            if legacy_shape == 'source'
+            else {'default': original},
+        },
+    }
+    path = tmp_path / 'config.yaml'
+    path.write_text(json.dumps(payload))
+    registry = SectionRegistry((AGENTS, MCP_SERVERS, SKILLS, ASSETS))
+    before = load_config(path, registry)
+    migrated = {key: value for key, value in original.items() if key != 'glob'}
+    migrated['globs'] = {'skill': original['glob']}
+    payload['skills'] = {}
+    payload['assets'] = {'sources': {'default': migrated}}
+    path.write_text(json.dumps(payload))
+    after = load_config(path, registry)
+    assert (
+        effective_skills(before).named_sources == effective_skills(after).named_sources
+    )
+    assert (
+        before.section(AGENTS).root['advisor'].skills
+        == after.section(AGENTS).root['advisor'].skills
+    )

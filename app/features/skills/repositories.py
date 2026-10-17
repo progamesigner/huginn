@@ -42,6 +42,8 @@ class SkillRepository:
         self,
         scope: Mapping[str, JsonValue],
     ) -> tuple[SkillMeta, ...]:
+        if not self.source.cache_inventory:
+            return await self.source.list(scope)
         now = self.clock.now()
         self.cache = {
             key: cached for key, cached in self.cache.items() if cached.expires_at > now
@@ -55,7 +57,8 @@ class SkillRepository:
         cached = self.cache.get(key)
         if cached is None:
             cached = _Inventory(now + self.ttl, await self.source.list(scope))
-            self.cache[key] = cached
+            if len(self.cache) < 256:
+                self.cache[key] = cached
         return cached.skills
 
     async def load(

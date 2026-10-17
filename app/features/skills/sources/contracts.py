@@ -7,6 +7,8 @@ from app.features.skills.entities import Skill, SkillMeta
 
 
 class SkillSource(ABC):
+    cache_inventory = True
+
     @abstractmethod
     async def list(self, scope: Mapping[str, JsonValue]) -> tuple[SkillMeta, ...]: ...
 

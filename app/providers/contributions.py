@@ -8,6 +8,8 @@ from app.core.providers.config import ConfigProvider
 from app.features.agents.config import build_sections as agent_sections
 from app.features.agents.contracts import HookSource, ToolSource
 from app.features.agents.providers import AgentProvider
+from app.features.assets.config import ASSETS
+from app.features.assets.providers import AssetsProvider
 from app.features.auth.config import build_sections as auth_sections
 from app.features.auth.providers import AuthProvider
 from app.features.blobs.config import BLOBS
@@ -39,7 +41,7 @@ from app.features.identities.providers import IdentityProvider
 from app.features.mcp.config import MCP_SERVERS
 from app.features.mcp.providers import MCPProvider
 from app.features.mcp.sources import MCPToolSource
-from app.features.skills.config import SKILLS
+from app.features.skills.config import SKILLS, effective_skills
 from app.features.skills.providers import SkillsProvider
 from app.features.skills.repositories import SkillRepositories
 from app.features.skills.tools import SkillToolSource
@@ -166,16 +168,17 @@ class MCPContributions(ProviderContract):
 
 
 class SkillContributions(ProviderContract):
-    dependencies = (AgentProvider, SkillsProvider)
+    dependencies = (AgentProvider, AssetsProvider, SkillsProvider)
 
     @override
     def __call__(self, container: ContainerContract) -> None:
+        _section(container, ASSETS)
         _section(container, SKILLS)
         container.contribute(
             ToolSource,
             lambda c: SkillToolSource(
                 lambda name: c.resolve(SkillRepositories).get(name),
-                c.resolve(HuginnConfig).section(SKILLS),
+                effective_skills(c.resolve(HuginnConfig)),
                 logger=c.resolve(Logger),
             ),
         )

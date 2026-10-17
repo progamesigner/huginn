@@ -7,6 +7,7 @@ from app.core.config.exceptions import ConfigError
 from app.core.config.registry import HuginnConfig, SectionSpec
 from app.core.config.schema import ConfigValue
 from app.features.agents.config import AGENTS, InjectionConfig
+from app.features.assets.config import ASSETS, MCPAssetSourceConfig
 from app.features.mcp.config import MCP_SERVERS
 from app.features.mcp.exceptions import UnknownMCPServerReferenceError
 
@@ -94,7 +95,7 @@ def _describe_skills(config: HuginnConfig) -> list[str]:
 
 
 def _validate_skill_refs(config: HuginnConfig) -> None:
-    sources = config.section(SKILLS).named_sources
+    sources = effective_skills(config).named_sources
     for name, source in sources.items():
         if isinstance(source, MCPSkillSourceConfig):
             if source.server not in config.section(MCP_SERVERS).root:
@@ -116,6 +117,33 @@ def _validate_skill_refs(config: HuginnConfig) -> None:
                 f' {name!r} is not configured; set skills.sources.default'
                 ' or select a named source with skills.source on the agent',
             )
+
+
+def effective_skills(config: HuginnConfig) -> SkillsConfig:
+    legacy = config.section(SKILLS).named_sources
+    sources = dict(legacy)
+    assets = config.section(ASSETS).sources if ASSETS.key in config.sections else {}
+    for name, source in assets.items():
+        if name in sources:
+            raise ConfigError(
+                f'source {name!r} exists in both skills.sources and assets.sources; migrate it once',
+            )
+        if isinstance(source, MCPAssetSourceConfig):
+            sources[name] = MCPSkillSourceConfig(
+                server=source.server,
+                glob=source.globs.skill,
+                list_tool=source.list_tool,
+                read_tool=source.read_tool,
+                inject=source.inject,
+                bind=source.bind,
+            )
+        else:
+            sources[name] = FilesystemSkillSourceConfig(
+                kind='filesystem',
+                root=source.root,
+                glob=source.globs.skill,
+            )
+    return SkillsConfig(sources=sources)
 
 
 SKILLS = SectionSpec(
