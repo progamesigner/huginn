@@ -75,5 +75,7 @@ class MessageEndpointProvider(ProviderContract):
     @override
     def __call__(self, container: ContainerContract) -> None:
         from .endpoints import router
+        from .identity import router as identity_router
 
         container.resolve(RouterContract).include(router)
+        container.resolve(RouterContract).include(identity_router)

@@ -10,11 +10,17 @@ from fastapi import FastAPI
 from app.core.config.registry import HuginnConfig
 from app.features.agents.contracts import TurnServiceContract
 from app.features.blobs.contracts import BlobServiceContract
-from app.features.identities.contracts import IdentityResolutionServiceContract
+from app.features.identities.contracts import (
+    IdentityLinkingServiceContract,
+    IdentityManagementServiceContract,
+    IdentityResolutionServiceContract,
+)
 from app.features.identities.entities import AnonymousPrincipal, LinkedPrincipal
+from app.features.identities.exceptions import InvalidIdentityLinkError
 from bin.server import build
 from lib.mcp import MCPClientContract
 from lib.redis import RedisContract
+from lib.result import Err, Ok
 from lib.router import RouterContract
 from tests.helpers.blobs import MemoryBlobs
 from tests.helpers.redis import FakeClient, make_redis
@@ -41,6 +47,7 @@ def headers(user: str | None = 'app-user-1') -> dict[str, str]:
 async def client_for(
     turns: StreamingTurns,
     resolver: MagicMock,
+    management: MagicMock | None = None,
 ) -> AsyncIterator[httpx.AsyncClient]:
     application = build()
     with (
@@ -50,6 +57,14 @@ async def client_for(
         application.use(RedisContract, make_redis(FakeClient())),
         application.use(TurnServiceContract, turns),
         application.use(IdentityResolutionServiceContract, resolver),
+        application.use(
+            IdentityManagementServiceContract,
+            management or MagicMock(spec=IdentityManagementServiceContract),
+        ),
+        application.use(
+            IdentityLinkingServiceContract,
+            management or MagicMock(spec=IdentityLinkingServiceContract),
+        ),
     ):
         app = application.resolve(RouterContract).app
         assert isinstance(app, FastAPI)
@@ -137,3 +152,71 @@ async def test_invalid_asserted_identity_is_rejected(asserted: str) -> None:
         )
     assert response.status_code == 400
     resolver.resolve.assert_not_called()
+
+
+async def test_claim_locks_memory_and_target_to_the_invite() -> None:
+    management = MagicMock(spec=IdentityManagementServiceContract)
+    management.claim = AsyncMock(return_value=Ok(_PRINCIPAL))
+    resolver = MagicMock(spec=IdentityResolutionServiceContract)
+    async with client_for(StreamingTurns(), resolver, management) as client:
+        response = await client.post(
+            '/v1/identity/claim',
+            headers=headers(),
+            json={'code': 'fictional-code', 'handle': 'fictional'},
+        )
+        tampered = await client.post(
+            '/v1/identity/claim',
+            headers=headers(),
+            json={
+                'code': 'fictional-code',
+                'handle': 'fictional',
+                'memory_scope': 'another-person',
+            },
+        )
+        missing = await client.post(
+            '/v1/identity/claim',
+            headers=headers(None),
+            json={'code': 'fictional-code', 'handle': 'fictional'},
+        )
+    assert response.status_code == 200
+    assert response.json()['handle'] == 'fictional'
+    assert tampered.status_code == 422
+    assert missing.status_code == 400
+    management.claim.assert_awaited_once_with(
+        'http',
+        'web',
+        'app-user-1',
+        'fictional',
+        credential='fictional-code',
+        display_name=None,
+    )
+
+
+async def test_invalid_link_is_a_client_error_and_requires_asserted_identity() -> None:
+    management = MagicMock(spec=IdentityLinkingServiceContract)
+    management.link = AsyncMock(
+        return_value=Err(InvalidIdentityLinkError('realm_mismatch')),
+    )
+    async with client_for(
+        StreamingTurns(),
+        MagicMock(spec=IdentityResolutionServiceContract),
+        management,
+    ) as client:
+        response = await client.post(
+            '/v1/identity/link',
+            headers=headers(),
+            json={'code': 'fictional-code'},
+        )
+        missing = await client.post(
+            '/v1/identity/link',
+            headers=headers(None),
+            json={'code': 'fictional-code'},
+        )
+    assert response.status_code == 400
+    assert missing.status_code == 400
+    management.link.assert_awaited_once_with(
+        'fictional-code',
+        'http',
+        'web',
+        'app-user-1',
+    )
