@@ -650,10 +650,12 @@ def _turn_scope(
     accounts = {item.account for item in request.prompts}
     account = prompt.account
     handle = prompt.handle
+    memory_scope = prompt.memory_scope
     if len(accounts) > 1:
         logger.info('Withholding account-bound tools: the turn mixes accounts')
         account = None
         handle = None
+        memory_scope = None
     return TurnScope(
         actor=prompt.actor,
         agent=agent,
@@ -661,5 +663,6 @@ def _turn_scope(
         chat=request.chat,
         account=account,
         handle=handle,
+        memory_scope=memory_scope,
         document_blobs=document_blobs,
     )

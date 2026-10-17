@@ -91,6 +91,7 @@ class TurnPrompt(AppValue):
     attachments: Annotated[tuple[PromptAttachment, ...], Field()] = ()
     account: Annotated[str | None, Field()] = None
     handle: Annotated[str | None, Field()] = None
+    memory_scope: Annotated[str | None, Field()] = None
 
 
 class RoutingTurn(AppValue):
@@ -122,6 +123,7 @@ class TurnScope(AppValue):
     chat: Annotated[str, Field()]
     account: Annotated[str | None, Field()] = None
     handle: Annotated[str | None, Field()] = None
+    memory_scope: Annotated[str | None, Field()] = None
     document_blobs: Annotated[frozenset[str], Field()] = frozenset()
 
 
@@ -136,6 +138,10 @@ def resolve_bindings(
     resolved = dict(inject)
     for key, source in bind.items():
         value = getattr(scope, source)
+        # Keep deployed `user: handle` configurations on the account's approved
+        # memory binding while preserving handle for non-memory arguments.
+        if key == 'user' and source == 'handle':
+            value = scope.memory_scope or scope.handle
         if not value or not _SAFE_BOUND_VALUE.fullmatch(value):
             return None
         resolved[key] = value

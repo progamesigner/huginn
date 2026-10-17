@@ -19,6 +19,7 @@ def scope(**changes: str | None) -> TurnScope:
         chat=str(values['chat'] or ''),
         account=values['account'],
         handle=values['handle'],
+        memory_scope=values.get('memory_scope'),
     )
 
 
@@ -78,3 +79,18 @@ def test_unsafe_path_like_value_withholds_the_binding() -> None:
         )
         is None
     )
+
+
+def test_personal_memory_uses_approved_scope_and_preserves_other_handle_bindings() -> (
+    None
+):
+    current = scope(handle='fictional', memory_scope='prior-memory')
+    bindings = binding('handle')
+    bindings['name'] = 'handle'
+    assert resolve_bindings({}, bindings, current) == {
+        'user': 'prior-memory',
+        'name': 'fictional',
+    }
+    assert resolve_bindings({}, binding('memory_scope'), current) == {
+        'user': 'prior-memory',
+    }

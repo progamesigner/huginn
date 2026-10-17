@@ -63,6 +63,7 @@ def _prompt(
             attachments=attachments,
             account=str(principal.user_id),
             handle=principal.handle,
+            memory_scope=principal.memory_scope,
         )
 
     actor = _UNATTRIBUTED if principal is None else principal.stable_key

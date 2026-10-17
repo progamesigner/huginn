@@ -41,7 +41,15 @@ class DefaultsConfig(ConfigValue):
     turn_timeout: Annotated[float | None, Field(gt=0)] = None
 
 
-type BindingSource = Literal['account', 'actor', 'agent', 'channel', 'chat', 'handle']
+type BindingSource = Literal[
+    'account',
+    'actor',
+    'agent',
+    'channel',
+    'chat',
+    'handle',
+    'memory_scope',
+]
 
 
 class InjectionConfig(ConfigValue):
