@@ -99,62 +99,200 @@ Which LLM answers is a `(provider, model)` pair, resolved the same way everywher
 
 The real config is injected at deploy time, never committed: a Windmill secret script renders it, a kustomize `secretGenerator` turns that into a Kubernetes `Secret`, and it lands mounted at `/etc/huginn/config.yaml` inside the running pod. There is no live-reload — a config change means rerunning the Windmill script, `kubectl apply` on the regenerated `Secret`, and a rollout restart to pick it up.
 
-### Agent skill sources
+### Scoped agent assets
 
-Declare skill libraries in `skills.sources` and select one with
-`agents.<name>.skills.source`. An agent with `skills.enabled: true` uses the source
-named `default` when it omits `source`; Huginn does not choose the first source or
-merge libraries. Enabled skills without that source fail config validation, as
-does an unknown explicit reference, even on an agent whose skills are disabled.
-Disabled skills with no reference need no source.
+Declare named libraries in `assets.sources`. Each agent selects its own source
+for `skills`, `commands`, `subagents`, and `brief`; an omitted source means
+`default`, never the first available library. The first three selectors have
+`enabled: false` and `allow: []` defaults. Once enabled, an empty allowlist offers
+all valid assets in that selected source and scope. A nonempty list narrows it.
 
 ```yaml
-skills:
+assets:
+  max_entries: 256
   sources:
-    advisor:
+    personal:
       kind: mcp
       server: memory
-      glob: Agents/skills/**/SKILL.md
       inject:
-        agent: ${MUNINN_ADVISOR_SCOPE_AGENT}
-        user: ${MUNINN_ADVISOR_SCOPE_USER}
+        agent: default
+      bind:
+        user: memory_scope
     local:
       kind: filesystem
-      root: /opt/huginn/skills
-      glob: '**/SKILL.md'
+      root: /opt/huginn/assets
+      globs:
+        skill: skills/**/SKILL.md
+        command: commands/*.md
+        subagent: agents/*/PROMPT.md
 agents:
   advisor:
     description: Advice and planning
     instructions: Help the user plan their work.
-    skills:
-      enabled: true
-      source: advisor
-      allow: []
+    skills: {enabled: true, source: personal}
+    commands: {enabled: true, source: personal}
+    subagents: {enabled: true, source: personal, max_concurrency: 1}
+    brief: {enabled: false, writable: false, source: personal}
 ```
 
-MCP sources accept `server`, `list_tool` (default `list_memory_notes`), `read_tool`
-(default `read_memory_note`), `glob`, `inject`, and `bind`. Like hook arguments,
-source values use the shared config loader: `${ENV}` interpolation and
-`value_from: {env: NAME}` or `value_from: {file: PATH}` work before validation,
-including nested `inject` values, globs, and filesystem roots. Missing variables
-fail with the field path. `bind` resolves turn identity fields (`account`, `actor`,
-`agent`, `channel`, `chat`, `handle`); its keys must not overlap `inject`. Missing
-bound identity fields omit the skill tool for that turn. Filesystem sources do
-not accept `inject` or `bind`, and their glob must stay within their root.
+MCP sources accept `server`, `list_tool` (default `list_memory_notes`),
+`read_tool` (default `read_memory_note`), `globs`, `inject`, and `bind`.
+Default globs are `Agents/skills/**/SKILL.md`, `Agents/commands/*.md`, and
+`Agents/agents/*/PROMPT.md`. Binding resolves trusted turn identity, including
+the account's approved `memory_scope`; it does not assume that the display
+handle names an existing memory vault. Missing binding values withhold the
+library. Shared scopes require explicit injection. Filesystem sources use
+`root` and `globs`; neither glob traversal nor symlink escapes are allowed.
+Config interpolation and `value_from` work as elsewhere in the configuration.
 
-Inventory discovery and skill loading use the same selected source and resolved
-scope. Each source has its own repository, with inventory cached for 15 minutes
-per complete scope; agents sharing a source and scope share that inventory.
-Different sources or scopes never share cached inventory. Skill bodies are read
-fresh on every load. An empty `allow` offers all skills in the selected library;
-a nonempty list narrows it. Remote inventory failures mark skills unavailable
-for the turn; local filesystem failures surface as errors.
+Discovery caches are keyed by source, kind, and the complete resolved binding,
+with a 15-minute TTL and a bounded entry count. Concurrent refreshes share a
+read; cancelling the last reader reclaims that work. Bodies and the fixed
+`Agents/AGENTS.md` path are read each time they are used. The public asset
+service's `invalidate(source)` permits controlled refresh; inventory changes
+appear on the next interaction after refresh or expiry. Permission checks are
+repeated independently of inventory and menu caches. Config changes still
+require a restart.
 
-The legacy `skills.source` remains supported as `skills.sources.default`, so
-existing configurations continue to work. It can coexist with other named
-sources, but setting it together with `skills.sources.default` is rejected with
-a migration message. Move the old source unchanged beneath
-`skills.sources.default` to adopt the named form.
+Existing `skills.sources` and legacy `skills.source` remain supported. Migrate
+one source at a time, preserving each name, role selector, injection, binding,
+and allowlist:
+
+| Existing configuration | Asset configuration |
+| --- | --- |
+| `skills.source` | `assets.sources.default` |
+| `skills.sources.<name>` | `assets.sources.<name>` |
+| source `glob` | source `globs.skill` (copy the exact value) |
+| source `kind`, `server`, `root`, `list_tool`, `read_tool`, `inject`, `bind` | same fields on the named asset source |
+| `agents.<role>.skills.{source,enabled,allow}` | unchanged |
+
+Distinct names may coexist during migration; duplicate names across the old
+and new sections are rejected. A legacy source is never implicitly used for
+commands, subagents, or the brief. Real vault content and credentials belong
+outside this repository. Deployment config and manifests need the same
+migration before enabling the new capabilities; this branch does not deploy it.
+
+### Personal commands and Telegram menus
+
+A command is `Agents/commands/<name>.md`, with a required `description`, an
+optional `name` and `agent`, and a prompt body. Only `$ARGUMENTS` is replaced,
+verbatim; without it, arguments are appended after the body. Built-in names
+are reserved. A template's agent must be authorized and use the same resolved
+source and scope as that template. Ambiguous names across sources are rejected.
+
+Telegram dispatch, personal `/help`, and menu discovery use one scoped
+resolver. Template commands enter the normal turn pipeline, also available to
+HTTP callers with a trusted asserted identity. Leading-slash text that names no
+command available to the sender remains ordinary input; Telegram still answers
+an unknown command itself. Mixed identity batches cannot
+borrow another sender's personal command. The original command remains
+attached to the expanded prompt for provenance; template text cannot authorize
+a brief update.
+
+Private menus use chat scope; group menus use chat-member scope. They are
+recomputed on interaction, including after in-chat linking, and after inventory
+refresh. An external unlink or permission change is enforced at the next
+interaction; menus never grant access. Menus are synchronized in the background
+only when an authorized agent enables commands, so a slow identity, inventory
+or Telegram call never delays the conversation. Publishing is serialized per
+bot, chat and member; while one run waits its turn, further requests for that
+menu are absorbed by it. It deduplicates identical content, removes stale
+entries after a failed replacement, retries at most 3 times per interaction
+with backoff, and stops 30 seconds after the run starts. Disabling commands
+withdraws a menu this process published at the next interaction; menus
+published before a restart stay until commands are enabled again. Shutdown
+waits briefly for running synchronizations, then cancels them. A failed sync remains eligible for retry. Restarting
+rebuilds these caches. Telegram menu syntax and capacity can omit items that
+remain available through `/help` and runtime authorization.
+
+### Constrained subagents
+
+`agent(name, task)` loads `Agents/agents/<name>/PROMPT.md`: required
+`description`, optional `model` and `tools`, with instructions in the body.
+Additional descriptive metadata is retained by the asset layer. Execution
+limits, provider and MCP settings cannot come from vault frontmatter.
+`subagents.definitions.<name>` may instead define `description`, `instructions`,
+optional `model`, `tools`, `max_iterations`, `max_completion_tokens`, and
+`turn_timeout`. Config wins a name collision, reported when that scope is loaded.
+
+Delegation requires `subagents.enabled: true`. The default concurrency is 1;
+`max_concurrency` accepts positive integers. Every call shares the parent's
+semaphore, cancellation, and monotonic deadline, reserving at least one parent
+iteration to collect the answer. Queueing and prompt reads spend that budget.
+Delegation uses its reserved deadline instead of the ordinary `tool_timeout`;
+other tools keep their configured timeout. An external MCP tool is treated as
+delegation only when listed in that reference's `delegate`, which must be a
+subset of its `allow`; such tools are never inherited by children. Children cannot delegate, update the
+brief, exceed parent iterations or output limits, or select another provider.
+Requested child tools must be a subset of those available to the parent.
+
+Children receive their task and instructions, without parent history, attachments,
+conversation document grants, or a separate stored conversation. Only completed
+final text returns to the parent; intermediate drafts do not stream to the
+reader. Files a child produces are delivered with the parent's answer. Ordinary inherited tools can still have side effects.
+Logs identify the parent turn and child execution without logging task or
+instruction text. There is no aggregate token or spending cap across children.
+The current streaming contract does not expose model token-usage counters.
+
+### Collaboration brief
+
+`brief.enabled` reads the selected scope's `Agents/AGENTS.md` afresh each turn.
+The brief follows the static system prompt's cache breakpoint; it does not
+modify that static prefix. A missing brief is acceptable. It contains recent
+agreements, summaries and links; current task progress belongs in HEARTBEAT,
+and detailed decisions and durable knowledge remain in their canonical notes.
+
+`brief.writable` additionally permits `update_brief` only against an original,
+explicit user request to change the brief. It requires a matching message
+identifier and an exact quote, within one sentence, that names `AGENTS.md`, the
+collaboration brief or 協作簡報 together with a change verb. The sentence is
+read whole: a negation, condition, report or question before the brief is
+named, or a later clause that retracts the change, denies the request; text
+after a colon or inside quotation marks is content to record, and polite forms
+such as 「可以幫我更新 AGENTS.md 嗎？」 still count. The check errs towards
+denying, so a request mixing content and instruction may need restating; discussion, template text, tool output and
+child tasks do not authorize writes. This language check is a conservative
+policy aid, not an infallible natural-language authorization mechanism. The
+server's scope, writable setting, managed tool boundary and version check are
+separate enforced restrictions. Raw MCP brief wrappers and generic memory
+mutations or property edits targeting the root `Agents/AGENTS.md` (or moving
+`Agents`) are blocked; Huginn assumes Muninn's default `Agents` directory. Other memory writes remain available.
+
+Who may ask for a change depends on the source binding. When the source binds a
+personal value (`account`, `actor`, `handle` or `memory_scope`), the brief
+belongs to the sender and only the sender's own request counts. Any other
+binding makes the brief shared: it stays read-only unless `brief.writers` lists
+the handles whose requests may change it.
+
+Writes require Muninn's versioned `update_agents_file` wrapper, accepting
+`content`, `expected_version` and `expected_absent` alongside fixed `agent` and
+`user` bindings, and returning the new `version`. Existing reads must return a
+`version` when requested with `include_version: true`; Huginn negotiates this
+field through the read tool schema and preserves structured MCP metadata and
+error codes. Updates replace the entire file; conflicts preserve it. The client
+rejects more than 200 lines or 65,536 UTF-8 bytes without truncation and audits
+success or failure against the originating message. It disables writes when
+the service lacks this capability. The matching Muninn implementation is on
+`feat/m7-briefs`; both branches require a separate rollout before enabling writes.
+
+The brief's byte/character count is logged without its content. Prefix stability
+is tested with fake models. Actual cached-token hits and incremental token cost
+require a later measurement against the selected provider; no paid model calls
+are part of ordinary tests.
+
+The integration test uses a locally built Muninn binary, independent loopback
+servers sharing a disposable vault, and a scripted model (no provider calls):
+
+```bash
+MUNINN_TEST_BINARY=/absolute/path/to/muninn/target/debug/muninn \
+  uv run pytest tests/integration/app/features/briefs/test_muninn_brief.py -q
+```
+
+Without that variable the test skips; it never falls back to a remote server.
+It clears the server environment and checks creation, next-turn reads, approved
+memory bindings, read-only enforcement, managed-path protection, and conflicting
+updates/initial creations across independent servers. Build the binary from
+Muninn's matching `feat/m7-briefs` branch before running it.
 
 ## HTTP chat API
 

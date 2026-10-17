@@ -80,15 +80,20 @@ mcp_servers:
       value_from:
         env: MEMORY_MCP_TOKEN
 
-skills:
+assets:
+  max_entries: 256
   sources:
     default:
       kind: mcp
       server: memory
+      globs:
+        skill: Agents/skills/**/SKILL.md
+        command: Agents/commands/*.md
+        subagent: Agents/agents/*/PROMPT.md
       inject:
         agent: default
       bind:
-        user: handle
+        user: memory_scope
 
 # Shell hooks inherit only PATH, HOME and HUGINN_HOOK_* by default. bind values
 # become HUGINN_HOOK_<UPPERCASE_KEY> and override inherited values. inherit_env
@@ -137,6 +142,26 @@ agents:
     skills:
       enabled: true
       source: default
+    commands:
+      enabled: false
+      source: default
+      allow: []
+    subagents:
+      enabled: false
+      source: default
+      allow: []
+      max_concurrency: 1
+      # definitions:
+      #   reviewer:
+      #     description: Review a self-contained task.
+      #     instructions: Review only the supplied task and return your findings.
+      #     tools: []
+    brief:
+      enabled: false
+      writable: false
+      source: default
+      # A shared (not personally bound) brief accepts updates only from these handles.
+      # writers: []
 
   concierge:
     description: Fallback agent for chats with no specific binding.
