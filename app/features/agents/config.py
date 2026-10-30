@@ -71,6 +71,13 @@ class ToolRef(InjectionConfig):
 class MCPRef(InjectionConfig):
     server: Annotated[str, Field()]
     allow: Annotated[tuple[str, ...], Field()] = ()
+    delegate: Annotated[tuple[str, ...], Field()] = ()
+
+    @model_validator(mode='after')
+    def delegates_allowed(self) -> Self:
+        if missing := sorted(set(self.delegate) - set(self.allow)):
+            raise ValueError(f'delegate tools must be allowed: {", ".join(missing)}')
+        return self
 
 
 class RouterShadowConfig(ConfigValue):

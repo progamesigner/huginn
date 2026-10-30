@@ -1,5 +1,5 @@
 import json
-import re
+import posixpath
 from collections.abc import Iterable, Mapping, Sequence
 from typing import override
 
@@ -42,21 +42,16 @@ class MCPTool(Tool):
         server: str,
         info: MCPToolInfo,
         inject: Mapping[str, JsonValue],
+        *,
+        delegation: bool = False,
     ) -> None:
         self.name = namespaced(server, info.name)
         self.description = info.description
         self.client = client
         self.server = server
         self.tool = info.name
-        if info.name in {
-            'agent',
-            'spawn_agent',
-            'delegate',
-            'run_agent',
-            'call_agent',
-            'task',
-            'create_task',
-        }:
+        # NOTE: declared per server; a tool name alone cannot reveal delegation
+        if delegation:
             self.execution_policy = 'delegation'
         self.writes_brief = info.name in {'update_agents_file', 'update_brief'}
         self.input_schema = info.input_schema
@@ -68,7 +63,10 @@ class MCPTool(Tool):
         payload = {**provided, **self.inject}
         if self.writes_brief:
             return 'brief updates require the managed update_brief tool and an explicit user request'
-        if self.tool in _MUTATIONS and _targets_brief(payload):
+        if self.tool in _MUTATIONS and _targets_brief(
+            payload,
+            folder=self.tool in _MOVES,
+        ):
             return (
                 'AGENTS.md is managed; use update_brief with an explicit user request'
             )
@@ -86,10 +84,13 @@ def build_mcp_tools(
     infos: Sequence[MCPToolInfo],
     allow: Sequence[str],
     inject: Mapping[str, JsonValue],
+    delegate: Sequence[str] = (),
 ) -> list[MCPTool]:
     # NOTE: deny by default
     return [
-        MCPTool(client, server, info, inject) for info in infos if info.name in allow
+        MCPTool(client, server, info, inject, delegation=info.name in delegate)
+        for info in infos
+        if info.name in allow
     ]
 
 
@@ -108,14 +109,25 @@ _MUTATIONS = frozenset(
         'rename_memory_note',
         'rename_memory_notes',
         'evolve_core_persona',
+        'update_note_properties',
     },
 )
 
 
-def _targets_brief(value: JsonValue) -> bool:
+_MOVES = frozenset(
+    {
+        'delete_memory_note',
+        'delete_memory_notes',
+        'rename_memory_note',
+        'rename_memory_notes',
+    },
+)
+
+
+def _targets_brief(value: JsonValue, *, folder: bool) -> bool:
     if isinstance(value, dict):
         return any(
-            _targets_brief(item)
+            _targets_brief(item, folder=folder)
             for key, item in value.items()
             if key
             not in {
@@ -125,18 +137,19 @@ def _targets_brief(value: JsonValue) -> bool:
                 'replacement',
                 'old_string',
                 'new_string',
+                'search_string',
+                'replace_string',
                 'agent',
                 'user',
                 'description',
             }
         )
     if isinstance(value, list):
-        return any(_targets_brief(item) for item in value)
-    if isinstance(value, str):
-        path = value.replace('\\', '/').rstrip('/')
-        return (
-            path == 'Agents'
-            or re.search(r'(?:^|/)AGENTS(?:[.][^/]*)?[.]md$', path, re.IGNORECASE)
-            is not None
+        return any(_targets_brief(item, folder=folder) for item in value)
+    if isinstance(value, str) and value.strip():
+        # Only the scope's root brief is managed; moving its folder moves it too.
+        path = posixpath.normpath(value.strip().replace('\\', '/')).lstrip('/')
+        return path.casefold() == 'agents/agents.md' or (
+            folder and path.casefold() == 'agents'
         )
     return False

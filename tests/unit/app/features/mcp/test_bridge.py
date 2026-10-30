@@ -101,3 +101,59 @@ async def test_invoke_tolerates_empty_arguments() -> None:
     await tool.invoke('')
 
     assert client.calls == [('memory', 'ping', {})]
+
+
+def test_delegation_is_declared_per_server_rather_than_guessed_from_names() -> None:
+    tools = build_mcp_tools(
+        FakeClient(),
+        'tasks',
+        [_info('task'), _info('dispatch')],
+        ('task', 'dispatch'),
+        {},
+        ('dispatch',),
+    )
+
+    assert {tool.tool: tool.execution_policy for tool in tools} == {
+        'task': 'ordinary',
+        'dispatch': 'delegation',
+    }
+
+
+def test_delegate_tools_must_be_allowed() -> None:
+    import pytest
+    from pydantic import ValidationError
+
+    from app.features.agents.config import MCPRef
+
+    with pytest.raises(ValidationError, match='delegate'):
+        MCPRef(server='tasks', allow=('task',), delegate=('dispatch',))
+
+
+async def test_only_the_root_brief_is_protected_from_generic_mutations() -> None:
+    client = FakeClient()
+    write = MCPTool(client, 'memory', _info('write_memory_note'), {})
+    rename = MCPTool(client, 'memory', _info('rename_memory_note'), {})
+
+    for path in ('Agents/projects/x/AGENTS.md', 'Agents', 'notes/AGENTS.md'):
+        assert await write.invoke(f'{{"path": "{path}", "content": "x"}}') == 'called'
+    for path in ('Agents/AGENTS.md', './Agents//AGENTS.md', '/agents/agents.md'):
+        assert 'managed' in str(await write.invoke(f'{{"path": "{path}"}}'))
+    assert 'managed' in str(await rename.invoke('{"from": "Agents", "to": "Old"}'))
+    assert len(client.calls) == 3
+
+
+async def test_brief_properties_are_managed_but_replacement_text_is_content() -> None:
+    client = FakeClient()
+    properties = MCPTool(client, 'memory', _info('update_note_properties'), {})
+    edit = MCPTool(client, 'memory', _info('edit_memory_note'), {})
+
+    assert 'managed' in str(
+        await properties.invoke('{"path": "Agents/AGENTS.md", "properties": {}}'),
+    )
+    assert (
+        await edit.invoke(
+            '{"path": "Agents/notes.md", "search_string": "x",'
+            ' "replace_string": "Agents/AGENTS.md"}',
+        )
+        == 'called'
+    )

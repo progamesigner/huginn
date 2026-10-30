@@ -53,6 +53,7 @@ class MCPToolSource(ToolSource):
                 infos,
                 ref.allow,
                 inject,
+                ref.delegate,
             )
             if not tools:
                 self.logger.warning(
