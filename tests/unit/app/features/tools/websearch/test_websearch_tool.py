@@ -120,6 +120,7 @@ async def test_run_searches_and_formats() -> None:
         WebSearchRepository(HTTPClientManager()),
         api_key=SecretStr('felo-key'),
         base_url='https://openapi.felo.ai',
+        timeout=60.0,
     )
 
     output = await tool.run(WebSearchParams(query='taipei weather'))
@@ -142,3 +143,25 @@ def test_build_websearch_binds_config_credentials() -> None:
     assert tool.repository is repository
     assert tool.api_key.get_secret_value() == 'felo-key'
     assert tool.base_url == 'https://openapi.felo.ai/'
+    assert tool.timeout == 60.0
+
+
+def test_build_websearch_reads_the_timeout_from_config() -> None:
+    tool = build_websearch(
+        WebSearchRepository(HTTPClientManager()),
+        WebSearchToolConfig.model_validate(
+            {'kind': 'websearch', 'api_key': 'felo-key', 'timeout': 90},
+        ),
+    )
+
+    assert tool.timeout == 90.0
+
+
+@pytest.mark.parametrize('timeout', [0, -1, float('inf')])
+def test_websearch_config_rejects_a_nonpositive_or_infinite_timeout(
+    timeout: float,
+) -> None:
+    with pytest.raises(ValidationError):
+        WebSearchToolConfig.model_validate(
+            {'kind': 'websearch', 'api_key': 'felo-key', 'timeout': timeout},
+        )

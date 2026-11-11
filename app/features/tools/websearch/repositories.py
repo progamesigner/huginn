@@ -30,8 +30,14 @@ class WebSearchRepository:
         query: str,
         api_key: SecretStr,
         base_url: str,
+        request_timeout: float,
     ) -> WebSearchResult:
-        client = FeloClient(http=self.http, api_key=api_key, base_url=base_url)
+        client = FeloClient(
+            http=self.http,
+            api_key=api_key,
+            base_url=base_url,
+            timeout=request_timeout,
+        )
         result = await client.search(query)
         return WebSearchResult(
             answer=result.answer,

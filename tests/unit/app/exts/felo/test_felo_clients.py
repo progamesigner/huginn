@@ -29,6 +29,7 @@ def make_client() -> FeloClient:
         http=HTTPClientManager(),
         api_key=SecretStr('felo-key'),
         base_url='https://openapi.felo.ai',
+        timeout=60.0,
     )
 
 
@@ -99,3 +100,25 @@ async def test_search_raises_on_timeout() -> None:
 
     with pytest.raises(httpx.TimeoutException):
         await make_client().search('anything')
+
+
+@respx.mock
+async def test_search_waits_for_the_configured_timeout() -> None:
+    route = respx.post('https://openapi.felo.ai/v2/chat').mock(
+        return_value=httpx.Response(200, json=_PAYLOAD),
+    )
+    client = FeloClient(
+        http=HTTPClientManager(timeout=30.0),
+        api_key=SecretStr('felo-key'),
+        base_url='https://openapi.felo.ai',
+        timeout=75.0,
+    )
+
+    await client.search('anything')
+
+    assert route.calls.last.request.extensions['timeout'] == {
+        'connect': 75.0,
+        'read': 75.0,
+        'write': 75.0,
+        'pool': 75.0,
+    }

@@ -61,13 +61,20 @@ class ToolSet:
             return _failed(call, str(error))
         except Exception as error:
             self.logger.exception('Tool %s raised while executing', call.name)
-            return _failed(call, f'tool {call.name!r} failed: {error}')
+            return _failed(call, f'tool {call.name!r} failed: {_describe(error)}')
 
         result = output if isinstance(output, ToolResult) else ToolResult(text=output)
         return (
             ToolResultSegment(tool_call_id=call.id, content=result.text, error=False),
             result.artifacts,
         )
+
+
+def _describe(error: Exception) -> str:
+    # NOTE: some errors (httpx timeouts) carry no message, so the type is all
+    # the model has to tell what went wrong
+    name = type(error).__name__
+    return f'{name}: {error}' if str(error) else name
 
 
 def _failed(call: ToolCallSegment, content: str) -> ToolOutcome:

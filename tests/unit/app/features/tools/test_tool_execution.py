@@ -84,6 +84,29 @@ async def test_execute_reports_why_a_tool_raised_not_only_that_it_did() -> None:
     assert 'muninn: not connected' in result.content
 
 
+class SilentTimeoutTool(TypedTool[EchoParams]):
+    name = 'silent'
+    description = 'Raises an error that carries no message'
+    params = EchoParams
+
+    @override
+    async def run(self, params: EchoParams) -> ToolOutput:
+        raise TimeoutError
+
+
+# NOTE: an httpx timeout stringifies to '', which used to leave the model reading
+# "failed: " with nothing after it -- the type is then the only reason left
+async def test_execute_names_the_error_type_when_the_message_is_empty() -> None:
+    tools = ToolSet(logger=make_logger())
+    tools.add('silent', SilentTimeoutTool())
+    call = ToolCallSegment(id='call_1', name='silent', arguments='{"text": "x"}')
+
+    result, _ = await tools.execute(call)
+
+    assert result.error is True
+    assert result.content == "tool 'silent' failed: TimeoutError"
+
+
 async def test_execute_reports_unknown_tool_with_available_list() -> None:
     tools = make_toolset()
     call = ToolCallSegment(id='call_1', name='missing', arguments='{}')

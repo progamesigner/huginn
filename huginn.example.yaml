@@ -51,6 +51,8 @@ tools:
     api_key:
       value_from:
         env: SUPERSEARCH_API_KEY
+    # Seconds to wait for Felo to search and answer (default 60).
+    timeout: 90
   illustrator:
     kind: images
     description: Draw an image the user asked for; it is sent to them directly.

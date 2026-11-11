@@ -9,3 +9,4 @@ class WebSearchToolConfig(ToolConfig):
     kind: Annotated[Literal['websearch'], Field()]
     api_key: Annotated[SecretStr, Field()]
     base_url: Annotated[HttpUrl, Field()] = HttpUrl('https://openapi.felo.ai')
+    timeout: Annotated[float, Field(gt=0, allow_inf_nan=False)] = 60.0

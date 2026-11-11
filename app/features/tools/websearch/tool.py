@@ -48,20 +48,28 @@ class WebSearchTool(TypedTool[WebSearchParams]):
     repository: WebSearchRepository
     api_key: SecretStr
     base_url: str
+    timeout: float
 
     def __init__(
         self,
         repository: WebSearchRepository,
         api_key: SecretStr,
         base_url: str,
+        timeout: float,
     ) -> None:
         self.repository = repository
         self.api_key = api_key
         self.base_url = base_url
+        self.timeout = timeout
 
     @override
     async def run(self, params: WebSearchParams) -> str:
-        result = await self.repository.search(params.query, self.api_key, self.base_url)
+        result = await self.repository.search(
+            params.query,
+            self.api_key,
+            self.base_url,
+            self.timeout,
+        )
         return _format_result(result, params.max_results)
 
 
@@ -74,4 +82,9 @@ def build_websearch(
             f'websearch requires WebSearchToolConfig, got {type(config).__name__}',
         )
 
-    return WebSearchTool(repository, config.api_key, str(config.base_url))
+    return WebSearchTool(
+        repository,
+        config.api_key,
+        str(config.base_url),
+        config.timeout,
+    )

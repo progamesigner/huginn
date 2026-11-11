@@ -21,6 +21,7 @@ from tests.helpers.replies import RecordingReply
 pytestmark = pytest.mark.integration
 
 _FELO_BASE_URL = 'https://openapi.felo.ai'
+_FELO_TIMEOUT = 60.0
 _OPENAI_MODEL = 'gpt-5-mini'
 
 
@@ -46,7 +47,12 @@ def require_openai_api_key() -> SecretStr:
 
 
 def build_client(http: HTTPClientManager, api_key: SecretStr) -> FeloClient:
-    return FeloClient(http=http, api_key=api_key, base_url=_FELO_BASE_URL)
+    return FeloClient(
+        http=http,
+        api_key=api_key,
+        base_url=_FELO_BASE_URL,
+        timeout=_FELO_TIMEOUT,
+    )
 
 
 async def test_websearch_live() -> None:
@@ -67,7 +73,10 @@ async def test_agent_loop_with_websearch_live() -> None:
     http = HTTPClientManager()
     tools = ToolSet(logger=make_logger())
     repository = WebSearchRepository(http)
-    tools.add('websearch', WebSearchTool(repository, felo_api_key, _FELO_BASE_URL))
+    tools.add(
+        'websearch',
+        WebSearchTool(repository, felo_api_key, _FELO_BASE_URL, _FELO_TIMEOUT),
+    )
     llm = OpenAIAdapter(
         ProviderConfig(
             name='openai',

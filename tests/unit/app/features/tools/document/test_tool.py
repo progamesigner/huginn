@@ -186,4 +186,6 @@ async def test_tool_set_returns_a_safe_error_without_aborting() -> None:
     )
 
     assert result.error is True
-    assert result.content == "tool 'read_document' failed: document blob was not found"
+    assert result.content == (
+        "tool 'read_document' failed: ToolError: document blob was not found"
+    )
