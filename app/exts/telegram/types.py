@@ -26,6 +26,8 @@ class WebhookSpec:
 class MessageSpec:
     edit_interval: timedelta
     length_limit: int
+    # NOTE: telegram drops a draft preview about 30 seconds after its last update
+    draft_refresh: timedelta
 
 
 @dataclass(frozen=True)
@@ -56,7 +58,11 @@ WEBHOOK = WebhookSpec(
     reject_status=403,
     signature_header='X-Telegram-Bot-Api-Secret-Token',
 )
-MESSAGE = MessageSpec(length_limit=4096, edit_interval=timedelta(seconds=1.1))
+MESSAGE = MessageSpec(
+    length_limit=4096,
+    edit_interval=timedelta(seconds=1.1),
+    draft_refresh=timedelta(seconds=20),
+)
 MEDIA = MediaSpec(
     photo_mime='image/jpeg',
     audio_mime='audio/ogg',

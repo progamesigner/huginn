@@ -1,6 +1,7 @@
 import asyncio
 import json
 from datetime import timedelta
+from typing import Any
 
 import httpx
 import pytest
@@ -28,6 +29,9 @@ _LIMIT = 4096
 # NOTE: the refresh runs on wall-clock time inside a background task, so these tests turn
 # it down instead of waiting out the vendor's interval
 _TYPING_INTERVAL = timedelta(seconds=0.01)
+_FAIL_TAIL = (
+    '\n\nSomething went wrong before I could finish this reply. Please ask again.'
+)
 
 
 def make_client() -> TelegramClient:
@@ -37,8 +41,50 @@ def make_client() -> TelegramClient:
     )
 
 
-def make_reply(clock: FakeClock) -> TelegramReply:
-    return TelegramReply(make_client(), _CHAT_ID, clock, logger=make_logger())
+class Sleeper:
+    """Stands in for the writer's throttle wait, which only ends when a test says so."""
+
+    clock: FakeClock
+    delays: list[float]
+    resting: asyncio.Event
+    gate: asyncio.Event
+
+    def __init__(self, clock: FakeClock) -> None:
+        self.clock = clock
+        self.delays = []
+        self.resting = asyncio.Event()
+        self.gate = asyncio.Event()
+
+    async def __call__(self, seconds: float) -> None:
+        self.delays.append(seconds)
+        self.gate = asyncio.Event()
+        self.resting.set()
+        await self.gate.wait()
+        self.clock.advance(timedelta(seconds=seconds))
+
+    async def parked(self) -> float:
+        async with asyncio.timeout(1):
+            await self.resting.wait()
+        return self.delays[-1]
+
+    def release(self) -> None:
+        self.resting.clear()
+        self.gate.set()
+
+
+def make_reply(
+    clock: FakeClock,
+    sleeper: Sleeper | None = None,
+    **options: Any,
+) -> TelegramReply:
+    return TelegramReply(
+        make_client(),
+        _CHAT_ID,
+        clock,
+        sleep=sleeper or Sleeper(clock),
+        logger=make_logger(),
+        **options,
+    )
 
 
 def make_typing_reply(clock: FakeClock) -> TelegramReply:
@@ -47,6 +93,7 @@ def make_typing_reply(clock: FakeClock) -> TelegramReply:
         _CHAT_ID,
         clock,
         typing_interval=_TYPING_INTERVAL,
+        sleep=Sleeper(clock),
         logger=make_logger(),
     )
 
@@ -109,7 +156,35 @@ def marks(route: respx.Route) -> list[list[dict[str, object]]]:
     ]
 
 
-# NOTE: typing the parameter proves the reply contract satisfies the agent loop's sink
+# NOTE: respx counts calls without signalling them, so these yield to the writer until
+# the count moves; the bound turns a writer that never writes into a failure
+async def reached(route: respx.Route, count: int) -> None:
+    async with asyncio.timeout(1):
+        while route.call_count < count:  # noqa: ASYNC110
+            await asyncio.sleep(0)
+
+
+# NOTE: the writer holds its lock until a write is fully accounted for, so waiting on
+# it too keeps the test from racing the bookkeeping that follows the request
+async def written(reply: TelegramReply, route: respx.Route, count: int) -> None:
+    async with asyncio.timeout(1):
+        while route.call_count < count or reply.lock.locked():  # noqa: ASYNC110
+            await asyncio.sleep(0)
+
+
+def drafted() -> respx.Route:
+    return respx.post(f'{_BASE_URL}/sendMessageDraft').mock(
+        return_value=httpx.Response(200, json={'ok': True, 'result': True}),
+    )
+
+
+def throttled(seconds: int) -> httpx.Response:
+    return httpx.Response(
+        429,
+        json={'ok': False, 'error_code': 429, 'parameters': {'retry_after': seconds}},
+    )
+
+
 # NOTE: typing the parameter is the assertion -- it makes ty prove a vendor reply is
 # usable as the agent loop's stream without either side importing the other
 async def drive(sink: TurnStream, *fragments: str) -> None:
@@ -118,11 +193,13 @@ async def drive(sink: TurnStream, *fragments: str) -> None:
 
 
 @respx.mock
-async def test_sends_a_draft_on_the_first_fragment() -> None:
+async def test_sends_a_message_on_the_first_fragment() -> None:
     send = respx.post(f'{_BASE_URL}/sendMessage').mock(return_value=message(7))
     edit = respx.post(f'{_BASE_URL}/editMessageText').mock(return_value=message(7))
+    streamer = make_reply(FakeClock())
 
-    await drive(make_reply(FakeClock()), 'He')
+    await drive(streamer, 'He')
+    await written(streamer, send, 1)
 
     assert json.loads(send.calls.last.request.content) == {
         'chat_id': _CHAT_ID,
@@ -133,44 +210,148 @@ async def test_sends_a_draft_on_the_first_fragment() -> None:
 
 @respx.mock
 async def test_holds_edits_inside_the_throttle_window() -> None:
-    respx.post(f'{_BASE_URL}/sendMessage').mock(return_value=message(7))
+    send = respx.post(f'{_BASE_URL}/sendMessage').mock(return_value=message(7))
     edit = respx.post(f'{_BASE_URL}/editMessageText').mock(return_value=message(7))
     clock = FakeClock()
-    streamer = make_reply(clock)
+    sleeper = Sleeper(clock)
+    streamer = make_reply(clock, sleeper)
 
     await drive(streamer, 'He')
-    clock.advance(timedelta(seconds=1.0))
+    await written(streamer, send, 1)
     await drive(streamer, 'llo')
 
+    assert await sleeper.parked() == pytest.approx(1.1)
     assert not edit.called
 
 
 @respx.mock
-async def test_edits_once_the_throttle_window_elapses() -> None:
-    respx.post(f'{_BASE_URL}/sendMessage').mock(return_value=message(7))
+async def test_edits_the_tail_once_the_window_elapses_with_no_further_text() -> None:
+    send = respx.post(f'{_BASE_URL}/sendMessage').mock(return_value=message(7))
     edit = respx.post(f'{_BASE_URL}/editMessageText').mock(return_value=message(7))
     clock = FakeClock()
-    streamer = make_reply(clock)
+    sleeper = Sleeper(clock)
+    streamer = make_reply(clock, sleeper)
 
     await drive(streamer, 'He')
-    clock.advance(timedelta(seconds=1.2))
+    await written(streamer, send, 1)
     await drive(streamer, 'llo', ' there')
+    await sleeper.parked()
+    # NOTE: no fragment follows the release -- a model that pauses for a tool call must
+    # still get what it already said onto the screen
+    sleeper.release()
+    await written(streamer, edit, 1)
 
     assert json.loads(edit.calls.last.request.content) == {
         'chat_id': _CHAT_ID,
         'message_id': 7,
-        'text': 'Hello',
+        'text': 'Hello there',
     }
     assert edit.call_count == 1
 
 
 @respx.mock
-async def test_finish_flushes_the_pending_tail() -> None:
-    respx.post(f'{_BASE_URL}/sendMessage').mock(return_value=message(7))
+async def test_a_slow_request_does_not_hold_up_the_stream() -> None:
+    started = asyncio.Event()
+    opened = asyncio.Event()
+
+    async def slow(request: httpx.Request) -> httpx.Response:
+        started.set()
+        await opened.wait()
+        return message(7)
+
+    send = respx.post(f'{_BASE_URL}/sendMessage').mock(side_effect=slow)
     edit = respx.post(f'{_BASE_URL}/editMessageText').mock(return_value=message(7))
     streamer = make_reply(FakeClock())
 
-    await drive(streamer, 'He', 'llo', ' there')
+    await drive(streamer, 'He')
+    await observed(started)
+    # NOTE: the bound is the assertion -- the request above never answers until after
+    async with asyncio.timeout(1):
+        await drive(streamer, 'llo', ' there')
+    opened.set()
+    await streamer.finish()
+
+    assert texts(send) == ['He']
+    assert texts(edit) == ['Hello there']
+
+
+@respx.mock
+async def test_a_rate_limited_edit_waits_as_told_and_then_sends_the_latest_text() -> (
+    None
+):
+    send = respx.post(f'{_BASE_URL}/sendMessage').mock(return_value=message(7))
+    edit = respx.post(f'{_BASE_URL}/editMessageText').mock(
+        side_effect=[throttled(5), message(7)],
+    )
+    clock = FakeClock()
+    sleeper = Sleeper(clock)
+    streamer = make_reply(clock, sleeper)
+
+    await drive(streamer, 'He')
+    await written(streamer, send, 1)
+    await drive(streamer, 'llo')
+    await sleeper.parked()
+    sleeper.release()
+    await written(streamer, edit, 1)
+
+    assert await sleeper.parked() == pytest.approx(5.0)
+
+    await drive(streamer, ' there')
+    sleeper.release()
+    await written(streamer, edit, 2)
+
+    # NOTE: the client never retried the stale 'Hello' itself; the writer sent what was
+    # current once the wait was over
+    assert texts(edit) == ['Hello', 'Hello there']
+
+
+@respx.mock
+async def test_a_dropped_connection_on_a_live_edit_is_retried_later() -> None:
+    send = respx.post(f'{_BASE_URL}/sendMessage').mock(return_value=message(7))
+    edit = respx.post(f'{_BASE_URL}/editMessageText').mock(
+        side_effect=[httpx.ConnectError('reset'), message(7)],
+    )
+    clock = FakeClock()
+    sleeper = Sleeper(clock)
+    streamer = make_reply(clock, sleeper)
+
+    await drive(streamer, 'He')
+    await written(streamer, send, 1)
+    await drive(streamer, 'llo')
+    await sleeper.parked()
+    sleeper.release()
+    await written(streamer, edit, 1)
+    await sleeper.parked()
+    sleeper.release()
+    await written(streamer, edit, 2)
+    await streamer.finish()
+
+    assert texts(edit) == ['Hello', 'Hello']
+
+
+@respx.mock
+async def test_a_failure_in_the_writer_fails_the_round() -> None:
+    send = respx.post(f'{_BASE_URL}/sendMessage').mock(
+        return_value=httpx.Response(403, json={'ok': False}),
+    )
+    streamer = make_reply(FakeClock())
+
+    await drive(streamer, 'Hello')
+    await written(streamer, send, 1)
+
+    with pytest.raises(httpx.HTTPStatusError):
+        await drive(streamer, ' there')
+
+
+@respx.mock
+async def test_finish_flushes_the_pending_tail() -> None:
+    send = respx.post(f'{_BASE_URL}/sendMessage').mock(return_value=message(7))
+    edit = respx.post(f'{_BASE_URL}/editMessageText').mock(return_value=message(7))
+    streamer = make_reply(FakeClock())
+
+    await drive(streamer, 'He')
+    await written(streamer, send, 1)
+    await drive(streamer, 'llo', ' there')
     await streamer.finish()
 
     assert texts(edit) == ['Hello there']
@@ -178,11 +359,12 @@ async def test_finish_flushes_the_pending_tail() -> None:
 
 @respx.mock
 async def test_finish_skips_the_edit_when_the_draft_is_current() -> None:
-    respx.post(f'{_BASE_URL}/sendMessage').mock(return_value=message(7))
+    send = respx.post(f'{_BASE_URL}/sendMessage').mock(return_value=message(7))
     edit = respx.post(f'{_BASE_URL}/editMessageText').mock(return_value=message(7))
     streamer = make_reply(FakeClock())
 
     await drive(streamer, 'Hello')
+    await written(streamer, send, 1)
     await streamer.finish()
 
     assert not edit.called
@@ -207,13 +389,7 @@ async def test_rolls_over_into_a_new_message_at_a_line_break() -> None:
         side_effect=[message(7), message(8)],
     )
     edit = respx.post(f'{_BASE_URL}/editMessageText').mock(return_value=message(7))
-    streamer = TelegramReply(
-        make_client(),
-        _CHAT_ID,
-        FakeClock(),
-        limit=12,
-        logger=make_logger(),
-    )
+    streamer = make_reply(FakeClock(), limit=12)
 
     await drive(streamer, 'first line\nsecond line')
     await streamer.finish()
@@ -227,13 +403,7 @@ async def test_rollover_cuts_mid_token_when_there_is_no_whitespace() -> None:
     send = respx.post(f'{_BASE_URL}/sendMessage').mock(
         side_effect=[message(7), message(8)],
     )
-    streamer = TelegramReply(
-        make_client(),
-        _CHAT_ID,
-        FakeClock(),
-        limit=5,
-        logger=make_logger(),
-    )
+    streamer = make_reply(FakeClock(), limit=5)
 
     await drive(streamer, 'abcdefghij')
     await streamer.finish()
@@ -286,6 +456,7 @@ async def test_the_length_limit_is_measured_on_the_rendered_text() -> None:
         _CHAT_ID,
         FakeClock(),
         limit=len(markdown),
+        sleep=Sleeper(FakeClock()),
         logger=make_logger(),
     )
 
@@ -297,27 +468,28 @@ async def test_the_length_limit_is_measured_on_the_rendered_text() -> None:
 
 @respx.mock
 async def test_a_sealed_message_is_never_rewritten_when_more_text_arrives() -> None:
-    respx.post(f'{_BASE_URL}/sendMessage').mock(side_effect=[message(7), message(8)])
+    send = respx.post(f'{_BASE_URL}/sendMessage').mock(
+        side_effect=[message(7), message(8)],
+    )
     edit = respx.post(f'{_BASE_URL}/editMessageText').mock(return_value=message(8))
     clock = FakeClock()
-    streamer = TelegramReply(
-        make_client(),
-        _CHAT_ID,
-        clock,
-        limit=12,
-        logger=make_logger(),
-    )
+    sleeper = Sleeper(clock)
+    streamer = make_reply(clock, sleeper, limit=12)
 
     # NOTE: every flush re-renders the whole round, so this is what pins the claim that a
     # re-render cannot move a boundary the reader has already been shown
     await drive(streamer, 'first line\nsecond')
-    clock.advance(timedelta(seconds=1.2))
+    await written(streamer, send, 2)
     await drive(streamer, ' line')
+    await sleeper.parked()
+    sleeper.release()
+    await written(streamer, edit, 1)
     await streamer.finish()
 
     # NOTE: the equality rather than a `not in` -- an empty list would pass that vacuously
     edited = [json.loads(call.request.content)['message_id'] for call in edit.calls]
     assert edited == [8]
+    assert texts(edit) == ['second line']
 
 
 @respx.mock
@@ -325,13 +497,7 @@ async def test_an_entity_spanning_a_rollover_is_clipped_into_both_messages() -> 
     send = respx.post(f'{_BASE_URL}/sendMessage').mock(
         side_effect=[message(7), message(8)],
     )
-    streamer = TelegramReply(
-        make_client(),
-        _CHAT_ID,
-        FakeClock(),
-        limit=5,
-        logger=make_logger(),
-    )
+    streamer = make_reply(FakeClock(), limit=5)
 
     await drive(streamer, '**aaa bbb**')
     await streamer.finish()
@@ -370,39 +536,17 @@ async def test_a_rejection_that_is_not_about_the_formatting_still_fails_the_roun
     )
     streamer = make_reply(FakeClock())
 
+    await drive(streamer, '**Hello**')
+
     with pytest.raises(httpx.HTTPStatusError):
-        await drive(streamer, '**Hello**')
-
-
-@respx.mock
-async def test_keeps_editing_the_continuation_message_after_a_rollover() -> None:
-    respx.post(f'{_BASE_URL}/sendMessage').mock(side_effect=[message(7), message(8)])
-    edit = respx.post(f'{_BASE_URL}/editMessageText').mock(return_value=message(8))
-    clock = FakeClock()
-    streamer = TelegramReply(
-        make_client(),
-        _CHAT_ID,
-        clock,
-        limit=12,
-        logger=make_logger(),
-    )
-
-    await drive(streamer, 'first line\nsecond')
-    clock.advance(timedelta(seconds=1.2))
-    await drive(streamer, ' line')
-
-    assert json.loads(edit.calls.last.request.content) == {
-        'chat_id': _CHAT_ID,
-        'message_id': 8,
-        'text': 'second line',
-    }
+        await streamer.finish()
 
 
 @respx.mock
 async def test_the_reply_milestones_are_measured_from_when_the_round_opened(
     caplog: pytest.LogCaptureFixture,
 ) -> None:
-    respx.post(f'{_BASE_URL}/sendMessage').mock(return_value=message(7))
+    send = respx.post(f'{_BASE_URL}/sendMessage').mock(return_value=message(7))
     respx.post(f'{_BASE_URL}/editMessageText').mock(return_value=message(7))
     clock = FakeClock()
     streamer = make_reply(clock)
@@ -410,6 +554,7 @@ async def test_the_reply_milestones_are_measured_from_when_the_round_opened(
     with caplog.at_level('INFO'):
         clock.advance(timedelta(seconds=2))
         await drive(streamer, 'the ')
+        await written(streamer, send, 1)
         clock.advance(timedelta(seconds=3))
         await drive(streamer, 'answer')
         await streamer.finish()
@@ -425,13 +570,7 @@ async def test_a_rollover_does_not_report_itself_as_the_first_draft(
     caplog: pytest.LogCaptureFixture,
 ) -> None:
     respx.post(f'{_BASE_URL}/sendMessage').mock(side_effect=[message(7), message(8)])
-    streamer = TelegramReply(
-        make_client(),
-        _CHAT_ID,
-        FakeClock(),
-        limit=12,
-        logger=make_logger(),
-    )
+    streamer = make_reply(FakeClock(), limit=12)
 
     with caplog.at_level('INFO'):
         await drive(streamer, 'first line\nsecond line')
@@ -447,32 +586,55 @@ async def test_a_rollover_does_not_report_itself_as_the_first_draft(
 
 @respx.mock
 async def test_abandon_annotates_the_draft_it_already_sent() -> None:
-    respx.post(f'{_BASE_URL}/sendMessage').mock(return_value=message(7))
+    send = respx.post(f'{_BASE_URL}/sendMessage').mock(return_value=message(7))
     edit = respx.post(f'{_BASE_URL}/editMessageText').mock(return_value=message(7))
     streamer = make_reply(FakeClock())
 
     await drive(streamer, 'Half an ans')
+    await written(streamer, send, 1)
     await streamer.abandon()
 
-    written = texts(edit)
-    assert len(written) == 1
-    assert written[0].startswith('Half an ans')
-    assert 'ask again' in written[0]
+    written_ = texts(edit)
+    assert len(written_) == 1
+    assert written_[0].startswith('Half an ans')
+    assert 'ask again' in written_[0]
+
+
+@respx.mock
+async def test_abandon_still_annotates_after_the_writer_failed() -> None:
+    send = respx.post(f'{_BASE_URL}/sendMessage').mock(return_value=message(7))
+    edit = respx.post(f'{_BASE_URL}/editMessageText').mock(
+        side_effect=[httpx.Response(403, json={'ok': False}), message(7)],
+    )
+    clock = FakeClock()
+    sleeper = Sleeper(clock)
+    streamer = make_reply(clock, sleeper)
+
+    await drive(streamer, 'Half')
+    await written(streamer, send, 1)
+    await drive(streamer, ' an ans')
+    await sleeper.parked()
+    sleeper.release()
+    await written(streamer, edit, 1)
+    await streamer.abandon()
+
+    assert texts(edit)[-1] == f'Half an ans{_FAIL_TAIL}'
 
 
 @respx.mock
 async def test_an_unfinished_turn_is_annotated_with_why_it_stopped() -> None:
-    respx.post(f'{_BASE_URL}/sendMessage').mock(return_value=message(7))
+    send = respx.post(f'{_BASE_URL}/sendMessage').mock(return_value=message(7))
     edit = respx.post(f'{_BASE_URL}/editMessageText').mock(return_value=message(7))
     streamer = make_reply(FakeClock())
 
     await drive(streamer, 'Half an ans')
+    await written(streamer, send, 1)
     await streamer.unfinished('timeout')
     await streamer.finish()
 
-    written = texts(edit)
-    assert written[-1].startswith('Half an ans')
-    assert 'ran out of time' in written[-1]
+    written_ = texts(edit)
+    assert written_[-1].startswith('Half an ans')
+    assert 'ran out of time' in written_[-1]
 
 
 @respx.mock
@@ -583,7 +745,7 @@ async def test_a_failed_typing_call_ends_the_status_for_the_round() -> None:
     assert count == 1
 
 
-def make_message(message_id: int = 31) -> InboundMessage:
+def make_message(message_id: int = 31, *, private: bool = False) -> InboundMessage:
     return InboundMessage(
         channel='support_bot',
         chat=str(_CHAT_ID),
@@ -591,6 +753,7 @@ def make_message(message_id: int = 31) -> InboundMessage:
         id=str(message_id),
         kind='telegram',
         text='hello',
+        private=private,
     )
 
 
@@ -706,6 +869,9 @@ class Wire:
 
     def answer(self, request: httpx.Request) -> httpx.Response:
         method = request.url.path.rpartition('/')[2]
+        if method == 'sendMessageDraft':
+            self.calls.append((method, json.loads(request.content)['text']))
+            return httpx.Response(200, json={'ok': True, 'result': True})
         if method in ('sendMessage', 'editMessageText'):
             self.calls.append((method, json.loads(request.content)['text']))
             return message(7 + len(self.calls))
@@ -725,8 +891,7 @@ def wired(status: int = 200) -> Wire:
 @respx.mock
 async def test_text_before_a_file_is_finished_before_the_file_goes_out() -> None:
     wire = wired()
-    clock = FakeClock()
-    reply = make_reply(clock)
+    reply = make_reply(FakeClock())
 
     await reply.on_text('Here')
     await reply.on_text(' it is')
@@ -735,8 +900,7 @@ async def test_text_before_a_file_is_finished_before_the_file_goes_out() -> None
     await reply.finish()
 
     assert wire.calls == [
-        ('sendMessage', 'Here'),
-        ('editMessageText', 'Here it is'),
+        ('sendMessage', 'Here it is'),
         ('sendPhoto', ''),
         ('sendMessage', 'Anything else?'),
     ]
@@ -804,4 +968,197 @@ async def test_a_file_over_the_vendor_limit_is_never_uploaded() -> None:
 
     assert wire.calls == [
         ('sendMessage', 'I made chart.png but could not send it (it is too large).'),
+    ]
+
+
+@respx.mock
+async def test_reply_streams_a_private_chat_through_draft_previews() -> None:
+    draft = drafted()
+    send = respx.post(f'{_BASE_URL}/sendMessage').mock(return_value=message(7))
+    reply = make_gateway(FakeClock()).reply(make_message(private=True))
+
+    await reply.on_text('hello')
+    await reached(draft, 1)
+    await reply.finish()
+
+    assert texts(draft) == ['hello']
+    assert texts(send) == ['hello']
+
+
+@respx.mock
+async def test_a_private_chat_streams_into_a_draft_preview() -> None:
+    draft = drafted()
+    send = respx.post(f'{_BASE_URL}/sendMessage').mock(return_value=message(7))
+    streamer = make_reply(FakeClock(), private=True)
+
+    await drive(streamer, 'He')
+    await written(streamer, draft, 1)
+
+    assert json.loads(draft.calls.last.request.content) == {
+        'chat_id': _CHAT_ID,
+        'draft_id': 1,
+        'text': 'He',
+    }
+    assert not send.called
+
+
+@respx.mock
+async def test_a_private_chat_keeps_the_finished_reply_as_a_message() -> None:
+    draft = drafted()
+    send = respx.post(f'{_BASE_URL}/sendMessage').mock(return_value=message(7))
+    edit = respx.post(f'{_BASE_URL}/editMessageText').mock(return_value=message(7))
+    clock = FakeClock()
+    sleeper = Sleeper(clock)
+    streamer = make_reply(clock, sleeper, private=True)
+
+    await drive(streamer, '**He**')
+    await written(streamer, draft, 1)
+    await drive(streamer, 'llo')
+    await sleeper.parked()
+    sleeper.release()
+    await written(streamer, draft, 2)
+    await streamer.finish()
+
+    # NOTE: the draft vanishes on its own, so the same text has to land as a real message
+    assert texts(draft) == ['He', 'Hello']
+    assert json.loads(send.calls.last.request.content) == {
+        'chat_id': _CHAT_ID,
+        'text': 'Hello',
+        'entities': [{'type': 'bold', 'offset': 0, 'length': 2}],
+    }
+    assert not edit.called
+
+
+@respx.mock
+async def test_a_private_reply_seals_each_rolled_over_chunk_as_a_message() -> None:
+    draft = drafted()
+    send = respx.post(f'{_BASE_URL}/sendMessage').mock(
+        side_effect=[message(7), message(8)],
+    )
+    clock = FakeClock()
+    sleeper = Sleeper(clock)
+    streamer = make_reply(clock, sleeper, private=True, limit=12)
+
+    await drive(streamer, 'first line')
+    await written(streamer, draft, 1)
+    await drive(streamer, '\nsecond line')
+    await sleeper.parked()
+    sleeper.release()
+    await written(streamer, draft, 2)
+    await streamer.finish()
+
+    assert texts(send) == ['first line', 'second line']
+    # NOTE: a fresh id per chunk, so the continuation does not animate out of a preview
+    # whose text already went out as the message above it
+    assert [json.loads(call.request.content)['draft_id'] for call in draft.calls] == [
+        1,
+        2,
+    ]
+    assert texts(draft) == ['first line', 'second line']
+
+
+@respx.mock
+async def test_a_draft_preview_is_refreshed_before_telegram_drops_it() -> None:
+    draft = drafted()
+    respx.post(f'{_BASE_URL}/sendMessage').mock(return_value=message(7))
+    clock = FakeClock()
+    sleeper = Sleeper(clock)
+    streamer = make_reply(
+        clock,
+        sleeper,
+        private=True,
+        draft_refresh=timedelta(seconds=0.01),
+    )
+
+    await drive(streamer, 'Hi')
+    await written(streamer, draft, 1)
+    await sleeper.parked()
+    sleeper.release()
+    await written(streamer, draft, 2)
+    await streamer.finish()
+
+    assert texts(draft) == ['Hi', 'Hi']
+
+
+@respx.mock
+async def test_a_refused_draft_falls_back_to_editing_a_message(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    draft = respx.post(f'{_BASE_URL}/sendMessageDraft').mock(
+        return_value=httpx.Response(400, json={'ok': False}),
+    )
+    send = respx.post(f'{_BASE_URL}/sendMessage').mock(return_value=message(7))
+    edit = respx.post(f'{_BASE_URL}/editMessageText').mock(return_value=message(7))
+    clock = FakeClock()
+    sleeper = Sleeper(clock)
+    streamer = make_reply(clock, sleeper, private=True)
+
+    with caplog.at_level('WARNING'):
+        await drive(streamer, 'Hello')
+        await written(streamer, send, 1)
+        await drive(streamer, ' there')
+        await sleeper.parked()
+        sleeper.release()
+        await written(streamer, edit, 1)
+        await streamer.finish()
+
+    assert draft.call_count == 1
+    assert texts(send) == ['Hello']
+    assert texts(edit) == ['Hello there']
+    assert 'Telegram refused the draft preview' in caplog.text
+
+
+@respx.mock
+async def test_a_rate_limited_draft_waits_instead_of_dropping_drafts() -> None:
+    draft = respx.post(f'{_BASE_URL}/sendMessageDraft').mock(
+        side_effect=[
+            throttled(3),
+            httpx.Response(200, json={'ok': True, 'result': True}),
+        ],
+    )
+    send = respx.post(f'{_BASE_URL}/sendMessage').mock(return_value=message(7))
+    clock = FakeClock()
+    sleeper = Sleeper(clock)
+    streamer = make_reply(clock, sleeper, private=True)
+
+    await drive(streamer, 'He')
+    await reached(draft, 1)
+    assert await sleeper.parked() == pytest.approx(3.0)
+    await drive(streamer, 'llo')
+    sleeper.release()
+    await written(streamer, draft, 2)
+
+    assert texts(draft) == ['He', 'Hello']
+    assert not send.called
+
+
+@respx.mock
+async def test_an_abandoned_private_reply_keeps_what_it_previewed() -> None:
+    draft = drafted()
+    send = respx.post(f'{_BASE_URL}/sendMessage').mock(return_value=message(7))
+    streamer = make_reply(FakeClock(), private=True)
+
+    await drive(streamer, 'Half an ans')
+    await written(streamer, draft, 1)
+    await streamer.abandon()
+
+    (kept,) = texts(send)
+    assert kept.startswith('Half an ans')
+    assert 'ask again' in kept
+
+
+@respx.mock
+async def test_a_private_reply_sends_its_text_as_a_message_before_a_file() -> None:
+    wire = wired()
+    reply = make_reply(FakeClock(), private=True)
+
+    await reply.on_text('Here')
+    await reply.on_artifact(artifact())
+    await reply.on_text('Anything else?')
+    await reply.finish()
+
+    assert wire.calls == [
+        ('sendMessage', 'Here'),
+        ('sendPhoto', ''),
+        ('sendMessage', 'Anything else?'),
     ]

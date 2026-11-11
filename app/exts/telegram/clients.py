@@ -20,7 +20,7 @@ from .types import (
     WebhookInfo,
 )
 
-_MAX_ATTEMPTS = 3
+MAX_ATTEMPTS = 3
 _UPLOAD_METHODS: dict[Upload, str] = {
     'audio': 'sendAudio',
     'document': 'sendDocument',
@@ -30,6 +30,19 @@ _UPLOAD_METHODS: dict[Upload, str] = {
 }
 
 type Multipart = dict[str, tuple[str, bytes, str]]
+
+
+def retry_after(error: httpx.HTTPStatusError) -> float | None:
+    if error.response.status_code != 429:
+        return None
+
+    try:
+        parameters = error.response.json().get('parameters', {})
+    except ValueError:
+        return None
+
+    value = parameters.get('retry_after') if isinstance(parameters, dict) else None
+    return float(value) if isinstance(value, int | float) else None
 
 
 def webhook_url(base_url: str) -> str:
@@ -82,6 +95,8 @@ class TelegramClient:
         message_id: int,
         text: str,
         entities: Sequence[MessageEntity] = (),
+        *,
+        attempts: int = MAX_ATTEMPTS,
     ) -> Message:
         return await self._post(
             'editMessageText',
@@ -92,6 +107,7 @@ class TelegramClient:
                 **_formatting(entities),
             },
             Message,
+            attempts=attempts,
         )
 
     async def fetch_file(
@@ -152,11 +168,37 @@ class TelegramClient:
         chat_id: int | str,
         text: str,
         entities: Sequence[MessageEntity] = (),
+        *,
+        attempts: int = MAX_ATTEMPTS,
     ) -> Message:
         return await self._post(
             'sendMessage',
             {'chat_id': chat_id, 'text': text, **_formatting(entities)},
             Message,
+            attempts=attempts,
+        )
+
+    # NOTE: a draft is an ephemeral preview that only private chats show; the reply
+    # still has to go out through `send_message` to stay in the chat
+    async def send_message_draft(
+        self,
+        chat_id: int | str,
+        draft_id: int,
+        text: str,
+        entities: Sequence[MessageEntity] = (),
+        *,
+        attempts: int = MAX_ATTEMPTS,
+    ) -> bool:
+        return await self._post(
+            'sendMessageDraft',
+            {
+                'chat_id': chat_id,
+                'draft_id': draft_id,
+                'text': text,
+                **_formatting(entities),
+            },
+            bool,
+            attempts=attempts,
         )
 
     async def set_my_commands(
@@ -232,8 +274,15 @@ class TelegramClient:
         method: str,
         payload: dict[str, JsonValue],
         result: type[T],
+        *,
+        attempts: int = MAX_ATTEMPTS,
     ) -> T:
-        response = await self._request(self.base_url, method, payload)
+        response = await self._request(
+            self.base_url,
+            method,
+            payload,
+            attempts=attempts,
+        )
         parsed = TelegramResponse.model_validate_json(response)
         return TypeAdapter(result).validate_python(parsed.result)
 
@@ -244,9 +293,10 @@ class TelegramClient:
         payload: dict[str, JsonValue] | None = None,
         *,
         files: Multipart | None = None,
+        attempts: int = MAX_ATTEMPTS,
     ) -> bytes:
         async with self.http.connect(base_url) as client:
-            for attempt in range(_MAX_ATTEMPTS):
+            for attempt in range(attempts):
                 if files is not None:
                     response = await client.post(path, data=payload, files=files)
                 elif payload is not None:
@@ -254,7 +304,7 @@ class TelegramClient:
                 else:
                     response = await client.get(path)
                 if response.status_code == 429 or response.status_code >= 500:
-                    if attempt + 1 < _MAX_ATTEMPTS:
+                    if attempt + 1 < attempts:
                         retry_after = 2**attempt
                         if response.status_code == 429:
                             parameters = response.json().get('parameters', {})

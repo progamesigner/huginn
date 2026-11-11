@@ -223,6 +223,9 @@ async def test_a_webhook_message_reaches_the_agent_turn_and_answers_in_chat() ->
     respx.post(f'{_BASE_URL}/setMessageReaction').mock(
         return_value=httpx.Response(200, json={'ok': True, 'result': True}),
     )
+    draft = respx.post(f'{_BASE_URL}/sendMessageDraft').mock(
+        return_value=httpx.Response(200, json={'ok': True, 'result': True}),
+    )
     send = respx.post(f'{_BASE_URL}/sendMessage').mock(return_value=message(7))
     edit = respx.post(f'{_BASE_URL}/editMessageText').mock(return_value=message(7))
     action = respx.post(f'{_BASE_URL}/sendChatAction').mock(
@@ -240,13 +243,18 @@ async def test_a_webhook_message_reaches_the_agent_turn_and_answers_in_chat() ->
         async with asyncio.timeout(1):
             await turns.done.wait()
 
-    # NOTE: the model streamed 'the ' -- the draft loses the trailing space because the
-    # buffer is now read as markdown, and a line's trailing whitespace is not content
+    # NOTE: the update comes from a private chat, so the reply streams through draft
+    # previews and lands as a single message instead of one that is edited in place
+    assert all(
+        json.loads(call.request.content)['chat_id'] == str(_CHAT_ID)
+        for call in draft.calls
+    )
     assert json.loads(send.calls.last.request.content) == {
         'chat_id': str(_CHAT_ID),
-        'text': 'the',
+        'text': 'the answer',
     }
-    assert json.loads(edit.calls.last.request.content)['text'] == 'the answer'
+    assert send.call_count == 1
+    assert not edit.called
     assert json.loads(action.calls.last.request.content) == {
         'chat_id': str(_CHAT_ID),
         'action': 'typing',
@@ -367,6 +375,9 @@ async def test_one_round_logs_the_four_milestones_in_order(
     caplog: pytest.LogCaptureFixture,
 ) -> None:
     respx.post(f'{_BASE_URL}/setMessageReaction').mock(
+        return_value=httpx.Response(200, json={'ok': True, 'result': True}),
+    )
+    respx.post(f'{_BASE_URL}/sendMessageDraft').mock(
         return_value=httpx.Response(200, json={'ok': True, 'result': True}),
     )
     respx.post(f'{_BASE_URL}/sendMessage').mock(return_value=message(7))

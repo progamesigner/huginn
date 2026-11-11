@@ -5,7 +5,7 @@ import pytest
 import respx
 from pydantic import SecretStr
 
-from app.exts.telegram.clients import TelegramClient, webhook_url
+from app.exts.telegram.clients import TelegramClient, retry_after, webhook_url
 from app.exts.telegram.exceptions import MediaTooLargeError, MediaUnavailableError
 from app.exts.telegram.types import MessageEntity, Upload
 from lib.http import HTTPClientManager
@@ -524,3 +524,56 @@ async def test_personal_menu_scope_and_language_payload() -> None:
         'scope': scope,
         'language_code': 'zh',
     }
+
+
+@respx.mock
+async def test_send_message_draft_streams_a_preview() -> None:
+    route = respx.post(f'{_BASE_URL}/sendMessageDraft').mock(
+        return_value=httpx.Response(200, json={'ok': True, 'result': True}),
+    )
+
+    result = await make_client().send_message_draft(
+        123,
+        4,
+        'hello',
+        [MessageEntity(type='bold', offset=0, length=5)],
+    )
+
+    assert result is True
+    assert json.loads(route.calls.last.request.content) == {
+        'chat_id': 123,
+        'draft_id': 4,
+        'text': 'hello',
+        'entities': [{'type': 'bold', 'offset': 0, 'length': 5}],
+    }
+
+
+@respx.mock
+async def test_a_single_attempt_surfaces_the_rate_limit_instead_of_waiting(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def no_sleep(delay: float) -> None:
+        raise AssertionError('a single attempt must not wait')
+
+    monkeypatch.setattr('app.exts.telegram.clients.asyncio.sleep', no_sleep)
+    route = respx.post(f'{_BASE_URL}/editMessageText').mock(
+        return_value=httpx.Response(
+            429,
+            json={'ok': False, 'error_code': 429, 'parameters': {'retry_after': 7}},
+        ),
+    )
+
+    with pytest.raises(httpx.HTTPStatusError) as caught:
+        await make_client().edit_message_text(123, 7, 'hello', attempts=1)
+
+    assert route.call_count == 1
+    assert retry_after(caught.value) == 7.0
+
+
+def test_retry_after_ignores_errors_that_are_not_rate_limits() -> None:
+    request = httpx.Request('POST', f'{_BASE_URL}/sendMessage')
+    response = httpx.Response(400, json={'ok': False}, request=request)
+
+    error = httpx.HTTPStatusError('bad', request=request, response=response)
+
+    assert retry_after(error) is None
