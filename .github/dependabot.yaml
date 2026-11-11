@@ -1,0 +1,28 @@
+# Dependabot keeps the pinned versions in this repository moving. Actions are
+# pinned to immutable commit SHAs, so they never pick up upstream fixes on
+# their own; Dependabot reads the `# vX.Y.Z` comment beside each SHA and
+# rewrites both together.
+version: 2
+
+updates:
+# The workflow actions in .github/workflows, grouped into one weekly PR.
+- package-ecosystem: github-actions
+  directory: /
+  schedule:
+    interval: weekly
+  groups:
+    actions:
+      patterns:
+      - '*'
+
+# Python dependencies in pyproject.toml / uv.lock. Minor and patch bumps are
+# grouped; majors stay separate so a breaking change is reviewed on its own.
+- package-ecosystem: uv
+  directory: /
+  schedule:
+    interval: weekly
+  groups:
+    uv:
+      update-types:
+      - minor
+      - patch
