@@ -6,7 +6,7 @@
 FROM python:3.14.6-slim-bookworm AS base
 
 # uv
-FROM ghcr.io/astral-sh/uv:0.11.28 AS uv
+FROM ghcr.io/astral-sh/uv:0.13.7 AS uv
 
 # builder
 FROM base AS builder
