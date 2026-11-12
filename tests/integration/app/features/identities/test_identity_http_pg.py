@@ -78,67 +78,69 @@ async def test_http_registration_display_name_link_and_chat_share_real_identity(
         ):
             app = application.resolve(RouterContract).app
             assert isinstance(app, FastAPI)
-            async with app.router.lifespan_context(app):
-                async with httpx.AsyncClient(
+            async with (
+                app.router.lifespan_context(app),
+                httpx.AsyncClient(
                     transport=httpx.ASGITransport(app),
                     base_url='http://huginn',
-                ) as client:
-                    headers = {
-                        'Authorization': 'Bearer web-key',
-                        'X-Huginn-User': external,
-                    }
-                    claimed = await client.post(
-                        '/v1/identity/claim',
-                        headers=headers,
-                        json={'code': invitation.token, 'handle': handle},
-                    )
-                    assert claimed.status_code == 200
-                    account = claimed.json()['account']
-                    renamed = await client.patch(
-                        '/v1/identity',
-                        headers=headers,
-                        json={'display_name': 'Fictional Display Name'},
-                    )
-                    assert renamed.status_code == 200
-                    assert renamed.json()['display_name'] == 'Fictional Display Name'
-                    assert renamed.json()['account'] == account
-                    link = await client.post(
-                        '/v1/identity/invite',
-                        headers=headers,
-                        json={'target': 'http:web'},
-                    )
-                    assert link.status_code == 200
-                    other = {**headers, 'X-Huginn-User': 'second-' + external}
-                    linked = await client.post(
-                        '/v1/identity/link',
-                        headers=other,
-                        json={'code': link.json()['code']},
-                    )
-                    assert linked.status_code == 200
-                    assert linked.json()['account'] == account
-                    response = await client.post(
-                        '/v1/chat',
-                        headers=other,
-                        json={'message': 'hello'},
-                    )
-                    assert response.status_code == 200
-                    principal = turns.requests[0].prompts[0]
-                    assert (
-                        principal.account,
-                        principal.handle,
-                        principal.memory_scope,
-                    ) == (account, handle, memory)
-                    wrong_target = await client.post(
-                        '/v1/identity/invite',
-                        headers=headers,
-                        json={'target': 'absent-bot'},
-                    )
-                    assert wrong_target.status_code == 400
-                    unlinked = await client.post(
-                        '/v1/identity/invite',
-                        headers={**headers, 'X-Huginn-User': 'anonymous-' + external},
-                        json={'target': 'other-bot'},
-                    )
-                    assert unlinked.status_code == 400
+                ) as client,
+            ):
+                headers = {
+                    'Authorization': 'Bearer web-key',
+                    'X-Huginn-User': external,
+                }
+                claimed = await client.post(
+                    '/v1/identity/claim',
+                    headers=headers,
+                    json={'code': invitation.token, 'handle': handle},
+                )
+                assert claimed.status_code == 200
+                account = claimed.json()['account']
+                renamed = await client.patch(
+                    '/v1/identity',
+                    headers=headers,
+                    json={'display_name': 'Fictional Display Name'},
+                )
+                assert renamed.status_code == 200
+                assert renamed.json()['display_name'] == 'Fictional Display Name'
+                assert renamed.json()['account'] == account
+                link = await client.post(
+                    '/v1/identity/invite',
+                    headers=headers,
+                    json={'target': 'http:web'},
+                )
+                assert link.status_code == 200
+                other = {**headers, 'X-Huginn-User': 'second-' + external}
+                linked = await client.post(
+                    '/v1/identity/link',
+                    headers=other,
+                    json={'code': link.json()['code']},
+                )
+                assert linked.status_code == 200
+                assert linked.json()['account'] == account
+                response = await client.post(
+                    '/v1/chat',
+                    headers=other,
+                    json={'message': 'hello'},
+                )
+                assert response.status_code == 200
+                principal = turns.requests[0].prompts[0]
+                assert (
+                    principal.account,
+                    principal.handle,
+                    principal.memory_scope,
+                ) == (account, handle, memory)
+                wrong_target = await client.post(
+                    '/v1/identity/invite',
+                    headers=headers,
+                    json={'target': 'absent-bot'},
+                )
+                assert wrong_target.status_code == 400
+                unlinked = await client.post(
+                    '/v1/identity/invite',
+                    headers={**headers, 'X-Huginn-User': 'anonymous-' + external},
+                    json={'target': 'other-bot'},
+                )
+                assert unlinked.status_code == 400
     finally:
         await database.dispose()

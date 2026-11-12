@@ -50,7 +50,7 @@ class MCPSkillSource(SkillSource):
             content = await self._read(path, scope)
             try:
                 metas.append(_meta(path, content, logger=self.logger))
-            except ValueError:
+            except TypeError, ValueError:
                 self.logger.warning('Skipping invalid skill frontmatter: %s', path)
         return tuple(metas)
 

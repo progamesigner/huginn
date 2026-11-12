@@ -52,7 +52,7 @@ def test_reexports_are_fastapi_primitives() -> None:
 
 
 def test_param_reexports_are_fastapi_params_classes() -> None:
-    import lib.router as router
+    from lib import router
 
     names = (
         'Body',
@@ -72,7 +72,7 @@ def test_param_reexports_are_fastapi_params_classes() -> None:
 
 
 def test_response_reexports_are_fastapi_responses() -> None:
-    import lib.router as router
+    from lib import router
 
     names = (
         'EventSourceResponse',

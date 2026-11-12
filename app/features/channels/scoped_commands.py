@@ -244,7 +244,7 @@ class ScopedCommands(ScopedCommandsServiceContract):
                     'allowed': candidates,
                     'fallback': selection.fallback
                     if selection.fallback in candidates
-                    else sorted(candidates)[0],
+                    else min(candidates),
                 },
             )
         fixed = target or request.policy.agent

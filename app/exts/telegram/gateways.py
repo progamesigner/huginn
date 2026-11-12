@@ -291,7 +291,11 @@ class TelegramReply(ChannelReplyContract):
             try:
                 await self.client.send_chat_action(self.chat_id, TYPING.action)
             except Exception as error:
-                self.logger.debug('Stopped showing the typing status: %s', error)
+                self.logger.debug(
+                    'Stopped showing the typing status: %s',
+                    error,
+                    exc_info=True,
+                )
                 return
 
             await asyncio.sleep(self.typing_interval.total_seconds())
