@@ -1,6 +1,6 @@
 [project]
 name = "huginn"
-version = "0.6.3"
+version = "0.7.0"
 requires-python = "==3.15.*"
 dependencies = [
     "alembic==1.20.1",
