@@ -6,14 +6,36 @@ Huginn is a self-hosted agent harness. It runs as a long-lived FastAPI service t
 
 Plain LLM chat is stateless: you send a message, you get one back, and nothing carries over. Huginn turns that into a persistent agent service with state, tools, and memory. Conversations are stored in PostgreSQL, messages come in over multiple channels (Telegram first), and each request is routed to the right agent. New tools and skills plug in without changes to the core.
 
-Configuration and secrets, including agent names and instructions, never live in this repository. That boundary is what keeps the code itself safe to publish.
+Configuration and secrets, including agent names and instructions, never live in this repository. That boundary keeps the code itself safe to publish.
+
+## Contents
+
+- [Requirements](#requirements)
+- [Quick start](#quick-start)
+- [Configuration](#configuration)
+  - [Secrets](#secrets)
+  - [Choosing the LLM](#choosing-the-llm)
+  - [Validating a config file](#validating-a-config-file)
+  - [How the config reaches production](#how-the-config-reaches-production)
+  - [Scoped agent assets](#scoped-agent-assets)
+  - [Personal commands and Telegram menus](#personal-commands-and-telegram-menus)
+  - [Constrained subagents](#constrained-subagents)
+  - [Collaboration brief](#collaboration-brief)
+- [HTTP chat API](#http-chat-api)
+- [Deployment](#deployment)
+  - [Releasing](#releasing)
+- [Identity administration](#identity-administration)
+- [Development](#development)
+- [Architecture](#architecture)
 
 ## Requirements
 
 - Python 3.15
 - [uv](https://docs.astral.sh/uv/)
 
-## Development
+## Quick start
+
+Install the dependencies and run commands inside the project environment:
 
 ```sh
 uv sync                 # create .venv and install everything from uv.lock
@@ -26,7 +48,9 @@ The HTTP service is built by the `bin.server:create` factory. Start it locally w
 uv run server
 ```
 
-`bin/server.py` owns the uvicorn runtime layer. It reads three optional environment variables (real process env only, not `.env`), each with the `HUGINN_SERVER_` prefix:
+### Server settings
+
+`bin/server.py` owns the uvicorn runtime layer. It reads three optional environment variables, each with the `HUGINN_SERVER_` prefix. They are read from the real process environment only, not from `.env`.
 
 | Variable | Default | Meaning |
 | --- | --- | --- |
@@ -34,78 +58,68 @@ uv run server
 | `HUGINN_SERVER_PORT` | `8000` | Port to listen on. |
 | `HUGINN_SERVER_RELOAD` | `false` | Auto-reload on source changes; local development only. |
 
-The `HUGINN_SERVER_` prefix is deliberate: a bare `HUGINN_PORT` would collide with the `HUGINN_PORT=tcp://<ip>:<port>` value Kubernetes injects for a same-named service, breaking int parsing. These deploy-layer knobs stay separate from `HuginnSettings` (app behavior), which lives in `app/core/settings.py` and does read `.env`.
+The `HUGINN_SERVER_` prefix is deliberate. Kubernetes injects `HUGINN_PORT=tcp://<ip>:<port>` for a service with the same name, so a bare `HUGINN_PORT` would collide with that value and break int parsing.
 
-`/healthz` answers 200 as long as the process is alive; `/readyz` answers 200 when the service is ready to take traffic:
+These deploy-layer knobs stay separate from `HuginnSettings`, which holds app behavior. `HuginnSettings` lives in `app/core/settings.py` and does read `.env`.
+
+### Health checks
+
+`/healthz` answers 200 as long as the process is alive. `/readyz` answers 200 when the service is ready to take traffic.
 
 ```sh
 curl http://localhost:8000/healthz
 curl http://localhost:8000/readyz
 ```
 
-Runtime objects are wired through a homemade DI container in `lib/container`; `Container` itself only knows bind, resolve, contribute and collect, and lifecycle, with no request scopes. The application object `App` in `app/core/application.py` extends it with `build(*providers)`, which registers providers in dependency order, and `running_in_mode(*modes)` for mode checks. Each provider subclasses `ProviderContract` with a `__call__(container)` method and an optional `dependencies` tuple of provider classes, and takes no constructor arguments: options come from `HuginnSettings`, so a provider wires the same whether it is listed or pulled in transitively. `SettingsProvider` binds settings only when none are bound yet, which is how a test pins its own before calling `build()`. Providers live next to what they wire: core plumbing in `app/core/providers`, each feature slice in its own `providers.py`, split so that a `*Provider` binds services and a sibling `*EndpointProvider` or `*CommandProvider` only mounts routes or commands on top of it. `app/providers/` is the single composition root above both `app/features` and `app/exts`. `features.py`, `endpoints.py` and `commands.py` hold the aggregates `HuginnProvider`, `HuginnEndpointProvider` and `HuginnCommandProvider`, which compose through `dependencies` alone; `contributions.py` is the only place that fills a registry; `telegram.py` hands the Telegram transport (its gateway factory and webhook route) to the feature that uses it. Registries are built once and never change: a provider declares an item with `container.contribute(Item, factory)`, the registry's owner binds the registry from `container.collect(Item)`, and the factories run at first resolution, so `SectionRegistry`, `ToolRegistry`, `ToolSourceRegistry`, `ChannelRegistry`, `CommandRegistry` and `BlobReferenceRegistry` see every contribution whatever order the providers ran in. An architecture test keeps `contribute` out of everything but `app/providers/`. `create()` in `bin/server.py` builds `App().build(SettingsProvider(), BootstrapProvider(), HuginnProvider(), HuginnEndpointProvider())` and returns the FastAPI app that `RouterProvider` assembles; `bin.server:create` is the sole ASGI factory entrypoint. Long-lived resources are bound as shared managers; the lifespan opens the container on startup and closes created instances in reverse order on shutdown. Endpoints receive container objects with `Depends(Provide(SomeType))` from `app.core.dependencies`. Database writes take their transaction explicitly: `DatabaseContract` offers `session()` for reads, `transaction()` for writes (commit on a clean exit, roll back on an error) and `ping()`, and a service opens one and hands it to the repositories it builds. Tests swap implementations at the container level: build an `App` from a different provider list, copy the wiring into a fresh container with `container.to(Container)`, or wrap a call in `container.use(SomeType, fake)`.
-
-Which feature may import which is read off the wiring instead of being declared beside it: a feature may name another only when one of its providers depends, directly or transitively, on one of the other's providers, and the feature graph this yields must stay acyclic. Both rules run in `tests/architecture/test_architecture.py`, so declaring the dependency in `providers.py` is what licenses the import and the two cannot drift. A feature exposes its public face and nothing else: `config` (the sections other sections validate their references into), `contracts`, `entities`, `exceptions`, and `providers`. Reaching into `services`, `repositories`, `sources`, `schemas`, or any other slice fails the check, and there is no exception list: a feature that needs more than another's public face needs a contract on the other side. A feature's contracts front its services and are named `*ServiceContract` (`TurnServiceContract`, `TranscriptServiceContract`, `BlobServiceContract`), never a repository; extension points a feature invites others to implement (`Tool`, `ToolSource`, `BlobReferenceSource`) carry no `Contract` suffix. `agents/contracts.py` declares `Tool` and `ToolSource`; `tools`, `mcp` and `skills` implement them and contribute their sources at the root, so `agents` never imports any of them. A feature's `entities.py` holds domain values built on `AppEntity` (anything with an identity) or `AppValue` from `app/core/schema.py`, strict and frozen like the `lib/llm` values; HTTP shapes live in its `schemas.py` on `AppRequest` / `AppResponse`, and the ORM records sit behind `sources/`. `app/core` stays out of this: it holds only what the whole application needs — the config mechanism, the container plumbing, and providers for HTTP, Redis, Postgres, the LLM router, the clock, and logging. A capability that only some features use is a feature of its own, owning its config section, its providers, and its contracts, however infrastructural it looks; `app/features/mcp` is exactly that, configured by `mcp_servers` and consumed by `agents` and `skills`. Packages under `lib/` never import one another, which an import-linter `independence` contract enforces; where one needs another's capability it declares the narrow shape it uses, so `lib/llm`, `lib/decision` and `lib/mcp` each take an `HTTPConnector` that `HTTPClientManager` satisfies structurally.
-
-Extensions under `app/exts` hold vendor vocabulary and transport only — clients, payload types, exceptions, and for a transport its inbound endpoints and its gateways — and never providers or wiring; which file names an ext uses is left to review. A feature reaches an ext only from its `repositories` or `sources`, and never names a vendor payload type. A transport is the other direction: it implements an `app/contracts` contract, and `app/providers/` wires it to the feature, so the feature is handed `ChannelGatewayFactoryContract` and never imports the ext. Inbound traffic from a vendor is a feature concern: the payload shape stays in the ext, while the signature check and the dispatch live in a feature slice that can reach the domain above it. `app/exts/telegram` plus `app/features/channels/telegram` is the working example, and a payment callback belongs in the same shape — one `POST /notify/{vendor}` route, a registry mapping vendor kind to config model, and a per-vendor slice beneath it.
-
-Logs form a single structlog pipeline: JSON lines on stderr by default (stdout stays reserved for command output), colored console lines when `configure_logging` gets `develop=True`. `configure_logging` in `lib/observability` also bridges stdlib logging into the same processors, so third-party records come out in the same shape and carry the same request context; its `capture` and `silence` parameters take logger names to route through the root pipeline or drop entirely. Nothing outside `lib/observability` looks a logger up, by `logging.getLogger` or `structlog.get_logger`; an architecture test holds that line. `LoggingProvider` owns the policy: it maps the container's `running_in_mode('dev')` to `develop`, captures the uvicorn loggers, silences uvicorn access logs, and binds `Logger` in the container. Endpoints take one with `Depends(Provide(Logger))`, and services receive one at construction time and tag it with `.bind(component=...)`. Code under `lib/` is handed a logger the same way, typed as structlog's `BoundLogger` so no lib package depends on another, and `configure_logging` formats the printf-style arguments those calls pass. `RequestContextMiddleware` binds a short `request_id` into structlog contextvars and onto the request for every request except the paths in `HUGINN_UNTRACED_PATHS` (the health probes by default), and every log line downstream carries it automatically. Never log tokens, Authorization headers, or full message bodies. A webhook lands a receipt before it parses anything, and that receipt carries metadata only — channel, byte count, a truncated sha256 of the payload; the bytes themselves reach the log on exactly one path, when the reader cannot parse them at all and nobody can fix that without seeing them. Vendor readers set `hide_input_in_errors`, so a logged validation failure says what was wrong without quoting what arrived, and a payload gets into a log line only when a caller deliberately puts it there. `develop=True` is a data boundary, not a formatting switch: it drops the root level to DEBUG, where vendor SDKs log their full request bodies — prompts, conversation history and all — so `HUGINN_ENVIRONMENT` must never be `dev` anywhere real traffic lands.
-
-Errors follow four rules. Expected failures and absences are return values: a repository answers `T | None`, a service answers `Result[T, E]` (`Ok` / `Err` from `lib/result`) whose `Err` holds an `*Error` instance, and `Option[T]` (`Some` / `Nothing`) is for chained operations or when "not found" and "found an empty value" need to stay distinct. Only unrecoverable failures raise: programming errors, broken invariants, infrastructure that cannot continue. HTTP boundaries convert uniformly: an endpoint calls `.unwrap()` on a `Result`, which raises an `Err`'s error, and every error the API answers with subclasses `AppError` in `app/core/exceptions.py` with a `status` and a `code` from the single `Code` table in `app/core/codespaces.py`, whose number is the code and whose name is the error, so no two errors share one. A single set of exception handlers, wired through `RouterManager`'s `exception_handlers` constructor argument, is the only place that turns an exception into the `{code, error, message, request_id}` envelope; request validation failures add `details` naming where and what was wrong, never the input that arrived, and nothing else carries details. Until `ty` narrows a generic class inside `match`, test `isinstance(result, Err)` or `isinstance(result, Ok)` first and read the other case on the fall-through, where the type arguments survive.
-
-Dependencies go through uv. Add them with `uv add <pkg>==<version>`, always pinned to an exact version, never a floating specifier like `^` or `latest`. `pyproject.toml` states what the project wants; `uv.lock` records the exact tree that satisfies it. Both belong in git.
-
-Tests run with `uv run pytest`. Tests in `tests/unit/` carry no marker and must pass without external resources (no network, no database). Tests in `tests/integration/` declare `pytestmark = pytest.mark.integration` at file level and may require real resources (PostgreSQL, Redis, network); deselect them with `-m 'not integration'`. Async tests need no decorator: `asyncio_mode = "auto"` treats every `async def test_*` as an asyncio test.
-
-The database integration tests apply the Alembic migrations to a scratch database once, then wrap each test in a transaction that is rolled back on teardown, so no test leaves state behind. They resolve their database three ways, in order: an explicit `HUGINN_DATABASE_URL` (this is the CI path); otherwise a throwaway `postgres:16` container started via [testcontainers](https://testcontainers.com/) when Docker is reachable; otherwise they skip. So locally, with Docker available, `uv run pytest -m integration` just works — the container is created and torn down automatically. The devcontainer enables the Docker socket through the `docker-outside-of-docker` feature (rebuild the container once to pick it up).
-
-To run them against your own PostgreSQL instead of a spun container, set the url explicitly:
-
-```sh
-HUGINN_DATABASE_URL=postgresql+asyncpg://huginn:huginn@localhost:5432/huginn_test uv run pytest -m integration
-```
-
-Migrations are organized under `migrations/<domain>/revisions/`. Each domain maps to one fixed `(database connection, PostgreSQL schema)` pair in `migrations/env.py`. The current lineage lives in `migrations/default/revisions/`; its revisions explicitly target the `public` schema and store their history in `public.migrations`. Apply it against `HUGINN_DATABASE_URL` with:
-
-```sh
-uv run alembic upgrade default@head
-uv run alembic downgrade default@base
-```
-
-A future domain or schema gets its own revision directory, root branch label, and version-table schema. Add that directory to Alembic `version_locations`; do not select the target through runtime `-x database` or `-x schema` arguments.
-
-Types are checked with `uv run ty check`. All rules run at error severity.
-
-CI runs the same checks as a local run. To reproduce the whole pipeline before pushing:
-
-```sh
-uv run ruff check . && uv run ruff format --check . && uv run lint-imports && uv run ty check && uv run pytest -m 'not integration'
-```
-
 ## Configuration
 
-Agents, MCP server connections, tool wiring, channel routing, LLM providers, and the API keys that may call the HTTP surface are declared in one `huginn.yaml`, validated against the `HuginnConfig` Pydantic schema in `app/core/config/schema.py`. `huginn.example.yaml` at the repository root is a fake-named, fully runnable copy of that schema; it is the only config file this repo ever holds. Real agent names and instructions are treated as secrets — `huginn.yaml` itself is gitignored, and CI validates `huginn.example.yaml` on every push so the schema and the example can never drift apart.
+One `huginn.yaml` declares agents, MCP server connections, tool wiring, channel routing, LLM providers, and the API keys that may call the HTTP surface. Huginn validates it against the `HuginnConfig` Pydantic schema in `app/core/config/schema.py`.
+
+`huginn.example.yaml` at the repository root is a fake-named, fully runnable copy of that schema. It is the only config file this repo ever holds. Real agent names and instructions are treated as secrets, so `huginn.yaml` itself is gitignored. CI validates `huginn.example.yaml` on every push so the schema and the example can never drift apart.
+
+### Secrets
 
 Secrets never sit in the YAML directly. Two indirections keep them out:
 
 - `${ENV_VAR}` string interpolation, for values that vary per environment (a hostname, say).
-- `value_from: {env: NAME}` or `value_from: {file: /path}`, which replace the whole node with an environment variable or a file's contents — used for anything that must not be readable in the dumped config, like `mcp_servers.<name>.auth`.
+- `value_from: {env: NAME}` or `value_from: {file: /path}`, which replace the whole node with an environment variable or a file's contents. Use this for anything that must not be readable in the dumped config, like `mcp_servers.<name>.auth`.
 
-Both are resolved before Pydantic validation runs, so a missing variable or file fails loading with the offending field path (e.g. `mcp_servers.memory.auth`), not a stack trace.
+Huginn resolves both before Pydantic validation runs. A missing variable or file therefore fails loading with the offending field path (e.g. `mcp_servers.memory.auth`) instead of a stack trace.
 
-Which LLM answers is a `(provider, model)` pair, resolved the same way everywhere a model can be named — `agents.<name>`, `defaults`, `channels.<name>.router`, `api_keys.<name>.router`. Naming a `model` alone means "whichever provider offers it", the behaviour before providers could be pinned; adding `provider` demands that exact provider and that it list that model, which is what lets one model name reach two routes (native Anthropic and a gateway, say). `defaults.provider` backs `defaults.model` and nothing else: an agent that names its own `model` does not inherit it, because the default provider has no reason to offer a model the default never mentioned. A model that several providers offer cannot be reached by name alone — that is refused at startup with the contending providers listed, rather than resolved to whichever one happened to load last.
+### Choosing the LLM
 
-`huginn config validate [path]` loads a config file through the same path production uses and prints a summary (agent names, tools, MCP servers, channel routing — never instructions content), or exits 1 with a field-pathed error. It defaults to `HuginnSettings.config_file` (`HUGINN_CONFIG_FILE`, default `huginn.yaml`) when no path is given. `huginn config schema` prints the `HuginnConfig` JSON Schema for editor completion (e.g. `yaml-language-server`).
+Which LLM answers is a `(provider, model)` pair. Huginn resolves it the same way everywhere a model can be named: `agents.<name>`, `defaults`, `channels.<name>.router`, and `api_keys.<name>.router`.
 
-The real config is injected at deploy time, never committed: a Windmill secret script renders it, a kustomize `secretGenerator` turns that into a Kubernetes `Secret`, and it lands mounted at `/etc/huginn/config.yaml` inside the running pod. There is no live-reload — a config change means rerunning the Windmill script, `kubectl apply` on the regenerated `Secret`, and a rollout restart to pick it up.
+- Naming a `model` alone means "whichever provider offers it". This was the behaviour before providers could be pinned.
+- Adding `provider` demands that exact provider, and that provider must list that model. This lets one model name reach two routes (native Anthropic and a gateway, say).
+- `defaults.provider` backs `defaults.model` and nothing else. An agent that names its own `model` does not inherit `defaults.provider`, because the default provider has no reason to offer a model the default never mentioned.
+- A model that several providers offer cannot be reached by name alone. Huginn refuses that at startup and lists the contending providers. It does not resolve the name to whichever provider happened to load last.
+
+### Validating a config file
+
+`huginn config validate [path]` loads a config file through the same path production uses.
+
+- On success it prints a summary: agent names, tools, MCP servers, and channel routing. It never prints instructions content.
+- On failure it exits 1 with a field-pathed error.
+- When no path is given, it defaults to `HuginnSettings.config_file` (`HUGINN_CONFIG_FILE`, default `huginn.yaml`).
+
+`huginn config schema` prints the `HuginnConfig` JSON Schema for editor completion (e.g. `yaml-language-server`).
+
+### How the config reaches production
+
+The real config is injected at deploy time and never committed:
+
+1. A Windmill secret script renders it.
+2. A kustomize `secretGenerator` turns that into a Kubernetes `Secret`.
+3. The `Secret` lands mounted at `/etc/huginn/config.yaml` inside the running pod.
+
+There is no live-reload. A config change means rerunning the Windmill script, running `kubectl apply` on the regenerated `Secret`, and doing a rollout restart to pick it up.
 
 ### Scoped agent assets
 
-Declare named libraries in `assets.sources`. Each agent selects its own source
-for `skills`, `commands`, `subagents`, and `brief`; an omitted source means
-`default`, never the first available library. The first three selectors have
-`enabled: false` and `allow: []` defaults. Once enabled, an empty allowlist offers
-all valid assets in that selected source and scope. A nonempty list narrows it.
+Assets are the skills, commands, subagents, and collaboration brief that an agent loads from a named library. Use this section when you want an agent to pick up those files from a memory service (over MCP) or from a directory on disk.
+
+Declare named libraries in `assets.sources`. Each agent selects its own source for `skills`, `commands`, `subagents`, and `brief`.
 
 ```yaml
 assets:
@@ -135,28 +149,39 @@ agents:
     brief: {enabled: false, writable: false, source: personal}
 ```
 
-MCP sources accept `server`, `list_tool` (default `list_memory_notes`),
-`read_tool` (default `read_memory_note`), `globs`, `inject`, and `bind`.
-Default globs are `Agents/skills/**/SKILL.md`, `Agents/commands/*.md`, and
-`Agents/agents/*/PROMPT.md`. Binding resolves trusted turn identity, including
-the account's approved `memory_scope`; it does not assume that the display
-handle names an existing memory vault. Missing binding values withhold the
-library. Shared scopes require explicit injection. Filesystem sources use
-`root` and `globs`; neither glob traversal nor symlink escapes are allowed.
+#### Selecting a source
+
+- An omitted source means `default`, never the first available library.
+- The first three selectors (`skills`, `commands`, `subagents`) have `enabled: false` and `allow: []` defaults.
+- Once a selector is enabled, an empty allowlist offers all valid assets in that selected source and scope. A nonempty list narrows it.
+
+#### Source kinds
+
+| Kind | Fields | Notes |
+| --- | --- | --- |
+| `mcp` | `server`, `list_tool` (default `list_memory_notes`), `read_tool` (default `read_memory_note`), `globs`, `inject`, and `bind` | Default globs are `Agents/skills/**/SKILL.md`, `Agents/commands/*.md`, and `Agents/agents/*/PROMPT.md`. |
+| `filesystem` | `root` and `globs` | Neither glob traversal nor symlink escapes are allowed. |
+
+Rules for MCP sources:
+
+- Binding resolves trusted turn identity, including the account's approved `memory_scope`. It does not assume that the display handle names an existing memory vault.
+- Missing binding values withhold the library.
+- Shared scopes require explicit injection.
+
 Config interpolation and `value_from` work as elsewhere in the configuration.
 
-Discovery caches are keyed by source, kind, and the complete resolved binding,
-with a 15-minute TTL and a bounded entry count. Concurrent refreshes share a
-read; cancelling the last reader reclaims that work. Bodies and the fixed
-`Agents/AGENTS.md` path are read each time they are used. The public asset
-service's `invalidate(source)` permits controlled refresh; inventory changes
-appear on the next interaction after refresh or expiry. Permission checks are
-repeated independently of inventory and menu caches. Config changes still
-require a restart.
+#### Caching and refresh
 
-Existing `skills.sources` and legacy `skills.source` remain supported. Migrate
-one source at a time, preserving each name, role selector, injection, binding,
-and allowlist:
+- Discovery caches are keyed by source, kind, and the complete resolved binding. They have a 15-minute TTL and a bounded entry count.
+- Concurrent refreshes share a read. Cancelling the last reader reclaims that work.
+- Bodies and the fixed `Agents/AGENTS.md` path are read each time they are used.
+- The public asset service's `invalidate(source)` permits controlled refresh. Inventory changes appear on the next interaction after refresh or expiry.
+- Permission checks are repeated independently of inventory and menu caches.
+- Config changes still require a restart.
+
+#### Migrating from `skills.sources`
+
+Existing `skills.sources` and legacy `skills.source` remain supported. Migrate one source at a time, preserving each name, role selector, injection, binding, and allowlist:
 
 | Existing configuration | Asset configuration |
 | --- | --- |
@@ -166,137 +191,165 @@ and allowlist:
 | source `kind`, `server`, `root`, `list_tool`, `read_tool`, `inject`, `bind` | same fields on the named asset source |
 | `agents.<role>.skills.{source,enabled,allow}` | unchanged |
 
-Distinct names may coexist during migration; duplicate names across the old
-and new sections are rejected. A legacy source is never implicitly used for
-commands, subagents, or the brief. Real vault content and credentials belong
-outside this repository. Deployment config and manifests need the same
-migration before enabling the new capabilities; this branch does not deploy it.
+Migration rules:
+
+- Distinct names may coexist during migration. Duplicate names across the old and new sections are rejected.
+- A legacy source is never implicitly used for commands, subagents, or the brief.
+- Real vault content and credentials belong outside this repository.
+- Deployment config and manifests need the same migration before enabling the new capabilities.
 
 ### Personal commands and Telegram menus
 
-A command is `Agents/commands/<name>.md`, with a required `description`, an
-optional `name` and `agent`, and a prompt body. Only `$ARGUMENTS` is replaced,
-verbatim; without it, arguments are appended after the body. Built-in names
-are reserved. A template's agent must be authorized and use the same resolved
-source and scope as that template. Ambiguous names across sources are rejected.
+A personal command is a prompt template that a user stores in their own asset source and runs as a slash command. Enable `commands` on an agent when you want users to call their own templates from Telegram or over HTTP.
 
-Telegram dispatch, personal `/help`, and menu discovery use one scoped
-resolver. Template commands enter the normal turn pipeline, also available to
-HTTP callers with a trusted asserted identity. Leading-slash text that names no
-command available to the sender remains ordinary input; Telegram still answers
-an unknown command itself. Mixed identity batches cannot
-borrow another sender's personal command. The original command remains
-attached to the expanded prompt for provenance; template text cannot authorize
-a brief update.
+#### Command files
 
-Private menus use chat scope; group menus use chat-member scope. They are
-recomputed on interaction, including after in-chat linking, and after inventory
-refresh. An external unlink or permission change is enforced at the next
-interaction; menus never grant access. Menus are synchronized in the background
-only when an authorized agent enables commands, so a slow identity, inventory
-or Telegram call never delays the conversation. Publishing is serialized per
-bot, chat and member; while one run waits its turn, further requests for that
-menu are absorbed by it. It deduplicates identical content, removes stale
-entries after a failed replacement, retries at most 3 times per interaction
-with backoff, and stops 30 seconds after the run starts. Disabling commands
-withdraws a menu this process published at the next interaction; menus
-published before a restart stay until commands are enabled again. Shutdown
-waits briefly for running synchronizations, then cancels them. A failed sync remains eligible for retry. Restarting
-rebuilds these caches. Telegram menu syntax and capacity can omit items that
-remain available through `/help` and runtime authorization.
+A command is `Agents/commands/<name>.md`. Its frontmatter has a required `description` and an optional `name` and `agent`. The prompt is the body.
+
+- Only `$ARGUMENTS` is replaced, verbatim. Without it, arguments are appended after the body.
+- Built-in names are reserved.
+- A template's agent must be authorized and use the same resolved source and scope as that template.
+- Ambiguous names across sources are rejected.
+
+#### Dispatch
+
+- Telegram dispatch, personal `/help`, and menu discovery use one scoped resolver.
+- Template commands enter the normal turn pipeline. They are also available to HTTP callers with a trusted asserted identity.
+- Leading-slash text that names no command available to the sender remains ordinary input. Telegram still answers an unknown command itself.
+- Mixed identity batches cannot borrow another sender's personal command.
+- The original command remains attached to the expanded prompt for provenance. Template text cannot authorize a brief update.
+
+#### Telegram menus
+
+- Private menus use chat scope. Group menus use chat-member scope.
+- Menus are recomputed on interaction, including after in-chat linking, and after inventory refresh.
+- An external unlink or permission change is enforced at the next interaction. Menus never grant access.
+- Telegram menu syntax and capacity can omit items. Those items remain available through `/help` and runtime authorization.
+- Disabling commands withdraws a menu this process published at the next interaction. Menus published before a restart stay until commands are enabled again.
+
+#### Menu synchronization details
+
+- Menus are synchronized in the background only when an authorized agent enables commands, so a slow identity, inventory or Telegram call never delays the conversation.
+- Publishing is serialized per bot, chat and member. While one run waits its turn, further requests for that menu are absorbed by it.
+- Publishing deduplicates identical content and removes stale entries after a failed replacement.
+- Publishing retries at most 3 times per interaction with backoff, and stops 30 seconds after the run starts.
+- A failed sync remains eligible for retry.
+- Shutdown waits briefly for running synchronizations, then cancels them.
+- Restarting rebuilds these caches.
 
 ### Constrained subagents
 
-`agent(name, task)` loads `Agents/agents/<name>/PROMPT.md`: required
-`description`, optional `model` and `tools`, with instructions in the body.
-Additional descriptive metadata is retained by the asset layer. Execution
-limits, provider and MCP settings cannot come from vault frontmatter.
-`subagents.definitions.<name>` may instead define `description`, `instructions`,
-optional `model`, `tools`, `max_iterations`, `max_completion_tokens`, and
-`turn_timeout`. Config wins a name collision, reported when that scope is loaded.
+A subagent is a child agent that the parent agent calls as a tool to handle one task. Enable `subagents` when an agent should hand work to a narrower prompt while staying inside the parent's limits.
 
-Delegation requires `subagents.enabled: true`. The default concurrency is 1;
-`max_concurrency` accepts positive integers. Every call shares the parent's
-semaphore, cancellation, and monotonic deadline, reserving at least one parent
-iteration to collect the answer. Queueing and prompt reads spend that budget.
-Delegation uses its reserved deadline instead of the ordinary `tool_timeout`;
-other tools keep their configured timeout. An external MCP tool is treated as
-delegation only when listed in that reference's `delegate`, which must be a
-subset of its `allow`; such tools are never inherited by children. Children cannot delegate, update the
-brief, exceed parent iterations or output limits, or select another provider.
-Requested child tools must be a subset of those available to the parent.
+#### Defining a subagent
 
-Children receive their task and instructions, without parent history, attachments,
-conversation document grants, or a separate stored conversation. Only completed
-final text returns to the parent; intermediate drafts do not stream to the
-reader. Files a child produces are delivered with the parent's answer. Ordinary inherited tools can still have side effects.
-Logs identify the parent turn and child execution without logging task or
-instruction text. There is no aggregate token or spending cap across children.
-The current streaming contract does not expose model token-usage counters.
+`agent(name, task)` loads `Agents/agents/<name>/PROMPT.md`. That file has a required `description`, optional `model` and `tools`, and the instructions in the body.
+
+- Additional descriptive metadata is retained by the asset layer.
+- Execution limits, provider and MCP settings cannot come from vault frontmatter.
+- `subagents.definitions.<name>` may instead define `description`, `instructions`, optional `model`, `tools`, `max_iterations`, `max_completion_tokens`, and `turn_timeout`.
+- Config wins a name collision. The collision is reported when that scope is loaded.
+
+#### Delegation rules
+
+- Delegation requires `subagents.enabled: true`.
+- The default concurrency is 1. `max_concurrency` accepts positive integers.
+- Every call shares the parent's semaphore, cancellation, and monotonic deadline, and reserves at least one parent iteration to collect the answer. Queueing and prompt reads spend that budget.
+- Delegation uses its reserved deadline instead of the ordinary `tool_timeout`. Other tools keep their configured timeout.
+- An external MCP tool is treated as delegation only when listed in that reference's `delegate`, which must be a subset of its `allow`. Such tools are never inherited by children.
+
+#### What a child can and cannot do
+
+- Children cannot delegate, update the brief, exceed parent iterations or output limits, or select another provider.
+- Requested child tools must be a subset of those available to the parent.
+- Children receive their task and instructions. They do not receive parent history, attachments, conversation document grants, or a separate stored conversation.
+- Only completed final text returns to the parent. Intermediate drafts do not stream to the reader.
+- Files a child produces are delivered with the parent's answer.
+- Ordinary inherited tools can still have side effects.
+
+#### Limits and logging
+
+- Logs identify the parent turn and child execution without logging task or instruction text.
+- There is no aggregate token or spending cap across children.
+- The current streaming contract does not expose model token-usage counters.
 
 ### Collaboration brief
 
-`brief.enabled` reads the selected scope's `Agents/AGENTS.md` afresh each turn.
-The brief follows the static system prompt's cache breakpoint; it does not
-modify that static prefix. A missing brief is acceptable. It contains recent
-agreements, summaries and links; current task progress belongs in HEARTBEAT,
-and detailed decisions and durable knowledge remain in their canonical notes.
+The collaboration brief is a short shared note, `Agents/AGENTS.md`, that the agent reads at the start of every turn. Enable it when the agent should carry recent agreements with the user from one conversation to the next.
 
-`brief.writable` additionally permits `update_brief` only against an original,
-explicit user request to change the brief. It requires a matching message
-identifier and an exact quote, within one sentence, that names `AGENTS.md`, the
-collaboration brief or 協作簡報 together with a change verb. The sentence is
-read whole: a negation, condition, report or question before the brief is
-named, or a later clause that retracts the change, denies the request; text
-after a colon or inside quotation marks is content to record, and polite forms
-such as 「可以幫我更新 AGENTS.md 嗎？」 still count. The check errs towards
-denying, so a request mixing content and instruction may need restating; discussion, template text, tool output and
-child tasks do not authorize writes. This language check is a conservative
-policy aid, not an infallible natural-language authorization mechanism. The
-server's scope, writable setting, managed tool boundary and version check are
-separate enforced restrictions. Raw MCP brief wrappers and generic memory
-mutations or property edits targeting the root `Agents/AGENTS.md` (or moving
-`Agents`) are blocked; Huginn assumes Muninn's default `Agents` directory. Other memory writes remain available.
+The brief contains recent agreements, summaries and links. Current task progress belongs in HEARTBEAT, and detailed decisions and durable knowledge remain in their canonical notes.
 
-Who may ask for a change depends on the source binding. When the source binds a
-personal value (`account`, `actor`, `handle` or `memory_scope`), the brief
-belongs to the sender and only the sender's own request counts. Any other
-binding makes the brief shared: it stays read-only unless `brief.writers` lists
-the handles whose requests may change it.
+#### Reading the brief
 
-Writes require Muninn's versioned `update_agents_file` wrapper, accepting
-`content`, `expected_version` and `expected_absent` alongside fixed `agent` and
-`user` bindings, and returning the new `version`. Existing reads must return a
-`version` when requested with `include_version: true`; Huginn negotiates this
-field through the read tool schema and preserves structured MCP metadata and
-error codes. Updates replace the entire file; conflicts preserve it. The client
-rejects more than 200 lines or 65,536 UTF-8 bytes without truncation and audits
-success or failure against the originating message. It disables writes when
-the service lacks this capability. The matching Muninn implementation is on
-`feat/m7-briefs`; both branches require a separate rollout before enabling writes.
+- `brief.enabled` reads the selected scope's `Agents/AGENTS.md` afresh each turn.
+- The brief follows the static system prompt's cache breakpoint. It does not modify that static prefix.
+- A missing brief is acceptable.
 
-The brief's byte/character count is logged without its content. Prefix stability
-is tested with fake models. Actual cached-token hits and incremental token cost
-require a later measurement against the selected provider; no paid model calls
-are part of ordinary tests.
+#### Letting the agent update the brief
 
-The integration test uses a locally built Muninn binary, independent loopback
-servers sharing a disposable vault, and a scripted model (no provider calls):
+`brief.writable` additionally permits `update_brief`, and only against an original, explicit user request to change the brief. The request must meet all of these conditions:
+
+- It carries a matching message identifier.
+- It contains an exact quote, within one sentence, that names `AGENTS.md`, the collaboration brief or 協作簡報 together with a change verb.
+
+Huginn reads the sentence whole:
+
+- A negation, condition, report or question before the brief is named denies the request. So does a later clause that retracts the change.
+- Text after a colon or inside quotation marks is content to record.
+- Polite forms such as 「可以幫我更新 AGENTS.md 嗎？」 still count.
+- The check errs towards denying, so a request mixing content and instruction may need restating.
+- Discussion, template text, tool output and child tasks do not authorize writes.
+
+This language check is a conservative policy aid, not an infallible natural-language authorization mechanism. The server's scope, writable setting, managed tool boundary and version check are separate enforced restrictions.
+
+Huginn blocks other ways of changing the file:
+
+- Raw MCP brief wrappers are blocked.
+- Generic memory mutations or property edits targeting the root `Agents/AGENTS.md` (or moving `Agents`) are blocked. Huginn assumes Muninn's default `Agents` directory.
+- Other memory writes remain available.
+
+#### Who may ask for a change
+
+Who may ask for a change depends on the source binding.
+
+| Source binding | Brief ownership | Whose request counts |
+| --- | --- | --- |
+| Binds a personal value (`account`, `actor`, `handle` or `memory_scope`) | The brief belongs to the sender. | Only the sender's own request. |
+| Any other binding | The brief is shared. | The brief stays read-only unless `brief.writers` lists the handles whose requests may change it. |
+
+#### Write requirements
+
+- Writes require Muninn's versioned `update_agents_file` wrapper. It accepts `content`, `expected_version` and `expected_absent` alongside fixed `agent` and `user` bindings, and returns the new `version`.
+- Existing reads must return a `version` when requested with `include_version: true`. Huginn negotiates this field through the read tool schema and preserves structured MCP metadata and error codes.
+- Updates replace the entire file. Conflicts preserve it.
+- The client rejects more than 200 lines or 65,536 UTF-8 bytes without truncation.
+- The client audits success or failure against the originating message.
+- The client disables writes when the service lacks this capability.
+- The matching Muninn implementation is on its `feat/m7-briefs` branch and has not shipped yet. Roll it out before enabling writes.
+
+#### Measurement
+
+- The brief's byte/character count is logged without its content.
+- Prefix stability is tested with fake models.
+- Actual cached-token hits and incremental token cost require a later measurement against the selected provider. No paid model calls are part of ordinary tests.
+
+#### Integration test
+
+The integration test uses a locally built Muninn binary, independent loopback servers sharing a disposable vault, and a scripted model (no provider calls):
 
 ```bash
 MUNINN_TEST_BINARY=/absolute/path/to/muninn/target/debug/muninn \
   uv run pytest tests/integration/app/features/briefs/test_muninn_brief.py -q
 ```
 
-Without that variable the test skips; it never falls back to a remote server.
-It clears the server environment and checks creation, next-turn reads, approved
-memory bindings, read-only enforcement, managed-path protection, and conflicting
-updates/initial creations across independent servers. Build the binary from
-Muninn's matching `feat/m7-briefs` branch before running it.
+- Without that variable the test skips. It never falls back to a remote server.
+- The test clears the server environment.
+- It checks creation, next-turn reads, approved memory bindings, read-only enforcement, managed-path protection, and conflicting updates/initial creations across independent servers.
+- Build the binary from Muninn's matching `feat/m7-briefs` branch before running it.
 
 ## HTTP chat API
 
-A browser front end talks to Huginn over HTTP, streaming the answer with Server-Sent Events. Three surfaces sit on the same service, the same authentication, and the same turn pipeline; only the wire dialect differs, so an agent gains all three at once.
+A browser front end talks to Huginn over HTTP and receives the answer as a stream of Server-Sent Events. Three surfaces sit on the same service, the same authentication, and the same turn pipeline. Only the wire dialect differs, so an agent gains all three at once.
 
 | Surface | Path | Shape |
 | --- | --- | --- |
@@ -304,25 +357,104 @@ A browser front end talks to Huginn over HTTP, streaming the answer with Server-
 | OpenAI-compatible | `POST /openai/v1/chat/completions` | `data: {chat.completion.chunk}` … `data: [DONE]`, or one `chat.completion` body when `stream` is false |
 | Anthropic-compatible | `POST /anthropic/v1/messages` | `message_start` / `content_block_delta` / `message_delta` / `message_stop`, or one `message` body when `stream` is false |
 
-Point an existing SDK at the compatible surfaces by base URL: `https://host/openai/v1` for the OpenAI client, `https://host/anthropic` for the Anthropic one. Both read `model` as an agent name when it matches an agent the caller's key may use, which is how a client whose only knob is a model picker chooses an agent; any other value is left alone, because which LLM answers is the agent's configuration, not the caller's business. Both surfaces ignore the message history a client resends and answer from the transcript this service already keeps — the thread is named by `conversation`, or by `user` when a drop-in client has no field for it, and the native surface's first event reports the id a request was given. A turn nobody named a conversation for gets a fresh one.
+### Using the compatible surfaces
 
-Callers authenticate with `Authorization: Bearer <token>` against the `api_keys` config section. A key carries the agents it may reach, optionally a default `agent`, optionally a `router` (an LLM picks among the key's agents, with `fallback` when it cannot), and optionally `tools.deny` to take tools away from what the agent is configured with. Every refusal lands before the stream opens, because an SSE response has spent its status line by the time the first frame is out: an unknown or missing token is `401`, an agent the key may not use is `403`, a key that pins no agent and cannot route is `400`, and a conversation already answering is `409` — one question at a time per conversation, rejected rather than queued, which is what a web client can actually show. A failure after the first frame arrives as a terminal `error` event instead, in each dialect's own idiom.
+Point an existing SDK at the compatible surfaces by base URL: `https://host/openai/v1` for the OpenAI client, `https://host/anthropic` for the Anthropic one.
 
-A turn that answered but stopped short of finishing — it spent its `turn_timeout`, or every iteration `max_iterations` allowed (each set per agent, falling back to `defaults`, then to 300 seconds and 10 iterations) — is not a failure: the answer stands, and the caller is told why it ends where it does. Each surface says so in its own idiom, because only the surface knows how its readers hear it: the native surface emits an `unfinished` event naming the ending before `done`, the compatible surfaces carry it on the stop reason they already have (`finish_reason: length`, `stop_reason: max_tokens`), and Telegram appends a plain sentence inviting the reader to ask for the rest. The note is never folded into the transcript — it is written for the reader, not remembered as the agent's own words.
+- Both surfaces read `model` as an agent name when it matches an agent the caller's key may use. A client whose only knob is a model picker chooses an agent this way.
+- Any other `model` value is left alone, because the agent's configuration decides which LLM answers and the caller does not.
+- Both surfaces ignore the message history a client resends and answer from the transcript this service already keeps.
+- The thread is named by `conversation`, or by `user` when a drop-in client has no field for it.
+- The native surface's first event reports the id a request was given.
+- A turn nobody named a conversation for gets a fresh one.
 
-Files go the other way too. The native request takes `attachments`, each either `{"blob": "<id>"}` naming a file uploaded with `POST /v1/blobs` (multipart field `file`, answered `201` with its `id`, `kind`, `mime` and `size`) or `{"data": "<base64>", "name": "..."}` inline for anything up to 1 MB. The compatible surfaces read the parts their SDKs already send — OpenAI `image_url` as a `data:` URI, `input_audio` and `file`, Anthropic `image` and `document` blocks with a `base64` source — and hand them to the same pipeline Telegram uses, so a voice note is transcribed and a document read before the turn starts. What a file is comes from its bytes, never from the label on the request. A link to a remote file is refused with `400` rather than fetched, an unreadable type is `415`, a file over its kind's limit is `413`, and a blob uploaded with another key is `404`; all of it lands before the stream opens. An upload no turn ever uses lapses with the `blobs.retention.generated` period.
+### Authentication and refusals
 
-A file a tool produced — an image, a voice note, a document — never travels inside the stream. The native surface announces it with an `attachment` event carrying `blob`, `kind`, `mime`, `size`, `name` and a relative `url`, and the bytes come from `GET /v1/blobs/{id}` with the same bearer token. A key can fetch only what was produced in its own turns or uploaded with it; anything else answers `404`, never `403`, so a guessed id learns nothing. The compatible surfaces have no wire shape for a file, so there the file arrives as a Markdown link appended to the answer text rather than as an event their SDKs would not understand.
+Callers authenticate with `Authorization: Bearer <token>` against the `api_keys` config section. A key carries:
 
-Streaming details worth knowing: a keepalive comment goes out every 15 seconds so an idle proxy does not close the connection during a long tool call, `Cache-Control: no-cache` and `X-Accel-Buffering: no` keep an ingress from buffering the stream back into one late answer, and a client that hangs up cancels the turn it was reading rather than leaving it to spend tokens on nobody's behalf.
+- the agents it may reach;
+- optionally a default `agent`;
+- optionally a `router`, where an LLM picks among the key's agents, with `fallback` when it cannot;
+- optionally `tools.deny`, to take tools away from what the agent is configured with.
+
+Every refusal lands before the stream opens, because an SSE response has spent its status line by the time the first frame is out.
+
+| Status | Cause |
+| --- | --- |
+| `401` | The token is unknown or missing. |
+| `403` | The key may not use the agent. |
+| `400` | The key pins no agent and cannot route. |
+| `409` | The conversation is already answering. |
+
+Huginn allows one question at a time per conversation. A second question is rejected and not queued, because a rejection is what a web client can actually show. A failure after the first frame arrives as a terminal `error` event instead, in each dialect's own idiom.
+
+### Unfinished turns
+
+A turn can answer and still stop short of finishing. This happens when it spends its `turn_timeout`, or every iteration that `max_iterations` allowed. Each limit is set per agent, falls back to `defaults`, and then to 300 seconds and 10 iterations.
+
+Such a turn is not a failure. The answer stands, and the caller is told why it ends where it does. Each surface says so in its own idiom, because only the surface knows how its readers hear it:
+
+| Surface | How it reports an unfinished turn |
+| --- | --- |
+| Native | Emits an `unfinished` event naming the ending before `done`. |
+| Compatible | Carry it on the stop reason they already have (`finish_reason: length`, `stop_reason: max_tokens`). |
+| Telegram | Appends a plain sentence inviting the reader to ask for the rest. |
+
+The note is never folded into the transcript. It is written for the reader and is not remembered as the agent's own words.
+
+### Sending files
+
+The native request takes `attachments`. Each attachment is one of:
+
+- `{"blob": "<id>"}`, naming a file uploaded with `POST /v1/blobs`. The upload uses the multipart field `file` and is answered `201` with its `id`, `kind`, `mime` and `size`.
+- `{"data": "<base64>", "name": "..."}`, inline, for anything up to 1 MB.
+
+The compatible surfaces read the parts their SDKs already send:
+
+- OpenAI: `image_url` as a `data:` URI, `input_audio` and `file`.
+- Anthropic: `image` and `document` blocks with a `base64` source.
+
+Huginn hands these parts to the same pipeline Telegram uses, so a voice note is transcribed and a document read before the turn starts. What a file is comes from its bytes, never from the label on the request.
+
+These refusals also land before the stream opens:
+
+| Status | Cause |
+| --- | --- |
+| `400` | A link to a remote file. Huginn refuses it and does not fetch it. |
+| `415` | An unreadable type. |
+| `413` | A file over its kind's limit. |
+| `404` | A blob uploaded with another key. |
+
+An upload no turn ever uses lapses with the `blobs.retention.generated` period.
+
+### Receiving files
+
+A file a tool produced (an image, a voice note, a document) never travels inside the stream.
+
+- The native surface announces it with an `attachment` event carrying `blob`, `kind`, `mime`, `size`, `name` and a relative `url`. The bytes come from `GET /v1/blobs/{id}` with the same bearer token.
+- A key can fetch only what was produced in its own turns or uploaded with it. Anything else answers `404`, never `403`, so a guessed id learns nothing.
+- The compatible surfaces have no wire shape for a file. There the file arrives as a Markdown link appended to the answer text, because their SDKs would not understand an event.
+
+### Streaming details
+
+- A keepalive comment goes out every 15 seconds so an idle proxy does not close the connection during a long tool call.
+- `Cache-Control: no-cache` and `X-Accel-Buffering: no` keep an ingress from buffering the stream back into one late answer.
+- A client that hangs up cancels the turn it was reading, so the turn does not keep spending tokens on nobody's behalf.
 
 ## Deployment
 
 The service ships as a container image at `ghcr.io/progamesigner/huginn`, built from the multi-stage `Dockerfile` at the repository root. The image is multi-arch (`linux/amd64` and `linux/arm64`), so a mixed cluster pulls the right architecture per node from a single manifest.
 
-CI builds the image on every push and pull request, which surfaces packaging breakage (a missing arm64 wheel, a broken layer) as early as any other check. The build waits for `lint` and `test`, so a commit that fails either never reaches the registry, and it only pushes on `main` and on release tags; pull requests build without pushing. Every push is tagged `sha-<short>` for the commit, `main` additionally moves `latest`, and a release tag adds its semantic versions.
+The runtime stage runs as a non-root user and defaults `HUGINN_SERVER_HOST` to `0.0.0.0` so the process binds inside the container. Override the `HUGINN_SERVER_` knobs (see [Server settings](#server-settings)) through the environment at deploy time.
 
-The runtime stage runs as a non-root user and defaults `HUGINN_SERVER_HOST` to `0.0.0.0` so the process binds inside the container. Override the `HUGINN_SERVER_` knobs (see [Development](#development)) through the environment at deploy time.
+### Image builds in CI
+
+- CI builds the image on every push and pull request. This surfaces packaging breakage (a missing arm64 wheel, a broken layer) as early as any other check.
+- The build waits for `lint` and `test`, so a commit that fails either never reaches the registry.
+- The build only pushes on `main` and on release tags. Pull requests build without pushing.
+- Every push is tagged `sha-<short>` for the commit, `main` additionally moves `latest`, and a release tag adds its semantic versions.
+
+### Building and inspecting the image
 
 Build and run it locally with:
 
@@ -340,7 +472,7 @@ docker buildx imagetools inspect ghcr.io/progamesigner/huginn:latest
 
 ### Releasing
 
-A release is a signed tag on `main`, and pushing the tag is the whole procedure — there is nothing to click afterwards. `pyproject.toml` holds the version of record, and CI refuses to publish a tag that disagrees with it, so the bump and the tag travel together:
+A release is a signed tag on `main`. Pushing the tag is the whole procedure, and there is nothing to click afterwards. `pyproject.toml` holds the version of record, and CI refuses to publish a tag that disagrees with it, so the bump and the tag travel together:
 
 ```sh
 # set version = "X.Y.Z" in pyproject.toml and commit it, then
@@ -348,23 +480,36 @@ git tag -s vX.Y.Z -m 'Release vX.Y.Z'
 git push origin vX.Y.Z
 ```
 
-Tag `vX.Y.Z` publishes the immutable `X.Y.Z`, the floating `X.Y` that follows its patch releases, and the floating `X` that follows its minor releases, alongside the usual `sha-<short>`. The leading `v` is stripped, so `v1.2.3` publishes `1.2.3` and not `v1.2.3` — that part matches how `progamesigner/muninn` names its release images, though the floating tags are huginn's own and muninn publishes neither. `X` is withheld below `1.0.0`, where a floating `0` would claim compatibility across every minor release the project has yet to make.
+Tag `vX.Y.Z` publishes these image tags, alongside the usual `sha-<short>`:
 
-`vX.Y.Z` is the only accepted spelling, and a tag CI cannot read that way fails rather than publishing. Pre-release tags are deliberately absent, because PEP 440 writes `0.1.0rc1` where semver writes `0.1.0-rc.1` and no single `pyproject.toml` version can match both spellings; `sha-<short>` already names an exact build to try.
+| Image tag | Kind | Behavior |
+| --- | --- | --- |
+| `X.Y.Z` | Immutable | Names this release. |
+| `X.Y` | Floating | Follows its patch releases. |
+| `X` | Floating | Follows its minor releases. Withheld below `1.0.0`, where a floating `0` would claim compatibility across every minor release the project has yet to make. |
 
-`latest` tracks `main`, not the newest release, and a tag does not move it — which is why the workflow sets `flavor: latest=false`, since the default `latest=auto` would move `latest` onto every semver tag. Note that `ghcr.io/progamesigner/muninn:latest` means the newest *release*, so the two images do not read the same way.
+Tag naming rules:
 
-Publishing a release does not deploy it. The manifests repository pins an explicit tag through kustomize `newTag`, so a rollout is a separate, deliberate change there — and it should pin an immutable `X.Y.Z` rather than a floating `X.Y` or `X`, so that a pinned deployment cannot drift underneath itself.
+- The leading `v` is stripped, so `v1.2.3` publishes `1.2.3` and not `v1.2.3`. That part matches how `progamesigner/muninn` names its release images. The floating tags are huginn's own, and muninn publishes neither.
+- `vX.Y.Z` is the only accepted spelling. A tag CI cannot read that way fails and does not publish.
+- Pre-release tags are deliberately absent. PEP 440 writes `0.1.0rc1` where semver writes `0.1.0-rc.1`, and no single `pyproject.toml` version can match both spellings. `sha-<short>` already names an exact build to try.
+
+`latest` tracks `main`, not the newest release, and a tag does not move it. The workflow sets `flavor: latest=false` for this reason, since the default `latest=auto` would move `latest` onto every semver tag. Note that `ghcr.io/progamesigner/muninn:latest` means the newest *release*, so the two images do not read the same way.
+
+Publishing a release does not deploy it. The manifests repository pins an explicit tag through kustomize `newTag`, so a rollout is a separate, deliberate change there. That change should pin an immutable `X.Y.Z` and not a floating `X.Y` or `X`, so that a pinned deployment cannot drift underneath itself.
 
 ## Identity administration
+
+Huginn links external identities (a Telegram user, or a user ID asserted by an HTTP application) to a canonical account with its own memory scope. Registration is invitation-only: an operator chooses the target and approves the memory ownership before a recipient claims an account.
+
+### Prerequisites
 
 Identity linking requires PostgreSQL and a dedicated HMAC secret of at least 32 bytes:
 
 - `HUGINN_DATABASE_URL` points to the migrated Huginn database.
 - `HUGINN_IDENTITY_LINK_SECRET` is generated independently of database and legacy registration credentials. Store it in the deployment secret manager; never log or commit it.
 
-Registration is invitation-only. An operator chooses the target and approves the
-memory ownership before a recipient claims an account:
+### Issuing registration invites
 
 ```sh
 # Verify that this user scope is unused in Muninn before authorizing fresh memory.
@@ -375,34 +520,40 @@ huginn identities registration-invite http:web operator --existing-scope prior-m
 huginn identities revoke <invite-id>
 ```
 
-`--new-user` locks both the approved handle and its new memory user scope. The
-operator must check Muninn before passing `--confirm-new-scope`: absence from
-Huginn's database does not prove that a vault is unused. `--existing-scope`
-locks the existing scope instead. These options are mutually exclusive, and
-neither may name memory already owned by another Huginn account; that account
-must issue a link invite. Reserved names such as `default`, `shared`, `admin`,
-`system`, `root`, and `anonymous` cannot be new scopes or handles. An operator
-may explicitly authorize an unowned existing scope with such a name. Live invitations reserve
-their scope until expiry or revocation. Registration expires in 10 minutes by
-default, with a maximum lifetime of 1 day.
+Memory options:
 
-Targets are configured channel names or API key names. Use `channel:<name>` or
-`http:<key-name>` when a name is ambiguous. An invite cannot be redeemed through
-a different provider or realm. Only the operator CLI issues registration
-invites; self-service `/invite` always links the sender's existing account.
-The credentials are printed once, and only their HMAC digest is stored.
+- `--new-user` locks both the approved handle and its new memory user scope. The operator must check Muninn before passing `--confirm-new-scope`: absence from Huginn's database does not prove that a vault is unused.
+- `--existing-scope` locks the existing scope instead.
+- These options are mutually exclusive.
+- Neither option may name memory already owned by another Huginn account. That account must issue a link invite.
+- Reserved names such as `default`, `shared`, `admin`, `system`, `root`, and `anonymous` cannot be new scopes or handles. An operator may explicitly authorize an unowned existing scope with such a name.
+- Live invitations reserve their scope until expiry or revocation.
+- Registration expires in 10 minutes by default, with a maximum lifetime of 1 day.
 
-In a Telegram private chat, send `/register <code>` or open
-`https://t.me/<bot>?start=register_<token>`, then `/iam <handle>` to finish
-registration. `/iam` on a linked identity reports its existing handle.
-`/identity` reports the link, `/invite <target>` issues a 10-minute link code,
-and `/displayname <name>` updates the display name independently. Identity
-commands refuse group chats. Legacy `link_<token>` deep links remain supported.
+Targets and credentials:
 
-HTTP clients use the same bearer token as chat and send `X-Huginn-User` with the
-application's stable user ID (1 to 256 printable characters). Identity resolves
-as `(http, API key name, asserted ID)`. The API key holder is trusted to assert
-this ID; the header is not an individual login credential.
+- Targets are configured channel names or API key names. Use `channel:<name>` or `http:<key-name>` when a name is ambiguous.
+- An invite cannot be redeemed through a different provider or realm.
+- Only the operator CLI issues registration invites. Self-service `/invite` always links the sender's existing account.
+- The credentials are printed once, and only their HMAC digest is stored.
+
+### Registering from Telegram
+
+In a Telegram private chat, send `/register <code>` or open `https://t.me/<bot>?start=register_<token>`, then send `/iam <handle>` to finish registration.
+
+| Command | Effect |
+| --- | --- |
+| `/register <code>` | Starts registration with an invite code. |
+| `/iam <handle>` | Finishes registration. On a linked identity, `/iam` reports its existing handle. |
+| `/identity` | Reports the link. |
+| `/invite <target>` | Issues a 10-minute link code. |
+| `/displayname <name>` | Updates the display name independently. |
+
+Identity commands refuse group chats. Legacy `link_<token>` deep links remain supported.
+
+### Registering over HTTP
+
+HTTP clients use the same bearer token as chat and send `X-Huginn-User` with the application's stable user ID (1 to 256 printable characters). Identity resolves as `(http, API key name, asserted ID)`. The API key holder is trusted to assert this ID; the header is not an individual login credential.
 
 - `POST /v1/identity/claim`: `{"code":"...","handle":"example-user","display_name":"Example Person"}`.
 - `POST /v1/identity/link`: `{"code":"..."}` for an existing account's link invite.
@@ -410,27 +561,32 @@ this ID; the header is not an individual login credential.
 - `POST /v1/identity/invite`: `{"target":"primary"}` to link your own account.
 - `PATCH /v1/identity`: `{"display_name":"New Display Name"}`.
 
-Claim and link requests reject extra fields, so recipients cannot change the
-invite's target or memory mode. Account creation, external identity, memory
-binding, and invite consumption commit together. Repeated successful redemption
-by the same external identity is safe; another identity cannot reuse the code.
-Expected registration failures leave an audit record without gaining memory
-access. Handles use `[a-z0-9._-]{1,64}`, excluding `.` and `..`; migration refuses
-incompatible existing handles before altering the schema.
+### Redemption rules
 
-All three chat surfaces honor `X-Huginn-User`. Asserted users get separate
-conversation namespaces within the application; compatible `user` still names
-the conversation when `conversation` is absent. Omitting the header retains the
-existing machine actor and conversation namespace. File grants remain shared
-within an API key, including uploads and generated files: this feature does not
-provide individual file isolation. The application must enforce its own user
-authentication and file access policy.
+- Claim and link requests reject extra fields, so recipients cannot change the invite's target or memory mode.
+- Account creation, external identity, memory binding, and invite consumption commit together.
+- Repeated successful redemption by the same external identity is safe. Another identity cannot reuse the code.
+- Expected registration failures leave an audit record without gaining memory access.
+- Handles use `[a-z0-9._-]{1,64}`, excluding `.` and `..`. Migration refuses incompatible existing handles before altering the schema.
 
-Accounts retain their approved memory user scope. Binding `user: memory_scope`
-selects it explicitly; deployed `user: handle` bindings also use that approved
-scope. Other `handle` bindings retain the actual handle. The agent axis remains
-controlled by source configuration. Unlinked senders have no personal memory
-binding. Handle renaming and memory migration are not supported.
+### Asserted users on the chat surfaces
+
+- All three chat surfaces honor `X-Huginn-User`.
+- Asserted users get separate conversation namespaces within the application. Compatible `user` still names the conversation when `conversation` is absent.
+- Omitting the header retains the existing machine actor and conversation namespace.
+- File grants remain shared within an API key, including uploads and generated files. This feature does not provide individual file isolation.
+- The application must enforce its own user authentication and file access policy.
+
+### Memory scope binding
+
+- Accounts retain their approved memory user scope.
+- Binding `user: memory_scope` selects it explicitly. Deployed `user: handle` bindings also use that approved scope.
+- Other `handle` bindings retain the actual handle.
+- The agent axis remains controlled by source configuration.
+- Unlinked senders have no personal memory binding.
+- Handle renaming and memory migration are not supported.
+
+### Administering accounts directly
 
 Operators can still administer canonical accounts and existing links directly:
 
@@ -441,10 +597,204 @@ huginn identities list alice
 huginn identities unlink telegram primary 123456789
 ```
 
-For the legacy registration cutover:
+### Legacy registration cutover
 
 1. Apply all Huginn migrations and create the required canonical users.
 2. Do not import Windmill `c_agent_channel.users[]` or any other legacy channel-to-user mapping.
 3. Deploy the new identity resolver. Unlinked senders remain isolated anonymous principals and are not denied access merely because they are unlinked.
 4. Issue a fresh invite to each user and have them relink through the vendor-verified account.
 5. Verify links with `huginn identities list <handle>`, then retire the legacy registration flow and its shared registration secret.
+
+## Development
+
+### Dependencies
+
+Dependencies go through uv. Add them with `uv add <pkg>==<version>`, always pinned to an exact version, never a floating specifier like `^` or `latest`. `pyproject.toml` states what the project wants, and `uv.lock` records the exact tree that satisfies it. Both belong in git.
+
+### Tests
+
+Tests run with `uv run pytest`.
+
+| Directory | Marker | External resources |
+| --- | --- | --- |
+| `tests/unit/` | No marker. | None. These tests must pass without network or database. |
+| `tests/integration/` | `pytestmark = pytest.mark.integration` at file level. | May require real resources (PostgreSQL, Redis, network). Deselect them with `-m 'not integration'`. |
+
+Async tests need no decorator: `asyncio_mode = "auto"` treats every `async def test_*` as an asyncio test.
+
+### Database integration tests
+
+The database integration tests apply the Alembic migrations to a scratch database once. They then wrap each test in a transaction that is rolled back on teardown, so no test leaves state behind.
+
+The tests resolve their database three ways, in order:
+
+1. An explicit `HUGINN_DATABASE_URL`. This is the CI path.
+2. Otherwise, a throwaway `postgres:16` container started via [testcontainers](https://testcontainers.com/) when Docker is reachable.
+3. Otherwise, they skip.
+
+So locally, with Docker available, `uv run pytest -m integration` just works: the container is created and torn down automatically. The devcontainer enables the Docker socket through the `docker-outside-of-docker` feature (rebuild the container once to pick it up).
+
+To run them against your own PostgreSQL instead of a spun container, set the url explicitly:
+
+```sh
+HUGINN_DATABASE_URL=postgresql+asyncpg://huginn:huginn@localhost:5432/huginn_test uv run pytest -m integration
+```
+
+### Migrations
+
+Migrations are organized under `migrations/<domain>/revisions/`. Each domain maps to one fixed `(database connection, PostgreSQL schema)` pair in `migrations/env.py`.
+
+The current lineage lives in `migrations/default/revisions/`. Its revisions explicitly target the `public` schema and store their history in `public.migrations`. Apply it against `HUGINN_DATABASE_URL` with:
+
+```sh
+uv run alembic upgrade default@head
+uv run alembic downgrade default@base
+```
+
+A future domain or schema gets its own revision directory, root branch label, and version-table schema. Add that directory to Alembic `version_locations`; do not select the target through runtime `-x database` or `-x schema` arguments.
+
+### Type checks
+
+Types are checked with `uv run ty check`. All rules run at error severity.
+
+### Reproducing CI locally
+
+CI runs the same checks as a local run. To reproduce the whole pipeline before pushing:
+
+```sh
+uv run ruff check . && uv run ruff format --check . && uv run lint-imports && uv run ty check && uv run pytest -m 'not integration'
+```
+
+## Architecture
+
+This section describes how the code is organized and which rules the architecture tests enforce. Read it before you add a provider, a feature, or an extension.
+
+### Dependency injection container
+
+Runtime objects are wired through a homemade DI container in `lib/container`.
+
+- `Container` itself only knows bind, resolve, contribute and collect, and lifecycle. It has no request scopes.
+- The application object `App` in `app/core/application.py` extends it with `build(*providers)`, which registers providers in dependency order, and `running_in_mode(*modes)` for mode checks.
+- Long-lived resources are bound as shared managers. The lifespan opens the container on startup and closes created instances in reverse order on shutdown.
+- Endpoints receive container objects with `Depends(Provide(SomeType))` from `app.core.dependencies`.
+
+`create()` in `bin/server.py` builds `App().build(SettingsProvider(), BootstrapProvider(), HuginnProvider(), HuginnEndpointProvider())` and returns the FastAPI app that `RouterProvider` assembles. `bin.server:create` is the sole ASGI factory entrypoint.
+
+### Providers
+
+- Each provider subclasses `ProviderContract` with a `__call__(container)` method and an optional `dependencies` tuple of provider classes.
+- A provider takes no constructor arguments. Options come from `HuginnSettings`, so a provider wires the same whether it is listed or pulled in transitively.
+- `SettingsProvider` binds settings only when none are bound yet. A test uses this to pin its own settings before calling `build()`.
+- Providers live next to what they wire: core plumbing in `app/core/providers`, each feature slice in its own `providers.py`.
+- Within a feature the providers are split. A `*Provider` binds services, and a sibling `*EndpointProvider` or `*CommandProvider` only mounts routes or commands on top of it.
+
+`app/providers/` is the single composition root above both `app/features` and `app/exts`:
+
+| File | Role |
+| --- | --- |
+| `features.py`, `endpoints.py` and `commands.py` | Hold the aggregates `HuginnProvider`, `HuginnEndpointProvider` and `HuginnCommandProvider`, which compose through `dependencies` alone. |
+| `contributions.py` | The only place that fills a registry. |
+| `telegram.py` | Hands the Telegram transport (its gateway factory and webhook route) to the feature that uses it. |
+
+### Registries
+
+Registries are built once and never change.
+
+- A provider declares an item with `container.contribute(Item, factory)`.
+- The registry's owner binds the registry from `container.collect(Item)`.
+- The factories run at first resolution, so `SectionRegistry`, `ToolRegistry`, `ToolSourceRegistry`, `ChannelRegistry`, `CommandRegistry` and `BlobReferenceRegistry` see every contribution whatever order the providers ran in.
+- An architecture test keeps `contribute` out of everything but `app/providers/`.
+
+### Database access
+
+Database writes take their transaction explicitly. `DatabaseContract` offers `session()` for reads, `transaction()` for writes (commit on a clean exit, roll back on an error) and `ping()`. A service opens one and hands it to the repositories it builds.
+
+### Swapping implementations in tests
+
+Tests swap implementations at the container level in one of three ways:
+
+- Build an `App` from a different provider list.
+- Copy the wiring into a fresh container with `container.to(Container)`.
+- Wrap a call in `container.use(SomeType, fake)`.
+
+### Feature boundaries
+
+Which feature may import which is read off the wiring instead of being declared beside it.
+
+- A feature may name another only when one of its providers depends, directly or transitively, on one of the other's providers.
+- The feature graph this yields must stay acyclic.
+- Both rules run in `tests/architecture/test_architecture.py`. Declaring the dependency in `providers.py` is what licenses the import, so the two cannot drift.
+
+A feature exposes its public face and nothing else:
+
+- The public face is `config` (the sections other sections validate their references into), `contracts`, `entities`, `exceptions`, and `providers`.
+- Reaching into `services`, `repositories`, `sources`, `schemas`, or any other slice fails the check, and there is no exception list.
+- A feature that needs more than another's public face needs a contract on the other side.
+
+Naming and placement inside a feature:
+
+- A feature's contracts front its services and are named `*ServiceContract` (`TurnServiceContract`, `TranscriptServiceContract`, `BlobServiceContract`), never a repository.
+- Extension points a feature invites others to implement (`Tool`, `ToolSource`, `BlobReferenceSource`) carry no `Contract` suffix.
+- `agents/contracts.py` declares `Tool` and `ToolSource`. `tools`, `mcp` and `skills` implement them and contribute their sources at the root, so `agents` never imports any of them.
+- A feature's `entities.py` holds domain values built on `AppEntity` (anything with an identity) or `AppValue` from `app/core/schema.py`, strict and frozen like the `lib/llm` values.
+- HTTP shapes live in the feature's `schemas.py` on `AppRequest` / `AppResponse`, and the ORM records sit behind `sources/`.
+
+### What belongs in `app/core` and `lib/`
+
+- `app/core` stays out of the feature rules. It holds only what the whole application needs: the config mechanism, the container plumbing, and providers for HTTP, Redis, Postgres, the LLM router, the clock, and logging.
+- A capability that only some features use is a feature of its own, however infrastructural it looks. It owns its config section, its providers, and its contracts. `app/features/mcp` is exactly that: it is configured by `mcp_servers` and consumed by `agents` and `skills`.
+- Packages under `lib/` never import one another, which an import-linter `independence` contract enforces.
+- Where one `lib/` package needs another's capability, it declares the narrow shape it uses. `lib/llm`, `lib/decision` and `lib/mcp` each take an `HTTPConnector` that `HTTPClientManager` satisfies structurally.
+
+### Extensions
+
+- Extensions under `app/exts` hold vendor vocabulary and transport only: clients, payload types, exceptions, and for a transport its inbound endpoints and its gateways. They never hold providers or wiring. Which file names an ext uses is left to review.
+- A feature reaches an ext only from its `repositories` or `sources`, and never names a vendor payload type.
+- A transport is the other direction. It implements an `app/contracts` contract, and `app/providers/` wires it to the feature, so the feature is handed `ChannelGatewayFactoryContract` and never imports the ext.
+- Inbound traffic from a vendor is a feature concern. The payload shape stays in the ext, while the signature check and the dispatch live in a feature slice that can reach the domain above it.
+
+`app/exts/telegram` plus `app/features/channels/telegram` is the working example. A payment callback belongs in the same shape: one `POST /notify/{vendor}` route, a registry mapping vendor kind to config model, and a per-vendor slice beneath it.
+
+### Logging
+
+Logs form a single structlog pipeline. By default it writes JSON lines on stderr, and stdout stays reserved for command output. It writes colored console lines when `configure_logging` gets `develop=True`.
+
+How the pipeline is set up:
+
+- `configure_logging` in `lib/observability` also bridges stdlib logging into the same processors, so third-party records come out in the same shape and carry the same request context.
+- Its `capture` and `silence` parameters take logger names to route through the root pipeline or drop entirely.
+- Nothing outside `lib/observability` looks a logger up, by `logging.getLogger` or `structlog.get_logger`. An architecture test holds that line.
+- `LoggingProvider` owns the policy. It maps the container's `running_in_mode('dev')` to `develop`, captures the uvicorn loggers, silences uvicorn access logs, and binds `Logger` in the container.
+
+How code gets a logger:
+
+- Endpoints take one with `Depends(Provide(Logger))`.
+- Services receive one at construction time and tag it with `.bind(component=...)`.
+- Code under `lib/` is handed a logger the same way, typed as structlog's `BoundLogger` so no lib package depends on another. `configure_logging` formats the printf-style arguments those calls pass.
+- `RequestContextMiddleware` binds a short `request_id` into structlog contextvars and onto the request for every request except the paths in `HUGINN_UNTRACED_PATHS` (the health probes by default). Every log line downstream carries it automatically.
+
+What must stay out of the logs:
+
+- Never log tokens, Authorization headers, or full message bodies.
+- A webhook lands a receipt before it parses anything. That receipt carries metadata only: channel, byte count, and a truncated sha256 of the payload.
+- The payload bytes reach the log on exactly one path: when the reader cannot parse them at all and nobody can fix that without seeing them.
+- Vendor readers set `hide_input_in_errors`, so a logged validation failure says what was wrong without quoting what arrived. A payload gets into a log line only when a caller deliberately puts it there.
+- `develop=True` is a data boundary, not a formatting switch. It drops the root level to DEBUG, where vendor SDKs log their full request bodies, including prompts and conversation history. `HUGINN_ENVIRONMENT` must therefore never be `dev` anywhere real traffic lands.
+
+### Error handling
+
+Errors follow four rules.
+
+1. Expected failures and absences are return values.
+   - A repository answers `T | None`.
+   - A service answers `Result[T, E]` (`Ok` / `Err` from `lib/result`) whose `Err` holds an `*Error` instance.
+   - `Option[T]` (`Some` / `Nothing`) is for chained operations, or for when "not found" and "found an empty value" need to stay distinct.
+2. Only unrecoverable failures raise: programming errors, broken invariants, and infrastructure that cannot continue.
+3. HTTP boundaries convert uniformly.
+   - An endpoint calls `.unwrap()` on a `Result`, which raises an `Err`'s error.
+   - Every error the API answers with subclasses `AppError` in `app/core/exceptions.py`, with a `status` and a `code` from the single `Code` table in `app/core/codespaces.py`. In that table the number is the code and the name is the error, so no two errors share one.
+4. A single set of exception handlers is the only place that turns an exception into the `{code, error, message, request_id}` envelope.
+   - The handlers are wired through `RouterManager`'s `exception_handlers` constructor argument.
+   - Request validation failures add `details` naming where and what was wrong, never the input that arrived. Nothing else carries details.
+
+Until `ty` narrows a generic class inside `match`, test `isinstance(result, Err)` or `isinstance(result, Ok)` first and read the other case on the fall-through, where the type arguments survive.
