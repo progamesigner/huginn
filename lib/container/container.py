@@ -1,3 +1,4 @@
+import asyncio
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
@@ -199,10 +200,16 @@ class Container(ContainerContract):
             if not isinstance(instance, Disposable):
                 continue
 
-            try:
-                await instance.dispose()
-            except Exception as error:
-                errors.append(error)
+            # NOTE: gather returns the failure instead of raising it, so one failed
+            # dispose does not stop the rest
+            (outcome,) = await asyncio.gather(
+                instance.dispose(),
+                return_exceptions=True,
+            )
+            if isinstance(outcome, Exception):
+                errors.append(outcome)
+            elif isinstance(outcome, BaseException):
+                raise outcome
 
         self.instances.clear()
 

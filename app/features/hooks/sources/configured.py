@@ -26,6 +26,10 @@ from . import http, mcp, shell
 type _Key = tuple[str, tuple[tuple[str, str], ...]]
 
 
+class _HookUnavailableError(Exception):
+    pass
+
+
 @dataclass(frozen=True)
 class _Cached:
     content: str
@@ -65,8 +69,8 @@ class ConfiguredHookSource(HookSource):
                 )
                 continue
             try:
-                content = await self._load(name, config, bound)
-            except Exception:
+                content = await self._guarded_load(name, config, bound)
+            except _HookUnavailableError:
                 self.logger.warning('Hook %s unavailable (kind=%s)', name, config.kind)
                 unreachable.append(name)
                 continue
@@ -76,6 +80,18 @@ class ConfiguredHookSource(HookSource):
             content='\n\n'.join(contents) or None,
             unreachable=tuple(unreachable),
         )
+
+    async def _guarded_load(
+        self,
+        name: str,
+        config: HookConfig,
+        bound: Mapping[str, JsonValue],
+    ) -> str:
+        try:
+            return await self._load(name, config, bound)
+        except Exception as error:
+            # NOTE: the cause stays out of the log; a hook error can echo private state
+            raise _HookUnavailableError(name) from error
 
     async def _load(
         self,

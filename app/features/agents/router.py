@@ -67,6 +67,12 @@ def _parse_choice(reply: str, agents: Mapping[str, AgentConfig]) -> str | None:
     return matches[0] if len(matches) == 1 else None
 
 
+class _UnexpectedDecisionError(DecisionError):
+    def __init__(self, kind: str) -> None:
+        super().__init__(kind)
+        self.kind = kind
+
+
 @dataclass(frozen=True)
 class RoutingDecision:
     choice: str | None
@@ -288,7 +294,19 @@ class Router:
         started = perf_counter()
         if selection.engine == 'decision':
             try:
-                result = await self._ask_decision(selection, context, candidates)
+                result = await self._guarded_decision(selection, context, candidates)
+            except _UnexpectedDecisionError as error:
+                # NOTE: only the type is logged; a gateway error can echo the private
+                # state it was sent
+                self.logger.error(
+                    'Decision router failed unexpectedly (%s)',
+                    error.kind,
+                )
+                result = RoutingDecision(
+                    None,
+                    'unexpected_error',
+                    model=selection.model,
+                )
             except DecisionError as error:
                 result = RoutingDecision(
                     None,
@@ -298,18 +316,6 @@ class Router:
                 self.logger.warning(
                     'Decision router failed (%s); using fallback',
                     type(error).__name__,
-                )
-            except Exception as error:
-                # NOTE: only the type is logged; a gateway error can echo the private
-                # state it was sent
-                self.logger.error(
-                    'Decision router failed unexpectedly (%s)',
-                    type(error).__name__,
-                )
-                result = RoutingDecision(
-                    None,
-                    'unexpected_error',
-                    model=selection.model,
                 )
         else:
             choice = await self._ask(
@@ -324,6 +330,20 @@ class Router:
                 model=ref.model,
             )
         return replace(result, elapsed_ms=(perf_counter() - started) * 1000)
+
+    async def _guarded_decision(
+        self,
+        selection: SelectionPolicy,
+        context: RoutingContext,
+        candidates: Mapping[str, AgentConfig],
+    ) -> RoutingDecision:
+        try:
+            return await self._ask_decision(selection, context, candidates)
+        except DecisionError:
+            raise
+        except Exception as error:
+            # NOTE: keep only the type; the message can echo the routing state
+            raise _UnexpectedDecisionError(type(error).__name__) from error
 
     async def _ask_decision(
         self,

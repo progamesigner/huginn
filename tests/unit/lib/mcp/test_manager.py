@@ -244,8 +244,10 @@ async def test_a_server_that_stays_down_is_announced_once_not_once_per_attempt(
             await manager.dispose()
 
     assert [message for message in caplog.messages if 'unavailable' in message] == [
-        'MCP server memory is unavailable; its tools will be absent'
-        ' (memory: ConnectionError: connection refused)',
+        (
+            'MCP server memory is unavailable; its tools will be absent'
+            ' (memory: ConnectionError: connection refused)'
+        ),
     ]
 
 

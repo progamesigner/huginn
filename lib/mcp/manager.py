@@ -30,15 +30,13 @@ class MCPTransport:
 def streamable_http_connector(http: HTTPConnector) -> Connector:
     @asynccontextmanager
     async def connect(server: MCPServer) -> AsyncIterator[ClientSession]:
-        async with http.connect(headers=server.headers) as client:
-            async with streamable_http_client(server.url, http_client=client) as (
-                read,
-                write,
-                _,
-            ):
-                async with ClientSession(read, write) as session:
-                    await session.initialize()
-                    yield session
+        async with (
+            http.connect(headers=server.headers) as client,
+            streamable_http_client(server.url, http_client=client) as (read, write, _),
+            ClientSession(read, write) as session,
+        ):
+            await session.initialize()
+            yield session
 
     return connect
 
@@ -195,6 +193,12 @@ class _Connection:
                 self.ready.set()
                 await self.stop.wait()
         except Exception as error:
+            # The failure is reported to callers through `self.error`.
+            self.logger.debug(
+                'MCP connection to %s ended',
+                self.server.name,
+                exc_info=True,
+            )
             self.error = error
         finally:
             self.session = None
