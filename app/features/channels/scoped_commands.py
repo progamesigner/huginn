@@ -131,7 +131,7 @@ class ScopedCommands(ScopedCommandsServiceContract):
         }
 
     @staticmethod
-    def _target(meta: AssetMeta, agents: frozenset[str]) -> str | None | bool:
+    def _target(meta: AssetMeta, agents: frozenset[str]) -> str | bool | None:
         target = meta.frontmatter.get('agent')
         if target is None:
             return None
