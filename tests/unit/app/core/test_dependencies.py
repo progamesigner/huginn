@@ -1,6 +1,6 @@
 from typing import Annotated
 
-import httpx
+import httpx2
 from fastapi import Depends, FastAPI
 
 from app.core.dependencies import Provide
@@ -40,8 +40,8 @@ async def test_provide_resolves_from_app_state_container() -> None:
     container.bind(Greeter, instance=Greeter('from-container'))
     app = build_greeting_app(container)
 
-    transport = httpx.ASGITransport(app=app)
-    async with httpx.AsyncClient(
+    transport = httpx2.ASGITransport(app=app)
+    async with httpx2.AsyncClient(
         transport=transport,
         base_url='http://huginn',
     ) as client:
@@ -56,8 +56,8 @@ async def test_container_use_swaps_endpoint_dependency() -> None:
     container.bind(Greeter, instance=Greeter('real'))
     app = build_greeting_app(container)
 
-    transport = httpx.ASGITransport(app=app)
-    async with httpx.AsyncClient(
+    transport = httpx2.ASGITransport(app=app)
+    async with httpx2.AsyncClient(
         transport=transport,
         base_url='http://huginn',
     ) as client:

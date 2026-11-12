@@ -1,9 +1,8 @@
 import json
 from base64 import b64encode
 
-import httpx
+import httpx2
 import pytest
-import respx
 from pydantic import SecretStr
 
 from app.exts.transcription.clients import (
@@ -12,28 +11,29 @@ from app.exts.transcription.clients import (
     TranscriptionClient,
     filename,
 )
-from lib.http import HTTPClientManager
+from tests.helpers.http import MockHTTP
 
 _URL = 'https://api.openai.com/v1/audio/transcriptions'
 _VOICE = b'OggS not really an ogg'
 
 
-def make_client() -> TranscriptionClient:
+def make_client(http: MockHTTP) -> TranscriptionClient:
     return TranscriptionClient(
-        http=HTTPClientManager(),
+        http=http.manager(),
         api_key=SecretStr('openai-key'),
         base_url='https://api.openai.com',
         model='gpt-4o-mini-transcribe',
     )
 
 
-@respx.mock
-async def test_transcribe_uploads_the_bytes_and_returns_the_text() -> None:
-    route = respx.post(_URL).mock(
-        return_value=httpx.Response(200, json={'text': 'buy milk on your way home'}),
+async def test_transcribe_uploads_the_bytes_and_returns_the_text(
+    http: MockHTTP,
+) -> None:
+    route = http.post(_URL).mock(
+        return_value=httpx2.Response(200, json={'text': 'buy milk on your way home'}),
     )
 
-    text = await make_client().transcribe(_VOICE, 'audio/ogg')
+    text = await make_client(http).transcribe(_VOICE, 'audio/ogg')
 
     request = route.calls.last.request
     body = request.content.decode('utf-8', 'replace')
@@ -43,12 +43,11 @@ async def test_transcribe_uploads_the_bytes_and_returns_the_text() -> None:
     assert text == 'buy milk on your way home'
 
 
-@respx.mock
-async def test_a_refused_upload_raises() -> None:
-    respx.post(_URL).mock(return_value=httpx.Response(400, json={'error': 'nope'}))
+async def test_a_refused_upload_raises(http: MockHTTP) -> None:
+    http.post(_URL).mock(return_value=httpx2.Response(400, json={'error': 'nope'}))
 
-    with pytest.raises(httpx.HTTPStatusError):
-        await make_client().transcribe(_VOICE, 'audio/ogg')
+    with pytest.raises(httpx2.HTTPStatusError):
+        await make_client(http).transcribe(_VOICE, 'audio/ogg')
 
 
 @pytest.mark.parametrize(
@@ -70,10 +69,11 @@ def test_the_upload_is_named_for_the_format_openai_reads(
     assert filename(mime) == expected
 
 
-@respx.mock
-async def test_gemini_sends_the_audio_inline_with_its_transcription_config() -> None:
-    route = respx.post('https://gemini.example/v1beta/interactions').mock(
-        return_value=httpx.Response(
+async def test_gemini_sends_the_audio_inline_with_its_transcription_config(
+    http: MockHTTP,
+) -> None:
+    route = http.post('https://gemini.example/v1beta/interactions').mock(
+        return_value=httpx2.Response(
             200,
             json={
                 'id': 'v1_x',
@@ -92,7 +92,7 @@ async def test_gemini_sends_the_audio_inline_with_its_transcription_config() -> 
         ),
     )
     client = GeminiTranscriptionClient(
-        http=HTTPClientManager(),
+        http=http.manager(),
         api_key=SecretStr('gemini-key'),
         base_url='https://gemini.example',
         model='gemini-3.5-transcribe',
@@ -120,16 +120,17 @@ async def test_gemini_sends_the_audio_inline_with_its_transcription_config() -> 
     }
 
 
-@respx.mock
-async def test_elevenlabs_uploads_the_audio_with_its_model_and_language() -> None:
-    route = respx.post('https://eleven.example/v1/speech-to-text').mock(
-        return_value=httpx.Response(
+async def test_elevenlabs_uploads_the_audio_with_its_model_and_language(
+    http: MockHTTP,
+) -> None:
+    route = http.post('https://eleven.example/v1/speech-to-text').mock(
+        return_value=httpx2.Response(
             200,
             json={'language_code': 'zho', 'text': '回電給我', 'words': []},
         ),
     )
     client = ElevenLabsTranscriptionClient(
-        http=HTTPClientManager(),
+        http=http.manager(),
         api_key=SecretStr('eleven-key'),
         base_url='https://eleven.example',
         model='scribe_v2',
@@ -146,13 +147,14 @@ async def test_elevenlabs_uploads_the_audio_with_its_model_and_language() -> Non
     assert b'filename="audio.ogg"' in request.content
 
 
-@respx.mock
-async def test_elevenlabs_leaves_the_language_to_detection_when_unset() -> None:
-    route = respx.post('https://eleven.example/v1/speech-to-text').mock(
-        return_value=httpx.Response(200, json={'text': 'hi'}),
+async def test_elevenlabs_leaves_the_language_to_detection_when_unset(
+    http: MockHTTP,
+) -> None:
+    route = http.post('https://eleven.example/v1/speech-to-text').mock(
+        return_value=httpx2.Response(200, json={'text': 'hi'}),
     )
     client = ElevenLabsTranscriptionClient(
-        http=HTTPClientManager(),
+        http=http.manager(),
         api_key=SecretStr('eleven-key'),
         base_url='https://eleven.example',
         model='scribe_v2',

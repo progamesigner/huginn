@@ -94,7 +94,7 @@ class SilentTimeoutTool(TypedTool[EchoParams]):
         raise TimeoutError
 
 
-# NOTE: an httpx timeout stringifies to '', which used to leave the model reading
+# NOTE: an httpx2 timeout stringifies to '', which used to leave the model reading
 # "failed: " with nothing after it -- the type is then the only reason left
 async def test_execute_names_the_error_type_when_the_message_is_empty() -> None:
     tools = ToolSet(logger=make_logger())

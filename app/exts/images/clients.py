@@ -2,7 +2,7 @@ from base64 import b64decode
 from dataclasses import dataclass
 from typing import Annotated
 
-from httpx import Response
+from httpx2 import Response
 from pydantic import BaseModel, ConfigDict, Field, SecretStr
 
 from lib.http import HTTPClientContract

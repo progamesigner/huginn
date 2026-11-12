@@ -71,7 +71,7 @@ class ToolSet:
 
 
 def _describe(error: Exception) -> str:
-    # NOTE: some errors (httpx timeouts) carry no message, so the type is all
+    # NOTE: some errors (httpx2 timeouts) carry no message, so the type is all
     # the model has to tell what went wrong
     name = type(error).__name__
     return f'{name}: {error}' if str(error) else name

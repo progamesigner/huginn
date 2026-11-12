@@ -4,22 +4,21 @@ from collections.abc import AsyncIterator
 from typing import override
 from unittest.mock import Mock
 
-import httpx
+import httpx2
 import pytest
-import respx
 from pydantic import SecretStr
 
 from app.exts.images.clients import ImagesClient
 from app.exts.images.exceptions import ImageGenerationError
-from lib.http import HTTPClientManager
+from tests.helpers.http import MockHTTP
 
 _BASE_URL = 'https://images.example'
 _PNG = b'\x89PNG\r\n\x1a\n image'
 
 
-def make_client(max_bytes: int = 20 * 1024 * 1024) -> ImagesClient:
+def make_client(http: MockHTTP, max_bytes: int = 20 * 1024 * 1024) -> ImagesClient:
     return ImagesClient(
-        http=HTTPClientManager(),
+        http=http.manager(),
         api_key=SecretStr('image-key'),
         base_url=_BASE_URL,
         model='gpt-image-1',
@@ -27,16 +26,15 @@ def make_client(max_bytes: int = 20 * 1024 * 1024) -> ImagesClient:
     )
 
 
-@respx.mock
-async def test_generate_decodes_the_inline_image() -> None:
-    route = respx.post(f'{_BASE_URL}/v1/images/generations').mock(
-        return_value=httpx.Response(
+async def test_generate_decodes_the_inline_image(http: MockHTTP) -> None:
+    route = http.post(f'{_BASE_URL}/v1/images/generations').mock(
+        return_value=httpx2.Response(
             200,
             json={'data': [{'b64_json': b64encode(_PNG).decode()}]},
         ),
     )
 
-    generation = await make_client().generate('a duck', '1024x1024', 'high')
+    generation = await make_client(http).generate('a duck', '1024x1024', 'high')
 
     assert generation.data == _PNG
     request = route.calls.last.request
@@ -50,24 +48,24 @@ async def test_generate_decodes_the_inline_image() -> None:
     }
 
 
-@respx.mock
-async def test_generate_leaves_quality_to_the_vendor_when_unset() -> None:
-    route = respx.post(f'{_BASE_URL}/v1/images/generations').mock(
-        return_value=httpx.Response(
+async def test_generate_leaves_quality_to_the_vendor_when_unset(http: MockHTTP) -> None:
+    route = http.post(f'{_BASE_URL}/v1/images/generations').mock(
+        return_value=httpx2.Response(
             200,
             json={'data': [{'b64_json': b64encode(_PNG).decode()}]},
         ),
     )
 
-    await make_client().generate('a duck', '1024x1024')
+    await make_client(http).generate('a duck', '1024x1024')
 
     assert 'quality' not in json.loads(route.calls.last.request.content)
 
 
-@respx.mock
-async def test_generate_downloads_a_linked_image_without_the_api_key() -> None:
-    respx.post(f'{_BASE_URL}/v1/images/generations').mock(
-        return_value=httpx.Response(
+async def test_generate_downloads_a_linked_image_without_the_api_key(
+    http: MockHTTP,
+) -> None:
+    http.post(f'{_BASE_URL}/v1/images/generations').mock(
+        return_value=httpx2.Response(
             200,
             json={
                 'data': [
@@ -79,34 +77,34 @@ async def test_generate_downloads_a_linked_image_without_the_api_key() -> None:
             },
         ),
     )
-    download = respx.get('https://storage.example/duck.png').mock(
-        return_value=httpx.Response(200, content=_PNG),
+    download = http.get('https://storage.example/duck.png').mock(
+        return_value=httpx2.Response(200, content=_PNG),
     )
 
-    generation = await make_client().generate('a duck', '1024x1024')
+    generation = await make_client(http).generate('a duck', '1024x1024')
 
     assert generation.data == _PNG
     assert generation.revised_prompt == 'a yellow duck'
     assert 'authorization' not in download.calls.last.request.headers
 
 
-@respx.mock
-async def test_generate_refuses_a_link_over_plain_http() -> None:
-    respx.post(f'{_BASE_URL}/v1/images/generations').mock(
-        return_value=httpx.Response(
+async def test_generate_refuses_a_link_over_plain_http(http: MockHTTP) -> None:
+    http.post(f'{_BASE_URL}/v1/images/generations').mock(
+        return_value=httpx2.Response(
             200,
             json={'data': [{'url': 'http://storage.example/duck.png'}]},
         ),
     )
 
     with pytest.raises(ImageGenerationError, match='plain http'):
-        await make_client().generate('a duck', '1024x1024')
+        await make_client(http).generate('a duck', '1024x1024')
 
 
-@respx.mock
-async def test_generate_reports_a_refusal_with_the_vendors_reason() -> None:
-    respx.post(f'{_BASE_URL}/v1/images/generations').mock(
-        return_value=httpx.Response(
+async def test_generate_reports_a_refusal_with_the_vendors_reason(
+    http: MockHTTP,
+) -> None:
+    http.post(f'{_BASE_URL}/v1/images/generations').mock(
+        return_value=httpx2.Response(
             400,
             json={'error': {'message': 'rejected by the safety system'}},
         ),
@@ -116,43 +114,41 @@ async def test_generate_reports_a_refusal_with_the_vendors_reason() -> None:
         ImageGenerationError,
         match=r'refused the request \(400\): rejected by the safety system',
     ):
-        await make_client().generate('a duck', '1024x1024')
+        await make_client(http).generate('a duck', '1024x1024')
 
 
-@respx.mock
-async def test_generate_lets_a_server_error_surface() -> None:
-    respx.post(f'{_BASE_URL}/v1/images/generations').mock(
-        return_value=httpx.Response(503),
+async def test_generate_lets_a_server_error_surface(http: MockHTTP) -> None:
+    http.post(f'{_BASE_URL}/v1/images/generations').mock(
+        return_value=httpx2.Response(503),
     )
 
-    with pytest.raises(httpx.HTTPStatusError):
-        await make_client().generate('a duck', '1024x1024')
+    with pytest.raises(httpx2.HTTPStatusError):
+        await make_client(http).generate('a duck', '1024x1024')
 
 
 @pytest.mark.parametrize('size', [7, 8, 9, 10])
-@respx.mock
-async def test_inline_image_size_limit(size: int) -> None:
+async def test_inline_image_size_limit(http: MockHTTP, size: int) -> None:
     data = b'x' * size
-    respx.post(f'{_BASE_URL}/v1/images/generations').mock(
-        return_value=httpx.Response(
+    http.post(f'{_BASE_URL}/v1/images/generations').mock(
+        return_value=httpx2.Response(
             200,
             json={'data': [{'b64_json': b64encode(data).decode()}]},
         ),
     )
 
     if size <= 8:
-        assert (await make_client(8).generate('a duck', '1024x1024')).data == data
+        assert (await make_client(http, 8).generate('a duck', '1024x1024')).data == data
     else:
         with pytest.raises(ImageGenerationError, match='size limit'):
-            await make_client(8).generate('a duck', '1024x1024')
+            await make_client(http, 8).generate('a duck', '1024x1024')
 
 
-@respx.mock
 async def test_oversized_base64_is_rejected_before_decoding(
+    http: MockHTTP,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    respx.post(f'{_BASE_URL}/v1/images/generations').mock(
-        return_value=httpx.Response(
+    http.post(f'{_BASE_URL}/v1/images/generations').mock(
+        return_value=httpx2.Response(
             200,
             json={'data': [{'b64_json': b64encode(b'x' * 10).decode()}]},
         ),
@@ -161,14 +157,14 @@ async def test_oversized_base64_is_rejected_before_decoding(
     monkeypatch.setattr('app.exts.images.clients.b64decode', decode)
 
     with pytest.raises(ImageGenerationError, match='size limit'):
-        await make_client(8).generate('a duck', '1024x1024')
+        await make_client(http, 8).generate('a duck', '1024x1024')
 
     decode.assert_not_called()
 
 
 @pytest.mark.parametrize('headers', [{}, {'content-length': '1'}])
-@respx.mock
 async def test_generate_stops_reading_an_oversized_json_response(
+    http: MockHTTP,
     headers: dict[str, str],
 ) -> None:
     body = (
@@ -179,18 +175,18 @@ async def test_generate_stops_reading_an_oversized_json_response(
         ).encode()
     )
     stream = ImageStream((body[:65_536], body[65_536:66_560], body[66_560:]))
-    respx.post(f'{_BASE_URL}/v1/images/generations').mock(
-        return_value=httpx.Response(200, headers=headers, stream=stream),
+    http.post(f'{_BASE_URL}/v1/images/generations').mock(
+        return_value=httpx2.Response(200, headers=headers, stream=stream),
     )
 
     with pytest.raises(ImageGenerationError, match='response exceeds the size limit'):
-        await make_client(8).generate('a duck', '1024x1024')
+        await make_client(http, 8).generate('a duck', '1024x1024')
 
     assert stream.read == 2
     assert stream.closed
 
 
-class ImageStream(httpx.AsyncByteStream):
+class ImageStream(httpx2.AsyncByteStream):
     def __init__(self, chunks: tuple[bytes, ...]) -> None:
         self.chunks = chunks
         self.read = 0
@@ -208,31 +204,30 @@ class ImageStream(httpx.AsyncByteStream):
 
 
 @pytest.mark.parametrize('headers', [{}, {'content-length': '1'}])
-@respx.mock
 async def test_download_stops_and_closes_when_the_stream_exceeds_the_limit(
+    http: MockHTTP,
     headers: dict[str, str],
 ) -> None:
     stream = ImageStream((b'1234', b'56789', b'must not be read'))
-    respx.get('https://storage.example/duck.png').mock(
-        return_value=httpx.Response(200, headers=headers, stream=stream),
+    http.get('https://storage.example/duck.png').mock(
+        return_value=httpx2.Response(200, headers=headers, stream=stream),
     )
 
     with pytest.raises(ImageGenerationError, match='size limit'):
-        await make_client(8)._download('https://storage.example/duck.png')
+        await make_client(http, 8)._download('https://storage.example/duck.png')
 
     assert stream.read == 2
     assert stream.closed
 
 
-@respx.mock
-async def test_download_accepts_an_image_at_the_limit() -> None:
+async def test_download_accepts_an_image_at_the_limit(http: MockHTTP) -> None:
     stream = ImageStream((b'1234', b'5678'))
-    respx.get('https://storage.example/duck.png').mock(
-        return_value=httpx.Response(200, stream=stream),
+    http.get('https://storage.example/duck.png').mock(
+        return_value=httpx2.Response(200, stream=stream),
     )
 
     assert (
-        await make_client(8)._download('https://storage.example/duck.png')
+        await make_client(http, 8)._download('https://storage.example/duck.png')
         == b'12345678'
     )
     assert stream.closed

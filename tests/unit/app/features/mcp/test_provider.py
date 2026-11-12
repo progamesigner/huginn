@@ -4,9 +4,8 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 import pytest
-from mcp import ClientSession
-from mcp.server.fastmcp import FastMCP
-from mcp.shared.memory import create_connected_server_and_client_session
+from mcp import Client, ClientSession
+from mcp.server import mcpserver
 
 from app.core.application import App
 from app.features.mcp.config import MCPServerConfigList
@@ -36,8 +35,8 @@ mcp_servers:
 """
 
 
-def _echo_server() -> FastMCP:
-    server = FastMCP('test')
+def _echo_server() -> mcpserver.MCPServer:
+    server = mcpserver.MCPServer('test')
 
     @server.tool()
     def echo(text: str) -> str:
@@ -49,8 +48,8 @@ def _echo_server() -> FastMCP:
 
 @asynccontextmanager
 async def _memory_connector(_: MCPServer) -> AsyncIterator[ClientSession]:
-    async with create_connected_server_and_client_session(_echo_server()) as session:
-        yield session
+    async with Client(_echo_server()) as client:
+        yield client.session
 
 
 def _with_memory(app: App) -> App:

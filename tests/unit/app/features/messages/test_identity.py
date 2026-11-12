@@ -3,7 +3,7 @@ from contextlib import asynccontextmanager
 from unittest.mock import AsyncMock, MagicMock
 from uuid import UUID
 
-import httpx
+import httpx2
 import pytest
 from fastapi import FastAPI
 
@@ -48,7 +48,7 @@ async def client_for(
     turns: StreamingTurns,
     resolver: MagicMock,
     management: MagicMock | None = None,
-) -> AsyncIterator[httpx.AsyncClient]:
+) -> AsyncIterator[httpx2.AsyncClient]:
     application = build()
     with (
         application.use(BlobServiceContract, MemoryBlobs()),
@@ -70,8 +70,8 @@ async def client_for(
         assert isinstance(app, FastAPI)
         async with (
             app.router.lifespan_context(app),
-            httpx.AsyncClient(
-                transport=httpx.ASGITransport(app),
+            httpx2.AsyncClient(
+                transport=httpx2.ASGITransport(app),
                 base_url='http://huginn',
             ) as client,
         ):

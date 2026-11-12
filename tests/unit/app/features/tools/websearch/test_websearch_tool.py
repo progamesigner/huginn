@@ -1,6 +1,5 @@
-import httpx
+import httpx2
 import pytest
-import respx
 from pydantic import SecretStr, ValidationError
 
 from app.features.tools.websearch.config import WebSearchToolConfig
@@ -15,7 +14,7 @@ from app.features.tools.websearch.tool import (
     _format_result,
     build_websearch,
 )
-from lib.http import HTTPClientManager
+from tests.helpers.http import MockHTTP
 
 _PAYLOAD = {
     'status': 'ok',
@@ -111,13 +110,12 @@ def test_format_result_reports_when_empty() -> None:
     assert _format_result(WebSearchResult(), max_results=5) == 'No results found.'
 
 
-@respx.mock
-async def test_run_searches_and_formats() -> None:
-    respx.post('https://openapi.felo.ai/v2/chat').mock(
-        return_value=httpx.Response(200, json=_PAYLOAD),
+async def test_run_searches_and_formats(http: MockHTTP) -> None:
+    http.post('https://openapi.felo.ai/v2/chat').mock(
+        return_value=httpx2.Response(200, json=_PAYLOAD),
     )
     tool = WebSearchTool(
-        WebSearchRepository(HTTPClientManager()),
+        WebSearchRepository(http.manager()),
         api_key=SecretStr('felo-key'),
         base_url='https://openapi.felo.ai',
         timeout=60.0,
@@ -130,8 +128,8 @@ async def test_run_searches_and_formats() -> None:
     assert 'https://weather.example/taipei' in output
 
 
-def test_build_websearch_binds_config_credentials() -> None:
-    repository = WebSearchRepository(HTTPClientManager())
+def test_build_websearch_binds_config_credentials(http: MockHTTP) -> None:
+    repository = WebSearchRepository(http.manager())
 
     tool = build_websearch(
         repository,
@@ -146,9 +144,9 @@ def test_build_websearch_binds_config_credentials() -> None:
     assert tool.timeout == 60.0
 
 
-def test_build_websearch_reads_the_timeout_from_config() -> None:
+def test_build_websearch_reads_the_timeout_from_config(http: MockHTTP) -> None:
     tool = build_websearch(
-        WebSearchRepository(HTTPClientManager()),
+        WebSearchRepository(http.manager()),
         WebSearchToolConfig.model_validate(
             {'kind': 'websearch', 'api_key': 'felo-key', 'timeout': 90},
         ),

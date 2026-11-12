@@ -31,7 +31,7 @@ from anthropic.types import (
     ToolUseBlockParam,
     UserMessageParam,
 )
-from httpx import Timeout
+from httpx2 import Timeout
 from pydantic import JsonValue
 
 from lib.llm.client import ProviderConfig

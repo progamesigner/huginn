@@ -5,7 +5,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Literal, override
 
-import httpx
+import httpx2
 import pytest
 from pydantic import JsonValue, SecretStr
 
@@ -28,7 +28,7 @@ from tests.helpers.logging import make_logger
 
 FIXTURES = Path(__file__).parent / 'fixtures'
 
-type Handler = Callable[[httpx.Request], httpx.Response]
+type Handler = Callable[[httpx2.Request], httpx2.Response]
 
 
 def _fixture(name: str) -> dict[str, JsonValue]:
@@ -37,7 +37,7 @@ def _fixture(name: str) -> dict[str, JsonValue]:
 
 class MockHTTP(HTTPClientContract):
     handler: Handler
-    requests: list[httpx.Request]
+    requests: list[httpx2.Request]
 
     def __init__(self, handler: Handler) -> None:
         self.handler = handler
@@ -47,17 +47,17 @@ class MockHTTP(HTTPClientContract):
     @override
     async def connect(
         self,
-        base_url: httpx.URL | str = '',
+        base_url: httpx2.URL | str = '',
         headers: Mapping[str, str] | None = None,
-    ) -> AsyncIterator[httpx.AsyncClient]:
-        def record(request: httpx.Request) -> httpx.Response:
+    ) -> AsyncIterator[httpx2.AsyncClient]:
+        def record(request: httpx2.Request) -> httpx2.Response:
             self.requests.append(request)
             return self.handler(request)
 
-        async with httpx.AsyncClient(
+        async with httpx2.AsyncClient(
             base_url=base_url,
             headers=dict(headers or {}),
-            transport=httpx.MockTransport(record),
+            transport=httpx2.MockTransport(record),
         ) as client:
             yield client
 
@@ -139,7 +139,7 @@ def _request() -> DecisionRequest:
 
 
 def _answering(payload: JsonValue, status: int = 200) -> Handler:
-    return lambda _: httpx.Response(status, json=payload)
+    return lambda _: httpx2.Response(status, json=payload)
 
 
 def _recorded(route: Route) -> JsonValue:
@@ -390,7 +390,7 @@ async def test_adapter_refuses_an_answer_that_breaks_the_question(
 
 @pytest.mark.parametrize('route', list(ROUTES))
 async def test_adapter_refuses_a_body_that_is_not_json(route: Route) -> None:
-    client, _ = _adapter(route, lambda _: httpx.Response(200, text='<html>'))
+    client, _ = _adapter(route, lambda _: httpx2.Response(200, text='<html>'))
 
     with pytest.raises(DecisionResponseError, match='not JSON'):
         await client.decide(_request())
@@ -434,7 +434,10 @@ async def test_adapter_surfaces_recorded_errors(
 
 
 async def test_adapter_surfaces_a_rate_limit_without_retrying() -> None:
-    client, http = _adapter('typesafe', lambda _: httpx.Response(429, text='slow down'))
+    client, http = _adapter(
+        'typesafe',
+        lambda _: httpx2.Response(429, text='slow down'),
+    )
 
     with pytest.raises(DecisionHTTPError) as raised:
         await client.decide(_request())
@@ -444,8 +447,8 @@ async def test_adapter_surfaces_a_rate_limit_without_retrying() -> None:
 
 
 async def test_adapter_turns_a_timeout_into_a_decision_error() -> None:
-    def hang(request: httpx.Request) -> httpx.Response:
-        raise httpx.ReadTimeout('too slow', request=request)
+    def hang(request: httpx2.Request) -> httpx2.Response:
+        raise httpx2.ReadTimeout('too slow', request=request)
 
     client, http = _adapter('typesafe', hang)
 
@@ -456,8 +459,8 @@ async def test_adapter_turns_a_timeout_into_a_decision_error() -> None:
 
 
 async def test_adapter_turns_a_connection_failure_into_a_decision_error() -> None:
-    def refuse(request: httpx.Request) -> httpx.Response:
-        raise httpx.ConnectError('refused', request=request)
+    def refuse(request: httpx2.Request) -> httpx2.Response:
+        raise httpx2.ConnectError('refused', request=request)
 
     client, _ = _adapter('typesafe', refuse)
 
@@ -471,9 +474,9 @@ async def test_timeout_bounds_the_entire_gateway_call() -> None:
         @override
         async def connect(
             self,
-            base_url: httpx.URL | str = '',
+            base_url: httpx2.URL | str = '',
             headers: Mapping[str, str] | None = None,
-        ) -> AsyncIterator[httpx.AsyncClient]:
+        ) -> AsyncIterator[httpx2.AsyncClient]:
             await asyncio.Event().wait()
             async with super().connect(base_url, headers) as client:
                 yield client
@@ -485,6 +488,6 @@ async def test_timeout_bounds_the_entire_gateway_call() -> None:
         models=('jev',),
         timeout=0.01,
     )
-    adapter = TypeSafeAdapter(provider, SlowHTTP(lambda request: httpx.Response(200)))
+    adapter = TypeSafeAdapter(provider, SlowHTTP(lambda request: httpx2.Response(200)))
     with pytest.raises(DecisionTimeoutError):
         await asyncio.wait_for(adapter.decide(_request()), timeout=1)

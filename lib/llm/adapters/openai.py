@@ -1,7 +1,7 @@
 from collections.abc import AsyncIterator, Callable, Iterator
 from typing import cast
 
-from httpx import Timeout
+from httpx2 import Timeout
 from openai import AsyncOpenAI, omit
 from openai.types.responses import (
     EasyInputMessageParam,

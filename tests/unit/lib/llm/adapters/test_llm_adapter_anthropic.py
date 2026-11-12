@@ -18,7 +18,7 @@ from anthropic.types import (
     ToolUseBlock,
 )
 from anthropic.types.raw_message_delta_event import Delta
-from httpx import Timeout
+from httpx2 import Timeout
 from pydantic import SecretStr
 
 from lib.http import HTTPClientManager

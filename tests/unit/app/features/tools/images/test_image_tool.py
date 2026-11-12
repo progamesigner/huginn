@@ -1,9 +1,8 @@
 from base64 import b64encode
 from datetime import timedelta
 
-import httpx
+import httpx2
 import pytest
-import respx
 from pydantic import SecretStr
 
 from app.exts.telegram.clients import TelegramClient
@@ -16,11 +15,11 @@ from app.features.tools.images.config import ImageToolConfig
 from app.features.tools.images.repositories import ImageRepository
 from app.features.tools.images.tool import ImageParams, ImageTool, build_images
 from app.features.tools.websearch.config import WebSearchToolConfig
-from lib.http import HTTPClientManager
 from lib.llm import FinishChunk, TextChunk, ToolCallChunk, ToolCallSegment
 from lib.temporal import ClockManager
 from tests.helpers.blobs import MemoryBlobs
 from tests.helpers.clock import FakeClock
+from tests.helpers.http import MockHTTP, Route
 from tests.helpers.logging import make_logger
 from tests.unit.app.features.agents.test_agent_runner import FakeLLM, make_turn
 
@@ -42,22 +41,22 @@ def config(**overrides: object) -> ImageToolConfig:
     )
 
 
-def make_tool(blobs: MemoryBlobs) -> ImageTool:
+def make_tool(http: MockHTTP, blobs: MemoryBlobs) -> ImageTool:
     return build_images(
-        ImageRepository(HTTPClientManager()),
+        ImageRepository(http.manager()),
         ArtifactWriter(blobs, _TTL),
         config(),
     )
 
 
-def vendor(data: bytes = _PNG, status: int = 200) -> respx.Route:
+def vendor(http: MockHTTP, data: bytes = _PNG, status: int = 200) -> Route:
     body = (
         {'data': [{'b64_json': b64encode(data).decode()}]}
         if status == 200
         else {'error': {'message': 'no'}}
     )
-    return respx.post(f'{_VENDOR}/v1/images/generations').mock(
-        return_value=httpx.Response(status, json=body),
+    return http.post(f'{_VENDOR}/v1/images/generations').mock(
+        return_value=httpx2.Response(status, json=body),
     )
 
 
@@ -70,23 +69,26 @@ def test_params_offer_only_the_sizes_the_vendor_draws() -> None:
         ImageParams.model_validate({'prompt': 'x', 'size': '9x9'})
 
 
-def test_build_images_refuses_another_tools_config() -> None:
+def test_build_images_refuses_another_tools_config(http: MockHTTP) -> None:
     other = WebSearchToolConfig.model_validate({'kind': 'websearch', 'api_key': 'k'})
 
     with pytest.raises(ToolError, match='ImageToolConfig'):
         build_images(
-            ImageRepository(HTTPClientManager()),
+            ImageRepository(http.manager()),
             ArtifactWriter(MemoryBlobs(), _TTL),
             other,
         )
 
 
-@respx.mock
-async def test_a_generated_image_is_stored_and_handed_over_beside_a_note() -> None:
-    route = vendor()
+async def test_a_generated_image_is_stored_and_handed_over_beside_a_note(
+    http: MockHTTP,
+) -> None:
+    route = vendor(http)
     blobs = MemoryBlobs()
 
-    result = await make_tool(blobs).run(ImageParams(prompt='a duck', size='1536x1024'))
+    result = await make_tool(http, blobs).run(
+        ImageParams(prompt='a duck', size='1536x1024'),
+    )
 
     assert result.text == 'Generated a 1536x1024 image and sent it to the user.'
     (artifact,) = result.artifacts
@@ -102,19 +104,22 @@ async def test_a_generated_image_is_stored_and_handed_over_beside_a_note() -> No
     assert b'1536x1024' in route.calls.last.request.content
 
 
-@respx.mock
-async def test_the_configured_size_applies_when_the_model_names_none() -> None:
-    route = vendor()
+async def test_the_configured_size_applies_when_the_model_names_none(
+    http: MockHTTP,
+) -> None:
+    route = vendor(http)
 
-    await make_tool(MemoryBlobs()).run(ImageParams(prompt='a duck'))
+    await make_tool(http, MemoryBlobs()).run(ImageParams(prompt='a duck'))
 
     assert b'"size":"1024x1024"' in route.calls.last.request.content.replace(b' ', b'')
 
 
-@respx.mock
-async def test_a_refusal_reaches_the_model_as_a_tool_error() -> None:
-    vendor(status=400)
-    tools = ToolSet({'illustrator': make_tool(MemoryBlobs())}, logger=make_logger())
+async def test_a_refusal_reaches_the_model_as_a_tool_error(http: MockHTTP) -> None:
+    vendor(http, status=400)
+    tools = ToolSet(
+        {'illustrator': make_tool(http, MemoryBlobs())},
+        logger=make_logger(),
+    )
 
     result, artifacts = await tools.execute(
         ToolCallSegment(id='call-1', name='illustrator', arguments='{"prompt":"x"}'),
@@ -125,19 +130,19 @@ async def test_a_refusal_reaches_the_model_as_a_tool_error() -> None:
     assert artifacts == ()
 
 
-@respx.mock
-async def test_bytes_that_are_not_an_image_are_refused() -> None:
-    vendor(data=b'%PDF-1.7 not an image')
+async def test_bytes_that_are_not_an_image_are_refused(http: MockHTTP) -> None:
+    vendor(http, data=b'%PDF-1.7 not an image')
 
     with pytest.raises(ToolError, match='not an image'):
-        await make_tool(MemoryBlobs()).run(ImageParams(prompt='a duck'))
+        await make_tool(http, MemoryBlobs()).run(ImageParams(prompt='a duck'))
 
 
-@respx.mock
-async def test_an_image_asked_for_on_telegram_arrives_as_a_photo() -> None:
-    vendor()
-    respx.post(f'{_TELEGRAM}/sendMessage').mock(
-        return_value=httpx.Response(
+async def test_an_image_asked_for_on_telegram_arrives_as_a_photo(
+    http: MockHTTP,
+) -> None:
+    vendor(http)
+    http.post(f'{_TELEGRAM}/sendMessage').mock(
+        return_value=httpx2.Response(
             200,
             json={
                 'ok': True,
@@ -149,8 +154,8 @@ async def test_an_image_asked_for_on_telegram_arrives_as_a_photo() -> None:
             },
         ),
     )
-    photo = respx.post(f'{_TELEGRAM}/sendPhoto').mock(
-        return_value=httpx.Response(
+    photo = http.post(f'{_TELEGRAM}/sendPhoto').mock(
+        return_value=httpx2.Response(
             200,
             json={
                 'ok': True,
@@ -176,9 +181,12 @@ async def test_an_image_asked_for_on_telegram_arrives_as_a_photo() -> None:
             [TextChunk(text='There you go.'), FinishChunk(reason='stop')],
         ],
     )
-    tools = ToolSet({'illustrator': make_tool(MemoryBlobs())}, logger=make_logger())
+    tools = ToolSet(
+        {'illustrator': make_tool(http, MemoryBlobs())},
+        logger=make_logger(),
+    )
     reply = TelegramReply(
-        TelegramClient(http=HTTPClientManager(), bot_token=SecretStr('telegram-token')),
+        TelegramClient(http=http.manager(), bot_token=SecretStr('telegram-token')),
         5,
         FakeClock(),
         logger=make_logger(),
@@ -201,23 +209,22 @@ def test_image_config_requires_a_positive_size_limit(max_bytes: int) -> None:
 
 
 @pytest.mark.parametrize('linked', [False, True])
-@respx.mock
-async def test_an_oversized_image_is_not_stored(linked: bool) -> None:
+async def test_an_oversized_image_is_not_stored(http: MockHTTP, linked: bool) -> None:
     if linked:
-        respx.post(f'{_VENDOR}/v1/images/generations').mock(
-            return_value=httpx.Response(
+        http.post(f'{_VENDOR}/v1/images/generations').mock(
+            return_value=httpx2.Response(
                 200,
                 json={'data': [{'url': 'https://storage.example/duck.png'}]},
             ),
         )
-        respx.get('https://storage.example/duck.png').mock(
-            return_value=httpx.Response(200, content=_PNG),
+        http.get('https://storage.example/duck.png').mock(
+            return_value=httpx2.Response(200, content=_PNG),
         )
     else:
-        vendor()
+        vendor(http)
     blobs = MemoryBlobs()
     tool = build_images(
-        ImageRepository(HTTPClientManager()),
+        ImageRepository(http.manager()),
         ArtifactWriter(blobs, _TTL),
         config(max_bytes=len(_PNG) - 1),
     )
