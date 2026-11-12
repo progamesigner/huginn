@@ -180,8 +180,8 @@ def decode_chunk(
     tool_called: bool = False,
 ) -> Iterator[CompletionChunk]:
     match event:
-        case ResponseTextDeltaEvent(delta=delta):
-            yield TextChunk(text=delta)
+        case ResponseTextDeltaEvent() as text:
+            yield TextChunk(text=text.delta)
         case ResponseReasoningTextDeltaEvent(delta=delta):
             yield ThinkingChunk(text=delta)
         case ResponseOutputItemAddedEvent(
