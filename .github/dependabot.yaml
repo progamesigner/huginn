@@ -26,3 +26,9 @@ updates:
       update-types:
       - minor
       - patch
+
+# The Dockerfile's base images (python and uv), named in FROM so they are tracked.
+- package-ecosystem: docker
+  directory: /
+  schedule:
+    interval: weekly

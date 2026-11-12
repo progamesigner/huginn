@@ -1,13 +1,12 @@
 # syntax=docker/dockerfile:1
 
-ARG BASE=python:3.14.6-slim-bookworm
-ARG UV_VERSION=0.11.28
+# Images are named in FROM directly so Dependabot can track and bump them.
 
 # base
-FROM ${BASE} AS base
+FROM python:3.14.6-slim-bookworm AS base
 
 # uv
-FROM ghcr.io/astral-sh/uv:${UV_VERSION} AS uv
+FROM ghcr.io/astral-sh/uv:0.11.28 AS uv
 
 # builder
 FROM base AS builder
