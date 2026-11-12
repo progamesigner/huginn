@@ -25,7 +25,7 @@ dependencies = [
 
 [project.optional-dependencies]
 anthropic = ["anthropic==0.116.0"]
-openai = ["openai==2.45.0"]
+openai = ["openai==3.46.0"]
 documents = [
     "openpyxl==3.1.5",
     "pypdf==7.0.0",
