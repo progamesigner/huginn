@@ -20,7 +20,7 @@ def _split(content: str) -> tuple[Mapping[str, object], str]:
     if parsed is None:
         parsed = {}
     if not isinstance(parsed, dict):
-        raise ValueError('skill frontmatter must be a mapping')
+        raise TypeError('skill frontmatter must be a mapping')
     return parsed, ''.join(lines[end + 1 :]).lstrip('\r\n')
 
 

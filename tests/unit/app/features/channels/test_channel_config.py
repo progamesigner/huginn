@@ -148,6 +148,8 @@ def test_channel_summary_describes_pinned_and_router_channels() -> None:
     )
 
     assert _describe_channels(config) == [
-        'channels: research_bot (telegram, router, 2 candidates), '
-        'support_bot (telegram, agent=scout)',
+        (
+            'channels: research_bot (telegram, router, 2 candidates), '
+            'support_bot (telegram, agent=scout)'
+        ),
     ]

@@ -303,13 +303,14 @@ class TelegramClient:
                     response = await client.post(path, json=payload)
                 else:
                     response = await client.get(path)
-                if response.status_code == 429 or response.status_code >= 500:
-                    if attempt + 1 < attempts:
-                        retry_after = 2**attempt
-                        if response.status_code == 429:
-                            parameters = response.json().get('parameters', {})
-                            retry_after = parameters.get('retry_after', retry_after)
-                        await asyncio.sleep(float(retry_after))
-                        continue
+                if (
+                    response.status_code == 429 or response.status_code >= 500
+                ) and attempt + 1 < attempts:
+                    retry_after = 2**attempt
+                    if response.status_code == 429:
+                        parameters = response.json().get('parameters', {})
+                        retry_after = parameters.get('retry_after', retry_after)
+                    await asyncio.sleep(float(retry_after))
+                    continue
                 return _checked(response, path).content
         raise RuntimeError('telegram request exhausted retries')

@@ -175,6 +175,7 @@ class TelegramTurnProcessor:
             self.logger.warning(
                 'Could not list personal commands for /%s',
                 command.name,
+                exc_info=True,
             )
             return True
         return any(item.name == command.name for item in listing)
@@ -189,8 +190,8 @@ class TelegramTurnProcessor:
             await reply.abandon()
             for message in messages:
                 await gateway.abandon(message)
-        except Exception as error:
-            self.logger.error('Could not report the failed turn: %s', error)
+        except Exception:
+            self.logger.exception('Could not report the failed turn')
 
     async def _actor(
         self,

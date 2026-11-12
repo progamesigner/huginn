@@ -131,7 +131,7 @@ class ScopedCommands(ScopedCommandsServiceContract):
         }
 
     @staticmethod
-    def _target(meta: AssetMeta, agents: frozenset[str]) -> str | None | bool:
+    def _target(meta: AssetMeta, agents: frozenset[str]) -> str | bool | None:
         target = meta.frontmatter.get('agent')
         if target is None:
             return None
@@ -244,7 +244,7 @@ class ScopedCommands(ScopedCommandsServiceContract):
                     'allowed': candidates,
                     'fallback': selection.fallback
                     if selection.fallback in candidates
-                    else sorted(candidates)[0],
+                    else min(candidates),
                 },
             )
         fixed = target or request.policy.agent

@@ -78,11 +78,13 @@ class AssetsConfig(ConfigValue):
 def _validate(config: HuginnConfig) -> None:
     assets = config.section(ASSETS)
     for name, source in assets.sources.items():
-        if isinstance(source, MCPAssetSourceConfig):
-            if source.server not in config.section(MCP_SERVERS).root:
-                raise ConfigError(
-                    f'assets.sources.{name}: unknown server {source.server!r}',
-                )
+        if (
+            isinstance(source, MCPAssetSourceConfig)
+            and source.server not in config.section(MCP_SERVERS).root
+        ):
+            raise ConfigError(
+                f'assets.sources.{name}: unknown server {source.server!r}',
+            )
     for name, agent in config.section(AGENTS).root.items():
         for kind in ('commands', 'subagents', 'brief'):
             setting = getattr(agent, kind, None)
