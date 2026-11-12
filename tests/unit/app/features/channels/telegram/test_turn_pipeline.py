@@ -5,9 +5,8 @@ from contextlib import asynccontextmanager
 from typing import override
 from unittest.mock import AsyncMock, MagicMock
 
-import httpx
+import httpx2
 import pytest
-import respx
 from fastapi import FastAPI
 from pydantic import SecretStr
 
@@ -21,9 +20,11 @@ from app.features.channels.telegram.config import TelegramChannelConfig
 from app.features.identities.contracts import IdentityResolutionServiceContract
 from app.features.identities.entities import AnonymousPrincipal, Principal
 from bin.server import build
+from lib.http import HTTPClientContract
 from lib.mcp import MCPClientContract
 from lib.redis import RedisContract
 from lib.router import RouterContract
+from tests.helpers.http import MockHTTP
 from tests.helpers.logging import recording
 from tests.helpers.redis import FakeClient
 
@@ -176,8 +177,8 @@ def make_redis() -> MagicMock:
     return redis
 
 
-def message(message_id: int) -> httpx.Response:
-    return httpx.Response(
+def message(message_id: int) -> httpx2.Response:
+    return httpx2.Response(
         200,
         json={
             'ok': True,
@@ -191,14 +192,18 @@ def message(message_id: int) -> httpx.Response:
 
 
 @asynccontextmanager
-async def pipeline(turns: TurnServiceContract) -> AsyncIterator[httpx.AsyncClient]:
+async def pipeline(
+    http: MockHTTP,
+    turns: TurnServiceContract,
+) -> AsyncIterator[httpx2.AsyncClient]:
     for method in ('setMyCommands', 'deleteMyCommands'):
-        respx.post(f'{_BASE_URL}/{method}').mock(
-            return_value=httpx.Response(200, json={'ok': True, 'result': True}),
+        http.post(f'{_BASE_URL}/{method}').mock(
+            return_value=httpx2.Response(200, json={'ok': True, 'result': True}),
         )
     application = build()
     with (
         application.use(HuginnConfig, make_config()),
+        application.use(HTTPClientContract, http.manager()),
         application.use(MCPClientContract, MagicMock(spec=MCPClientContract)),
         application.use(RedisContract, make_redis()),
         application.use(TurnServiceContract, turns),
@@ -207,33 +212,34 @@ async def pipeline(turns: TurnServiceContract) -> AsyncIterator[httpx.AsyncClien
         app = application.resolve(RouterContract).app
         assert isinstance(app, FastAPI)
         async with app.router.lifespan_context(app):
-            transport = httpx.ASGITransport(app=app)
-            async with httpx.AsyncClient(
+            transport = httpx2.ASGITransport(app=app)
+            async with httpx2.AsyncClient(
                 transport=transport,
                 base_url='http://huginn',
             ) as client:
                 yield client
 
 
-@respx.mock
-async def test_a_webhook_message_reaches_the_agent_turn_and_answers_in_chat() -> None:
+async def test_a_webhook_message_reaches_the_agent_turn_and_answers_in_chat(
+    http: MockHTTP,
+) -> None:
     # NOTE: everything between the webhook and the vendor is real here -- dedupe, ack,
     # claim, the owner loop, the turn processor, routing policy and the streaming reply.
     # Only the model turn itself and the principal lookup are doubles.
-    respx.post(f'{_BASE_URL}/setMessageReaction').mock(
-        return_value=httpx.Response(200, json={'ok': True, 'result': True}),
+    http.post(f'{_BASE_URL}/setMessageReaction').mock(
+        return_value=httpx2.Response(200, json={'ok': True, 'result': True}),
     )
-    draft = respx.post(f'{_BASE_URL}/sendMessageDraft').mock(
-        return_value=httpx.Response(200, json={'ok': True, 'result': True}),
+    draft = http.post(f'{_BASE_URL}/sendMessageDraft').mock(
+        return_value=httpx2.Response(200, json={'ok': True, 'result': True}),
     )
-    send = respx.post(f'{_BASE_URL}/sendMessage').mock(return_value=message(7))
-    edit = respx.post(f'{_BASE_URL}/editMessageText').mock(return_value=message(7))
-    action = respx.post(f'{_BASE_URL}/sendChatAction').mock(
-        return_value=httpx.Response(200, json={'ok': True, 'result': True}),
+    send = http.post(f'{_BASE_URL}/sendMessage').mock(return_value=message(7))
+    edit = http.post(f'{_BASE_URL}/editMessageText').mock(return_value=message(7))
+    action = http.post(f'{_BASE_URL}/sendChatAction').mock(
+        return_value=httpx2.Response(200, json={'ok': True, 'result': True}),
     )
     turns = StreamingTurns()
 
-    async with pipeline(turns) as client:
+    async with pipeline(http, turns) as client:
         response = await client.post(
             _PATH,
             headers={_HEADER: 'sekret'},
@@ -266,18 +272,19 @@ async def test_a_webhook_message_reaches_the_agent_turn_and_answers_in_chat() ->
     assert request.prompts[0].actor.startswith('anonymous:')
 
 
-@respx.mock
-async def test_a_photo_with_no_caption_reaches_the_turn_with_its_bytes() -> None:
-    respx.post(f'{_BASE_URL}/setMessageReaction').mock(
-        return_value=httpx.Response(200, json={'ok': True, 'result': True}),
+async def test_a_photo_with_no_caption_reaches_the_turn_with_its_bytes(
+    http: MockHTTP,
+) -> None:
+    http.post(f'{_BASE_URL}/setMessageReaction').mock(
+        return_value=httpx2.Response(200, json={'ok': True, 'result': True}),
     )
-    respx.post(f'{_BASE_URL}/sendMessage').mock(return_value=message(7))
-    respx.post(f'{_BASE_URL}/editMessageText').mock(return_value=message(7))
-    respx.post(f'{_BASE_URL}/sendChatAction').mock(
-        return_value=httpx.Response(200, json={'ok': True, 'result': True}),
+    http.post(f'{_BASE_URL}/sendMessage').mock(return_value=message(7))
+    http.post(f'{_BASE_URL}/editMessageText').mock(return_value=message(7))
+    http.post(f'{_BASE_URL}/sendChatAction').mock(
+        return_value=httpx2.Response(200, json={'ok': True, 'result': True}),
     )
-    file = respx.post(f'{_BASE_URL}/getFile').mock(
-        return_value=httpx.Response(
+    file = http.post(f'{_BASE_URL}/getFile').mock(
+        return_value=httpx2.Response(
             200,
             json={
                 'ok': True,
@@ -290,12 +297,12 @@ async def test_a_photo_with_no_caption_reaches_the_turn_with_its_bytes() -> None
             },
         ),
     )
-    download = respx.get(f'{_FILE_URL}/photos/large.jpg').mock(
-        return_value=httpx.Response(200, content=_JPEG),
+    download = http.get(f'{_FILE_URL}/photos/large.jpg').mock(
+        return_value=httpx2.Response(200, content=_JPEG),
     )
     turns = StreamingTurns()
 
-    async with pipeline(turns) as client:
+    async with pipeline(http, turns) as client:
         response = await client.post(
             _PATH,
             headers={_HEADER: 'sekret'},
@@ -318,24 +325,23 @@ async def test_a_photo_with_no_caption_reaches_the_turn_with_its_bytes() -> None
     assert prompt.attachments[0].hint == '[image: image/jpeg 1280x960]'
 
 
-@respx.mock
-async def test_a_voice_note_with_no_transcription_configured_is_answered_anyway() -> (
-    None
-):
+async def test_a_voice_note_with_no_transcription_configured_is_answered_anyway(
+    http: MockHTTP,
+) -> None:
     # NOTE: this config carries an empty transcription section, which is what a
     # deployment that never set one up has
     answered = asyncio.Event()
 
-    def send(request: httpx.Request) -> httpx.Response:
+    def send(request: httpx2.Request) -> httpx2.Response:
         answered.set()
         return message(7)
 
-    respx.post(f'{_BASE_URL}/setMessageReaction').mock(
-        return_value=httpx.Response(200, json={'ok': True, 'result': True}),
+    http.post(f'{_BASE_URL}/setMessageReaction').mock(
+        return_value=httpx2.Response(200, json={'ok': True, 'result': True}),
     )
-    sent = respx.post(f'{_BASE_URL}/sendMessage').mock(side_effect=send)
-    respx.post(f'{_BASE_URL}/getFile').mock(
-        return_value=httpx.Response(
+    sent = http.post(f'{_BASE_URL}/sendMessage').mock(side_effect=send)
+    http.post(f'{_BASE_URL}/getFile').mock(
+        return_value=httpx2.Response(
             200,
             json={
                 'ok': True,
@@ -348,12 +354,12 @@ async def test_a_voice_note_with_no_transcription_configured_is_answered_anyway(
             },
         ),
     )
-    respx.get(f'{_FILE_URL}/voice/note.oga').mock(
-        return_value=httpx.Response(200, content=_VOICE),
+    http.get(f'{_FILE_URL}/voice/note.oga').mock(
+        return_value=httpx2.Response(200, content=_VOICE),
     )
     turns = StreamingTurns()
 
-    async with pipeline(turns) as client:
+    async with pipeline(http, turns) as client:
         response = await client.post(
             _PATH,
             headers={_HEADER: 'sekret'},
@@ -370,25 +376,25 @@ async def test_a_voice_note_with_no_transcription_configured_is_answered_anyway(
     }
 
 
-@respx.mock
 async def test_one_round_logs_the_four_milestones_in_order(
+    http: MockHTTP,
     caplog: pytest.LogCaptureFixture,
 ) -> None:
-    respx.post(f'{_BASE_URL}/setMessageReaction').mock(
-        return_value=httpx.Response(200, json={'ok': True, 'result': True}),
+    http.post(f'{_BASE_URL}/setMessageReaction').mock(
+        return_value=httpx2.Response(200, json={'ok': True, 'result': True}),
     )
-    respx.post(f'{_BASE_URL}/sendMessageDraft').mock(
-        return_value=httpx.Response(200, json={'ok': True, 'result': True}),
+    http.post(f'{_BASE_URL}/sendMessageDraft').mock(
+        return_value=httpx2.Response(200, json={'ok': True, 'result': True}),
     )
-    respx.post(f'{_BASE_URL}/sendMessage').mock(return_value=message(7))
-    respx.post(f'{_BASE_URL}/editMessageText').mock(return_value=message(7))
-    respx.post(f'{_BASE_URL}/sendChatAction').mock(
-        return_value=httpx.Response(200, json={'ok': True, 'result': True}),
+    http.post(f'{_BASE_URL}/sendMessage').mock(return_value=message(7))
+    http.post(f'{_BASE_URL}/editMessageText').mock(return_value=message(7))
+    http.post(f'{_BASE_URL}/sendChatAction').mock(
+        return_value=httpx2.Response(200, json={'ok': True, 'result': True}),
     )
     turns = StreamingTurns()
 
     with caplog.at_level('INFO'):
-        async with pipeline(turns) as client:
+        async with pipeline(http, turns) as client:
             with recording(caplog):
                 response = await client.post(
                     _PATH,

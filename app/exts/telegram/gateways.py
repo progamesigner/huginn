@@ -4,7 +4,7 @@ from collections.abc import Awaitable, Callable, Sequence
 from datetime import timedelta
 from typing import Literal, override
 
-import httpx
+import httpx2
 from pydantic import JsonValue, SecretStr
 
 from app.contracts.channels import (
@@ -224,7 +224,7 @@ class TelegramReply(ChannelReplyContract):
             self.logger.exception('Could not send %s as a %s', artifact.blob, upload)
             reason = (
                 f'telegram answered {error.response.status_code}'
-                if isinstance(error, httpx.HTTPStatusError)
+                if isinstance(error, httpx2.HTTPStatusError)
                 else 'the upload failed'
             )
             self.pending += _UNSENT_NOTE.format(name=name, reason=reason)
@@ -291,7 +291,11 @@ class TelegramReply(ChannelReplyContract):
             try:
                 await self.client.send_chat_action(self.chat_id, TYPING.action)
             except Exception as error:
-                self.logger.debug('Stopped showing the typing status: %s', error)
+                self.logger.debug(
+                    'Stopped showing the typing status: %s',
+                    error,
+                    exc_info=True,
+                )
                 return
 
             await asyncio.sleep(self.typing_interval.total_seconds())
@@ -386,11 +390,11 @@ class TelegramReply(ChannelReplyContract):
         attempts = 1 if live else MAX_ATTEMPTS
         try:
             await self._push(surface, text, entities, attempts)
-        except httpx.TransportError as error:
+        except httpx2.TransportError as error:
             if not live:
                 raise
             raise _Throttled(self.interval) from error
-        except httpx.HTTPStatusError as error:
+        except httpx2.HTTPStatusError as error:
             status = error.response.status_code
             if live and (delay := retry_after(error)) is not None:
                 raise _Throttled(timedelta(seconds=delay)) from error

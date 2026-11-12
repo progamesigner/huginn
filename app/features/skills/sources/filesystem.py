@@ -40,7 +40,7 @@ class FilesystemSkillSource(SkillSource):
             content = candidate.read_text(encoding='utf-8')
             try:
                 metas.append(_meta(relative, content, logger=self.logger))
-            except ValueError:
+            except TypeError, ValueError:
                 self.logger.warning('Skipping invalid skill frontmatter: %s', relative)
         return tuple(metas)
 

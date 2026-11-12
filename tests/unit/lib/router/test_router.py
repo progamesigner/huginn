@@ -6,7 +6,7 @@ from typing import cast
 import fastapi
 import fastapi.params
 import fastapi.responses
-import httpx
+import httpx2
 import pytest
 from fastapi import APIRouter, FastAPI
 from starlette.applications import Starlette
@@ -34,9 +34,9 @@ def probe_router(path: str = '/ping') -> APIRouter:
     return router
 
 
-async def fetch(app: ASGIApp, path: str) -> httpx.Response:
-    transport = httpx.ASGITransport(app=app)
-    async with httpx.AsyncClient(
+async def fetch(app: ASGIApp, path: str) -> httpx2.Response:
+    transport = httpx2.ASGITransport(app=app)
+    async with httpx2.AsyncClient(
         transport=transport,
         base_url='http://huginn',
     ) as client:
@@ -52,7 +52,7 @@ def test_reexports_are_fastapi_primitives() -> None:
 
 
 def test_param_reexports_are_fastapi_params_classes() -> None:
-    import lib.router as router
+    from lib import router
 
     names = (
         'Body',
@@ -72,7 +72,7 @@ def test_param_reexports_are_fastapi_params_classes() -> None:
 
 
 def test_response_reexports_are_fastapi_responses() -> None:
-    import lib.router as router
+    from lib import router
 
     names = (
         'EventSourceResponse',

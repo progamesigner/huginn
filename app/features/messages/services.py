@@ -231,15 +231,14 @@ class ChatService:
                 ) as (events),
             ):
                 async for event in events:
-                    if isinstance(event, AttachmentEvent):
-                        if not await self._grant(
-                            event,
-                            prepared.owner or prepared.request.channel,
-                        ):
-                            yield TextEvent(
-                                text='\n\nThe attachment could not be made available.',
-                            )
-                            continue
+                    if isinstance(event, AttachmentEvent) and not await self._grant(
+                        event,
+                        prepared.owner or prepared.request.channel,
+                    ):
+                        yield TextEvent(
+                            text='\n\nThe attachment could not be made available.',
+                        )
+                        continue
                     yield event
         finally:
             await prepared.lock.release()

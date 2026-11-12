@@ -1,10 +1,12 @@
-from httpcore import AsyncConnectionPool
+import httpx2
+from httpcore2 import AsyncConnectionPool
 
 from lib.container import Disposable
 from lib.http import HTTPClientManager
 
 
 def pool_of(manager: HTTPClientManager) -> AsyncConnectionPool:
+    assert isinstance(manager.transport, httpx2.AsyncHTTPTransport)
     pool = manager.transport._pool
     assert isinstance(pool, AsyncConnectionPool)
     return pool

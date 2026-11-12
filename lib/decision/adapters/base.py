@@ -2,7 +2,7 @@ import asyncio
 from abc import ABC, abstractmethod
 from urllib.parse import urlsplit
 
-from httpx import HTTPError, Response, TimeoutException
+from httpx2 import HTTPError, Response, TimeoutException
 from pydantic import BaseModel, ConfigDict, JsonValue, ValidationError
 
 from lib.decision.client import DecisionProviderConfig
@@ -39,7 +39,7 @@ class HTTPDecisionAdapter(ABC):
         headers = {
             'Authorization': f'Bearer {self.provider.api_key.get_secret_value()}',
         }
-        # NOTE: httpx gives a base url a trailing slash, so the endpoint is split
+        # NOTE: httpx2 gives a base url a trailing slash, so the endpoint is split
         # rather than posted to as a whole
         endpoint = urlsplit(self.provider.endpoint)
         try:

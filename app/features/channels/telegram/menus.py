@@ -100,7 +100,10 @@ class TelegramMenuService:
                 async with asyncio.timeout(_SYNC_TIMEOUT):
                     await gateway.delete_commands(key[1], key[2])
             except Exception:
-                self.logger.warning('Could not withdraw the personal menu')
+                self.logger.warning(
+                    'Could not withdraw the personal menu',
+                    exc_info=True,
+                )
 
     async def _bounded(
         self,
@@ -234,6 +237,7 @@ class TelegramMenuService:
                     'Menu synchronization failed attempt=%d channel=%s',
                     attempt + 1,
                     message.channel,
+                    exc_info=True,
                 )
                 # Only a failed replacement leaves the menu in an unknown state;
                 # a failed lookup keeps the published menu until the next try.
@@ -245,4 +249,5 @@ class TelegramMenuService:
                     self.logger.warning(
                         'Could not remove the obsolete menu channel=%s',
                         message.channel,
+                        exc_info=True,
                     )

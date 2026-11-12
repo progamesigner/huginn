@@ -1,7 +1,7 @@
 from collections.abc import AsyncIterator, Callable, Iterator
 from typing import cast
 
-from httpx import Timeout
+from httpx2 import Timeout
 from openai import AsyncOpenAI, omit
 from openai.types.responses import (
     EasyInputMessageParam,
@@ -180,8 +180,8 @@ def decode_chunk(
     tool_called: bool = False,
 ) -> Iterator[CompletionChunk]:
     match event:
-        case ResponseTextDeltaEvent(delta=delta):
-            yield TextChunk(text=delta)
+        case ResponseTextDeltaEvent() as text:
+            yield TextChunk(text=text.delta)
         case ResponseReasoningTextDeltaEvent(delta=delta):
             yield ThinkingChunk(text=delta)
         case ResponseOutputItemAddedEvent(

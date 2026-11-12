@@ -15,6 +15,7 @@ def redis_url() -> Iterator[str]:
         return
 
     try:
+        from docker.errors import DockerException
         from testcontainers.redis import RedisContainer
     except ImportError:
         pytest.skip('set HUGINN_REDIS_URL or add the testcontainers dev dependency')
@@ -25,7 +26,7 @@ def redis_url() -> Iterator[str]:
             host = container.get_container_host_ip()
             port = container.get_exposed_port(6379)
             yield f'redis://{host}:{port}/0'
-    except Exception as error:
+    except DockerException as error:
         pytest.skip(
             f'Docker unavailable; set HUGINN_REDIS_URL to run redis tests ({error})',
         )

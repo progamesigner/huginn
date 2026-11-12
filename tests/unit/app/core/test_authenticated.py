@@ -1,6 +1,6 @@
 from typing import Annotated, override
 
-import httpx
+import httpx2
 from fastapi import FastAPI
 from starlette.types import ASGIApp
 
@@ -51,9 +51,9 @@ def build_app(auth: AuthContract) -> ASGIApp:
     return app
 
 
-async def fetch(app: ASGIApp, headers: dict[str, str]) -> httpx.Response:
-    transport = httpx.ASGITransport(app=app)
-    async with httpx.AsyncClient(
+async def fetch(app: ASGIApp, headers: dict[str, str]) -> httpx2.Response:
+    transport = httpx2.ASGITransport(app=app)
+    async with httpx2.AsyncClient(
         transport=transport,
         base_url='http://huginn',
     ) as client:

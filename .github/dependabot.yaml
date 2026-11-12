@@ -17,6 +17,8 @@ updates:
 
 # Python dependencies in pyproject.toml / uv.lock. Minor and patch bumps are
 # grouped; majors stay separate so a breaking change is reviewed on its own.
+# ruff and ty are kept out of the group: a new release usually brings new
+# rules, which need code changes of their own.
 - package-ecosystem: uv
   directory: /
   schedule:
@@ -26,6 +28,9 @@ updates:
       update-types:
       - minor
       - patch
+      exclude-patterns:
+      - ruff
+      - ty
 
 # The Dockerfile's base images (python and uv), named in FROM so they are tracked.
 - package-ecosystem: docker

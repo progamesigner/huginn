@@ -1,9 +1,8 @@
 import json
 from datetime import timedelta
 
-import httpx
+import httpx2
 import pytest
-import respx
 from pydantic import SecretStr
 
 from app.exts.telegram.clients import TelegramClient
@@ -18,10 +17,10 @@ from app.features.tools.writing.tool import (
     WriteDocumentTool,
     build_write_document,
 )
-from lib.http import HTTPClientManager
 from lib.llm import ToolCallSegment
 from tests.helpers.blobs import MemoryBlobs
 from tests.helpers.clock import FakeClock
+from tests.helpers.http import MockHTTP
 from tests.helpers.logging import make_logger
 
 _TELEGRAM = 'https://api.telegram.org/bottelegram-token'
@@ -105,10 +104,11 @@ def test_build_write_document_refuses_another_tools_config() -> None:
         build_write_document(ArtifactWriter(MemoryBlobs(), _TTL), other)
 
 
-@respx.mock
-async def test_a_written_file_reaches_telegram_as_a_document_with_a_safe_name() -> None:
-    document = respx.post(f'{_TELEGRAM}/sendDocument').mock(
-        return_value=httpx.Response(
+async def test_a_written_file_reaches_telegram_as_a_document_with_a_safe_name(
+    http: MockHTTP,
+) -> None:
+    document = http.post(f'{_TELEGRAM}/sendDocument').mock(
+        return_value=httpx2.Response(
             200,
             json={
                 'ok': True,
@@ -128,7 +128,7 @@ async def test_a_written_file_reaches_telegram_as_a_document_with_a_safe_name() 
         ),
     )
     reply = TelegramReply(
-        TelegramClient(http=HTTPClientManager(), bot_token=SecretStr('telegram-token')),
+        TelegramClient(http=http.manager(), bot_token=SecretStr('telegram-token')),
         5,
         FakeClock(),
         logger=make_logger(),

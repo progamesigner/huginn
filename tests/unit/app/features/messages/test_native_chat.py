@@ -5,7 +5,7 @@ from contextlib import asynccontextmanager
 from typing import Any, cast, override
 from unittest.mock import MagicMock
 
-import httpx
+import httpx2
 from fastapi import FastAPI
 from pydantic import SecretStr
 
@@ -138,7 +138,7 @@ async def chat_client(
     turns: TurnServiceContract,
     redis: MagicMock | None = None,
     blobs: BlobServiceContract | None = None,
-) -> AsyncIterator[httpx.AsyncClient]:
+) -> AsyncIterator[httpx2.AsyncClient]:
     application = build()
     with (
         application.use(BlobServiceContract, blobs or MemoryBlobs()),
@@ -150,8 +150,8 @@ async def chat_client(
         app = application.resolve(RouterContract).app
         assert isinstance(app, FastAPI)
         async with app.router.lifespan_context(app):
-            transport = httpx.ASGITransport(app=app)
-            async with httpx.AsyncClient(
+            transport = httpx2.ASGITransport(app=app)
+            async with httpx2.AsyncClient(
                 transport=transport,
                 base_url='http://huginn',
             ) as client:
@@ -481,7 +481,7 @@ async def test_a_failure_after_the_first_token_arrives_as_an_error_event() -> No
 
 async def test_a_client_that_hangs_up_takes_the_turn_with_it() -> None:
     # NOTE: driven as raw ASGI on purpose -- a client that stops reading is only visible
-    # as an `http.disconnect` message, which httpx's ASGI transport never sends, and the
+    # as an `http.disconnect` message, which httpx2's ASGI transport never sends, and the
     # whole point of this test is that the disconnect reaches the turn
     cancelled = asyncio.Event()
     delivered = asyncio.Event()

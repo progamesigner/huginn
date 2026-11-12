@@ -1,18 +1,20 @@
-import httpx
+import httpx2
 import pytest
-import respx
 from pydantic import HttpUrl, SecretStr
 
 from app.features.channels.config import TranscriptionConfig, TranscriptionKind
 from app.features.channels.exceptions import TranscriptionUnavailableError
 from app.features.channels.repositories import TranscriptionRepository
-from lib.http import HTTPClientManager
+from tests.helpers.http import MockHTTP
 
 _VOICE = b'OggS not really an ogg'
 
 
-def make_repository(config: TranscriptionConfig) -> TranscriptionRepository:
-    return TranscriptionRepository(HTTPClientManager(), config)
+def make_repository(
+    http: MockHTTP,
+    config: TranscriptionConfig,
+) -> TranscriptionRepository:
+    return TranscriptionRepository(http.manager(), config)
 
 
 def configured() -> TranscriptionConfig:
@@ -24,23 +26,27 @@ def configured() -> TranscriptionConfig:
     )
 
 
-@respx.mock
-async def test_transcribe_answers_with_what_the_vendor_heard() -> None:
-    route = respx.post('https://transcribe.example/v1/audio/transcriptions').mock(
-        return_value=httpx.Response(200, json={'text': 'call me back'}),
+async def test_transcribe_answers_with_what_the_vendor_heard(http: MockHTTP) -> None:
+    route = http.post('https://transcribe.example/v1/audio/transcriptions').mock(
+        return_value=httpx2.Response(200, json={'text': 'call me back'}),
     )
 
-    text = await make_repository(configured()).transcribe('audio/ogg', _VOICE)
+    text = await make_repository(http, configured()).transcribe('audio/ogg', _VOICE)
 
     assert route.called
     assert text == 'call me back'
 
 
-async def test_an_unconfigured_section_reports_itself_as_unavailable() -> None:
+async def test_an_unconfigured_section_reports_itself_as_unavailable(
+    http: MockHTTP,
+) -> None:
     # NOTE: this is the difference the round has to act on -- nobody configured
     # transcription, so no retry will ever make this voice message readable
     with pytest.raises(TranscriptionUnavailableError):
-        await make_repository(TranscriptionConfig()).transcribe('audio/ogg', _VOICE)
+        await make_repository(http, TranscriptionConfig()).transcribe(
+            'audio/ogg',
+            _VOICE,
+        )
 
 
 @pytest.mark.parametrize(
@@ -70,16 +76,18 @@ async def test_an_unconfigured_section_reports_itself_as_unavailable() -> None:
         ),
     ],
 )
-@respx.mock
 async def test_each_kind_reaches_its_own_vendor_by_default(
+    http: MockHTTP,
     kind: TranscriptionKind,
     url: str,
     answer: dict[str, object],
 ) -> None:
-    route = respx.post(url).mock(return_value=httpx.Response(200, json=answer))
+    route = http.post(url).mock(return_value=httpx2.Response(200, json=answer))
     config = TranscriptionConfig(kind=kind, model='m', api_key=SecretStr('k'))
 
-    assert await make_repository(config).transcribe('audio/ogg', _VOICE) == 'heard'
+    assert (
+        await make_repository(http, config).transcribe('audio/ogg', _VOICE) == 'heard'
+    )
     assert route.called
 
 

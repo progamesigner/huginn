@@ -14,7 +14,7 @@ from contextlib import AsyncExitStack
 from dataclasses import dataclass
 from pathlib import Path
 
-import httpx
+import httpx2
 import pytest
 
 from app.features.agents.config import AgentConfig, BriefConfig
@@ -99,7 +99,7 @@ async def memory(tmp_path: Path) -> AsyncIterator[LocalMemory]:
 
             stack.push_async_callback(stop)
             base = f'http://127.0.0.1:{port}'
-            async with httpx.AsyncClient(trust_env=False) as probe:
+            async with httpx2.AsyncClient(trust_env=False) as probe:
                 async with asyncio.timeout(15):
                     while True:
                         assert process.returncode is None, (
@@ -108,7 +108,7 @@ async def memory(tmp_path: Path) -> AsyncIterator[LocalMemory]:
                         try:
                             if (await probe.get(f'{base}/healthz')).is_success:
                                 break
-                        except httpx.TransportError:
+                        except httpx2.TransportError:
                             pass
                         await asyncio.sleep(0.05)
             servers.append(MCPServer(name=name, url=f'{base}/mcp'))

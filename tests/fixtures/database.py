@@ -18,6 +18,7 @@ def database_url() -> Iterator[str]:
         return
 
     try:
+        from docker.errors import DockerException
         from testcontainers.postgres import PostgresContainer
     except ImportError:
         pytest.skip('set HUGINN_DATABASE_URL or add the testcontainers dev dependency')
@@ -26,7 +27,7 @@ def database_url() -> Iterator[str]:
         container = PostgresContainer(_IMAGE, driver='asyncpg')
         with container:
             yield container.get_connection_url()
-    except Exception as error:
+    except DockerException as error:
         pytest.skip(
             f'Docker unavailable; set HUGINN_DATABASE_URL to run db tests ({error})',
         )

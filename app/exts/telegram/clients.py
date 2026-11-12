@@ -1,7 +1,7 @@
 import asyncio
 from collections.abc import Mapping, Sequence
 
-import httpx
+import httpx2
 from pydantic import JsonValue, SecretStr, TypeAdapter
 
 from app.contracts.channels import ATTACHMENT_LIMITS
@@ -32,7 +32,7 @@ _UPLOAD_METHODS: dict[Upload, str] = {
 type Multipart = dict[str, tuple[str, bytes, str]]
 
 
-def retry_after(error: httpx.HTTPStatusError) -> float | None:
+def retry_after(error: httpx2.HTTPStatusError) -> float | None:
     if error.response.status_code != 429:
         return None
 
@@ -56,12 +56,12 @@ def _formatting(entities: Sequence[MessageEntity]) -> dict[str, JsonValue]:
     return {'entities': [entity.model_dump(exclude_none=True) for entity in entities]}
 
 
-# NOTE: httpx's message names the full url, which carries the bot token
-def _checked(response: httpx.Response, path: str) -> httpx.Response:
+# NOTE: httpx2's message names the full url, which carries the bot token
+def _checked(response: httpx2.Response, path: str) -> httpx2.Response:
     try:
         return response.raise_for_status()
-    except httpx.HTTPStatusError as error:
-        raise httpx.HTTPStatusError(
+    except httpx2.HTTPStatusError as error:
+        raise httpx2.HTTPStatusError(
             f'telegram answered {response.status_code} to {path}',
             request=error.request,
             response=error.response,
@@ -303,13 +303,14 @@ class TelegramClient:
                     response = await client.post(path, json=payload)
                 else:
                     response = await client.get(path)
-                if response.status_code == 429 or response.status_code >= 500:
-                    if attempt + 1 < attempts:
-                        retry_after = 2**attempt
-                        if response.status_code == 429:
-                            parameters = response.json().get('parameters', {})
-                            retry_after = parameters.get('retry_after', retry_after)
-                        await asyncio.sleep(float(retry_after))
-                        continue
+                if (
+                    response.status_code == 429 or response.status_code >= 500
+                ) and attempt + 1 < attempts:
+                    retry_after = 2**attempt
+                    if response.status_code == 429:
+                        parameters = response.json().get('parameters', {})
+                        retry_after = parameters.get('retry_after', retry_after)
+                    await asyncio.sleep(float(retry_after))
+                    continue
                 return _checked(response, path).content
         raise RuntimeError('telegram request exhausted retries')

@@ -2,7 +2,7 @@ from base64 import b64decode
 from dataclasses import dataclass
 from typing import Annotated
 
-from httpx import Response
+from httpx2 import Response
 from pydantic import BaseModel, ConfigDict, Field, SecretStr
 
 from lib.http import HTTPClientContract
@@ -77,26 +77,28 @@ class ImagesClient:
             **({} if quality is None else {'quality': quality}),
         }
 
-        async with self.http.connect(self.base_url, self.headers) as client:
-            async with client.stream(
+        async with (
+            self.http.connect(self.base_url, self.headers) as client,
+            client.stream(
                 'POST',
                 '/v1/images/generations',
                 json=payload,
                 timeout=_GENERATION_TIMEOUT,
-            ) as response:
-                if response.is_client_error:
-                    raise ImageGenerationError(
-                        _refusal(
-                            await _read_capped(response, _RESPONSE_OVERHEAD),
-                            response.status_code,
-                        ),
-                    )
+            ) as response,
+        ):
+            if response.is_client_error:
+                raise ImageGenerationError(
+                    _refusal(
+                        await _read_capped(response, _RESPONSE_OVERHEAD),
+                        response.status_code,
+                    ),
+                )
 
-                response.raise_for_status()
-                body = await _read_capped(response, self._response_limit())
-                images = GenerationResponse.model_validate_json(body).data
-                if not images:
-                    raise ImageGenerationError('the vendor returned no image')
+            response.raise_for_status()
+            body = await _read_capped(response, self._response_limit())
+            images = GenerationResponse.model_validate_json(body).data
+            if not images:
+                raise ImageGenerationError('the vendor returned no image')
 
         image = images[0]
         if image.b64_json is not None:
@@ -126,19 +128,21 @@ class ImagesClient:
         if not url.startswith('https://'):
             raise ImageGenerationError('the vendor linked the image over plain http')
 
-        async with self.http.connect() as client:
-            async with client.stream(
+        async with (
+            self.http.connect() as client,
+            client.stream(
                 'GET',
                 url,
                 timeout=_GENERATION_TIMEOUT,
-            ) as response:
-                response.raise_for_status()
-                body = bytearray()
-                async for chunk in response.aiter_bytes():
-                    if len(body) + len(chunk) > self.max_bytes:
-                        raise ImageGenerationError('the image exceeds the size limit')
-                    body.extend(chunk)
-                return bytes(body)
+            ) as response,
+        ):
+            response.raise_for_status()
+            body = bytearray()
+            async for chunk in response.aiter_bytes():
+                if len(body) + len(chunk) > self.max_bytes:
+                    raise ImageGenerationError('the image exceeds the size limit')
+                body.extend(chunk)
+            return bytes(body)
 
 
 def _refusal(content: bytes, status: int) -> str:

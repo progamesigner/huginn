@@ -1,6 +1,6 @@
 from typing import cast
 
-import httpx
+import httpx2
 import pytest
 from starlette.applications import Starlette
 from starlette.types import ASGIApp
@@ -52,8 +52,8 @@ def test_build_wires_features() -> None:
 
 async def test_server_boots_without_config_file() -> None:
     settings = make_settings(config_file='does-not-exist.yaml')
-    transport = httpx.ASGITransport(app=create_with_settings(settings))
-    async with httpx.AsyncClient(
+    transport = httpx2.ASGITransport(app=create_with_settings(settings))
+    async with httpx2.AsyncClient(
         transport=transport,
         base_url='http://huginn',
     ) as client:
@@ -63,8 +63,8 @@ async def test_server_boots_without_config_file() -> None:
 
 
 async def test_dev_environment_exposes_docs() -> None:
-    transport = httpx.ASGITransport(app=create())
-    async with httpx.AsyncClient(
+    transport = httpx2.ASGITransport(app=create())
+    async with httpx2.AsyncClient(
         transport=transport,
         base_url='http://huginn',
     ) as client:
@@ -74,10 +74,10 @@ async def test_dev_environment_exposes_docs() -> None:
 
 
 async def test_prod_environment_hides_docs() -> None:
-    transport = httpx.ASGITransport(
+    transport = httpx2.ASGITransport(
         app=create_with_settings(make_settings(environment='prod')),
     )
-    async with httpx.AsyncClient(
+    async with httpx2.AsyncClient(
         transport=transport,
         base_url='http://huginn',
     ) as client:
@@ -90,8 +90,8 @@ async def test_lifespan_runs_container_through_probes() -> None:
     app = cast(Starlette, create())
 
     async with app.router.lifespan_context(app):
-        transport = httpx.ASGITransport(app=app)
-        async with httpx.AsyncClient(
+        transport = httpx2.ASGITransport(app=app)
+        async with httpx2.AsyncClient(
             transport=transport,
             base_url='http://huginn',
         ) as client:

@@ -1,4 +1,4 @@
-import httpx
+import httpx2
 from pydantic import BaseModel
 from starlette.middleware import Middleware
 from starlette.types import ASGIApp
@@ -20,9 +20,9 @@ async def fetch(
     *,
     raise_app_exceptions: bool = True,
     json: object = None,
-) -> httpx.Response:
-    transport = httpx.ASGITransport(app=app, raise_app_exceptions=raise_app_exceptions)
-    async with httpx.AsyncClient(
+) -> httpx2.Response:
+    transport = httpx2.ASGITransport(app=app, raise_app_exceptions=raise_app_exceptions)
+    async with httpx2.AsyncClient(
         transport=transport,
         base_url='http://huginn',
     ) as client:

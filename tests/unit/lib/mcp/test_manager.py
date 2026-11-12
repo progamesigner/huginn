@@ -3,9 +3,8 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
 import pytest
-from mcp import ClientSession
-from mcp.server.fastmcp import FastMCP
-from mcp.shared.memory import create_connected_server_and_client_session
+from mcp import Client, ClientSession
+from mcp.server import mcpserver
 from mcp.types import CallToolResult, TextContent
 
 from lib.mcp import (
@@ -18,8 +17,8 @@ from lib.mcp import (
 from tests.helpers.logging import make_logger
 
 
-def _echo_server() -> FastMCP:
-    server = FastMCP('test')
+def _echo_server() -> mcpserver.MCPServer:
+    server = mcpserver.MCPServer('test')
 
     @server.tool()
     def echo(text: str) -> str:
@@ -29,11 +28,11 @@ def _echo_server() -> FastMCP:
     return server
 
 
-def _memory_connector(server: FastMCP) -> Connector:
+def _memory_connector(server: mcpserver.MCPServer) -> Connector:
     @asynccontextmanager
     async def connect(_: MCPServer) -> AsyncIterator[ClientSession]:
-        async with create_connected_server_and_client_session(server) as session:
-            yield session
+        async with Client(server) as client:
+            yield client.session
 
     return connect
 
@@ -41,10 +40,10 @@ def _memory_connector(server: FastMCP) -> Connector:
 class _FlakyConnector:
     attempts: int
     failures: int
-    server: FastMCP
+    server: mcpserver.MCPServer
     tried: asyncio.Condition
 
-    def __init__(self, server: FastMCP, failures: int) -> None:
+    def __init__(self, server: mcpserver.MCPServer, failures: int) -> None:
         self.attempts = 0
         self.failures = failures
         self.server = server
@@ -59,15 +58,15 @@ class _FlakyConnector:
         if self.attempts <= self.failures:
             raise ConnectionError('connection refused')
 
-        async with create_connected_server_and_client_session(self.server) as session:
-            yield session
+        async with Client(self.server) as client:
+            yield client.session
 
     async def wait_for(self, attempts: int) -> None:
         async with self.tried:
             await self.tried.wait_for(lambda: self.attempts >= attempts)
 
 
-def _flaky_connector(server: FastMCP, failures: int) -> _FlakyConnector:
+def _flaky_connector(server: mcpserver.MCPServer, failures: int) -> _FlakyConnector:
     return _FlakyConnector(server, failures)
 
 
@@ -244,8 +243,10 @@ async def test_a_server_that_stays_down_is_announced_once_not_once_per_attempt(
             await manager.dispose()
 
     assert [message for message in caplog.messages if 'unavailable' in message] == [
-        'MCP server memory is unavailable; its tools will be absent'
-        ' (memory: ConnectionError: connection refused)',
+        (
+            'MCP server memory is unavailable; its tools will be absent'
+            ' (memory: ConnectionError: connection refused)'
+        ),
     ]
 
 

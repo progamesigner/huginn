@@ -1,7 +1,7 @@
 from collections.abc import AsyncIterator
 from unittest.mock import AsyncMock, MagicMock
 
-import httpx
+import httpx2
 import pytest
 from fastapi import FastAPI
 
@@ -41,7 +41,7 @@ def make_mcp(*unavailable: str) -> MagicMock:
 
 
 @pytest.fixture
-async def client() -> AsyncIterator[httpx.AsyncClient]:
+async def client() -> AsyncIterator[httpx2.AsyncClient]:
     # NOTE: no config file in a unit test, so the eager MCP client dials nothing
     application = build()
     with (
@@ -51,22 +51,22 @@ async def client() -> AsyncIterator[httpx.AsyncClient]:
         app = application.resolve(RouterContract).app
         assert isinstance(app, FastAPI)
         async with app.router.lifespan_context(app):
-            transport = httpx.ASGITransport(app=app)
-            async with httpx.AsyncClient(
+            transport = httpx2.ASGITransport(app=app)
+            async with httpx2.AsyncClient(
                 transport=transport,
                 base_url='http://huginn',
             ) as client:
                 yield client
 
 
-async def test_healthz(client: httpx.AsyncClient) -> None:
+async def test_healthz(client: httpx2.AsyncClient) -> None:
     response = await client.get('/healthz')
 
     assert response.status_code == 200
     assert response.json() == {'status': 'ok'}
 
 
-async def test_readyz(client: httpx.AsyncClient) -> None:
+async def test_readyz(client: httpx2.AsyncClient) -> None:
     response = await client.get('/readyz')
 
     assert response.status_code == 200

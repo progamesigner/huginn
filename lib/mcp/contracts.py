@@ -3,7 +3,7 @@ from collections.abc import Mapping
 from contextlib import AbstractAsyncContextManager
 from typing import Protocol
 
-from httpx import URL, AsyncClient
+from httpx2 import URL, AsyncClient
 from pydantic import JsonValue
 
 from .types import MCPToolInfo

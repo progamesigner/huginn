@@ -110,7 +110,7 @@ def test_httpx_request_lines_hide_the_telegram_bot_token(
 ) -> None:
     configure_logging(develop=False)
 
-    logging.getLogger('httpx').info(
+    logging.getLogger('httpx2').info(
         'HTTP Request: %s %s "%s %d %s"',
         'POST',
         f'https://api.telegram.org/bot{_BOT_TOKEN}/sendMessage',

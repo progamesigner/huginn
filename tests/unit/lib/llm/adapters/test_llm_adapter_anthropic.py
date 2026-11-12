@@ -18,7 +18,7 @@ from anthropic.types import (
     ToolUseBlock,
 )
 from anthropic.types.raw_message_delta_event import Delta
-from httpx import Timeout
+from httpx2 import Timeout
 from pydantic import SecretStr
 
 from lib.http import HTTPClientManager
@@ -51,6 +51,14 @@ def test_build_messages_wraps_text_segment_in_text_block() -> None:
 
     assert list(build_messages(messages)) == [
         {'role': 'user', 'content': [{'type': 'text', 'text': 'hi there'}]},
+    ]
+
+
+def test_build_messages_keeps_system_messages_as_text() -> None:
+    messages = (Message(role='system', segments=(TextSegment(text='be brief'),)),)
+
+    assert list(build_messages(messages)) == [
+        {'role': 'system', 'content': [{'type': 'text', 'text': 'be brief'}]},
     ]
 
 

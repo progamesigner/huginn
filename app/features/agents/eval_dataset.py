@@ -78,13 +78,16 @@ def make_sample(
         prompt.attachments for prompt in history.context.current
     ):
         tags.append('attachment')
-    if history.created_at and history.previous_at:
-        if (
+    if (
+        history.created_at
+        and history.previous_at
+        and (
             timedelta(0)
             <= history.created_at - history.previous_at
             < timedelta(minutes=30)
-        ):
-            tags.append('follow-up')
+        )
+    ):
+        tags.append('follow-up')
     return DatasetSample(
         id=history.id,
         router=router,
