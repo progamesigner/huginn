@@ -32,6 +32,10 @@ Configuration and secrets, including agent names and instructions, never live in
 
 - Python 3.15
 - [uv](https://docs.astral.sh/uv/)
+- PostgreSQL, for conversations, file storage and identities. Point `HUGINN_DATABASE_URL` at it and apply the migrations (see [Migrations](#migrations)) before starting the server.
+- Redis, for the per-conversation locks of Telegram and the HTTP chat API, and for Telegram update deduplication. Point `HUGINN_REDIS_URL` at it.
+
+Both URLs are optional settings, but `/readyz` checks both, so the service reports ready only when PostgreSQL and Redis are reachable. The test suite does not need either one: it starts throwaway containers when Docker is available (see [Database integration tests](#database-integration-tests)).
 
 ## Quick start
 
@@ -97,6 +101,8 @@ Which LLM answers is a `(provider, model)` pair. Huginn resolves it the same way
 
 ### Validating a config file
 
+The `huginn` command is the project's CLI. Run it as `uv run huginn ...` in a checkout; inside the container image it is on `PATH`, so `huginn ...` works directly. The `huginn config` and `huginn identities` commands below use it.
+
 `huginn config validate [path]` loads a config file through the same path production uses.
 
 - On success it prints a summary: agent names, tools, MCP servers, and channel routing. It never prints instructions content.
@@ -107,13 +113,13 @@ Which LLM answers is a `(provider, model)` pair. Huginn resolves it the same way
 
 ### How the config reaches production
 
-The real config is injected at deploy time and never committed:
+The real config lives in the separate deployment repository, never in this one:
 
-1. A Windmill secret script renders it.
-2. A kustomize `secretGenerator` turns that into a Kubernetes `Secret`.
-3. The `Secret` lands mounted at `/etc/huginn/config.yaml` inside the running pod.
+1. A kustomize `configMapGenerator` turns the config file into a Kubernetes `ConfigMap`, which is mounted at `/etc/huginn/config.yaml` inside the pod.
+2. The same `ConfigMap` sets `HUGINN_CONFIG_FILE=/etc/huginn/config.yaml`, which is how the server finds that file instead of the default `huginn.yaml`.
+3. Secrets stay out of the config file. A kustomize `secretGenerator` builds a Kubernetes `Secret` from an env file that is not committed, plus the database and Redis URLs, and the pod receives them as environment variables. The config refers to them through `${VAR}` interpolation or `value_from`.
 
-There is no live-reload. A config change means rerunning the Windmill script, running `kubectl apply` on the regenerated `Secret`, and doing a rollout restart to pick it up.
+There is no live-reload. A config change is applied by redeploying the manifests. The generated `ConfigMap` gets a new name when its content changes, so applying it rolls the pod and the new process reads the new file.
 
 ### Scoped agent assets
 
@@ -248,7 +254,7 @@ A subagent is a child agent that the parent agent calls as a tool to handle one 
 - Additional descriptive metadata is retained by the asset layer.
 - Execution limits, provider and MCP settings cannot come from vault frontmatter.
 - `subagents.definitions.<name>` may instead define `description`, `instructions`, optional `model`, `tools`, `max_iterations`, `max_completion_tokens`, and `turn_timeout`.
-- Config wins a name collision. The collision is reported when that scope is loaded.
+- Config wins a name collision. The collision is logged as a warning when that scope's subagents are listed; the request itself does not fail.
 
 #### Delegation rules
 
@@ -277,11 +283,12 @@ A subagent is a child agent that the parent agent calls as a tool to handle one 
 
 The collaboration brief is a short shared note, `Agents/AGENTS.md`, that the agent reads at the start of every turn. Enable it when the agent should carry recent agreements with the user from one conversation to the next.
 
-The brief contains recent agreements, summaries and links. Current task progress belongs in HEARTBEAT, and detailed decisions and durable knowledge remain in their canonical notes.
+The brief contains recent agreements, summaries and links. Current task progress belongs in Muninn's per-scope `HEARTBEAT.md`, which only its `update_task_heartbeat` tool writes. Detailed decisions and durable knowledge remain in their canonical notes.
 
 #### Reading the brief
 
 - `brief.enabled` reads the selected scope's `Agents/AGENTS.md` afresh each turn.
+- `brief.enabled` and `brief.writable` default to `false`, `brief.source` defaults to `default`, and `brief.writers` defaults to an empty list. `brief.writable` requires `brief.enabled`; a config that sets only `writable` is rejected.
 - The brief follows the static system prompt's cache breakpoint. It does not modify that static prefix.
 - A missing brief is acceptable.
 
@@ -452,7 +459,7 @@ The runtime stage runs as a non-root user and defaults `HUGINN_SERVER_HOST` to `
 - CI builds the image on every push and pull request. This surfaces packaging breakage (a missing arm64 wheel, a broken layer) as early as any other check.
 - The build waits for `lint` and `test`, so a commit that fails either never reaches the registry.
 - The build only pushes on `main` and on release tags. Pull requests build without pushing.
-- Every push is tagged `sha-<short>` for the commit, `main` additionally moves `latest`, and a release tag adds its semantic versions.
+- Every image pushed to the registry (from `main` or a release tag) is tagged `sha-<short>` for its commit. A push to `main` additionally moves `latest`, and a release tag adds its semantic versions.
 
 ### Building and inspecting the image
 
@@ -527,6 +534,7 @@ Memory options:
 - These options are mutually exclusive.
 - Neither option may name memory already owned by another Huginn account. That account must issue a link invite.
 - Reserved names such as `default`, `shared`, `admin`, `system`, `root`, and `anonymous` cannot be new scopes or handles. An operator may explicitly authorize an unowned existing scope with such a name.
+- The reserved names apply to account handles and to the Muninn user scope they create. They do not restrict the Muninn `agent` key or scopes that the config injects, such as a shared library with `inject: {agent: default, user: default}`.
 - Live invitations reserve their scope until expiry or revocation.
 - Registration expires in 10 minutes by default, with a maximum lifetime of 1 day.
 
@@ -549,7 +557,7 @@ In a Telegram private chat, send `/register <code>` or open `https://t.me/<bot>?
 | `/invite <target>` | Issues a 10-minute link code. |
 | `/displayname <name>` | Updates the display name independently. |
 
-Identity commands refuse group chats. Legacy `link_<token>` deep links remain supported.
+Identity commands refuse group chats and answer "Manage your identity in a private chat." A group member registers or links in a private chat with the bot. The identity belongs to the Telegram user rather than the chat, so the same person is recognized in groups afterwards. Legacy `link_<token>` deep links remain supported.
 
 ### Registering over HTTP
 
