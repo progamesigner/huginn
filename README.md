@@ -10,7 +10,7 @@ Configuration and secrets, including agent names and instructions, never live in
 
 ## Requirements
 
-- Python 3.14
+- Python 3.15
 - [uv](https://docs.astral.sh/uv/)
 
 ## Development
