@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Literal, override
 from unittest.mock import AsyncMock
 
-import httpx
+import httpx2
 import pytest
 from pydantic import HttpUrl, JsonValue, ValidationError
 
@@ -94,23 +94,23 @@ class HTTP(HTTPClientContract):
         self.status = status
         self.fail = fail
         self.body = body
-        self.requests: list[httpx.Request] = []
+        self.requests: list[httpx2.Request] = []
 
-    def respond(self, request: httpx.Request) -> httpx.Response:
+    def respond(self, request: httpx2.Request) -> httpx2.Response:
         self.requests.append(request)
         if self.fail:
-            raise httpx.ReadTimeout('private diagnostic')
-        return httpx.Response(self.status, text=self.body)
+            raise httpx2.ReadTimeout('private diagnostic')
+        return httpx2.Response(self.status, text=self.body)
 
     @asynccontextmanager
     @override
     async def connect(
         self,
-        base_url: httpx.URL | str = '',
+        base_url: httpx2.URL | str = '',
         headers: Mapping[str, str] | None = None,
-    ) -> AsyncIterator[httpx.AsyncClient]:
-        async with httpx.AsyncClient(
-            transport=httpx.MockTransport(self.respond),
+    ) -> AsyncIterator[httpx2.AsyncClient]:
+        async with httpx2.AsyncClient(
+            transport=httpx2.MockTransport(self.respond),
             headers=headers,
         ) as client:
             yield client

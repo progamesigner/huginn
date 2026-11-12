@@ -32,7 +32,7 @@ def streamable_http_connector(http: HTTPConnector) -> Connector:
     async def connect(server: MCPServer) -> AsyncIterator[ClientSession]:
         async with (
             http.connect(headers=server.headers) as client,
-            streamable_http_client(server.url, http_client=client) as (read, write, _),
+            streamable_http_client(server.url, http_client=client) as (read, write),
             ClientSession(read, write) as session,
         ):
             await session.initialize()
@@ -51,17 +51,17 @@ def _describe(error: BaseException | None) -> str:
 
 
 def _render(result: CallToolResult, *, structured: bool = False) -> str:
-    if result.isError:
-        payload = result.structuredContent
+    if result.is_error:
+        payload = result.structured_content
         code = payload.get('code') if isinstance(payload, dict) else None
         raise MCPToolError(code if isinstance(code, str) else None)
-    if structured and result.structuredContent is not None:
-        return json.dumps(result.structuredContent)
+    if structured and result.structured_content is not None:
+        return json.dumps(result.structured_content)
     text = '\n'.join(
         block.text for block in result.content if isinstance(block, TextContent)
     )
-    if not text and result.structuredContent is not None:
-        return json.dumps(result.structuredContent)
+    if not text and result.structured_content is not None:
+        return json.dumps(result.structured_content)
     return text
 
 
@@ -147,7 +147,7 @@ class _Connection:
             MCPToolInfo(
                 name=tool.name,
                 description=tool.description or '',
-                input_schema=tool.inputSchema,
+                input_schema=tool.input_schema,
             )
             for tool in result.tools
         )

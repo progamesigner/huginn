@@ -1,8 +1,7 @@
 import json
 from typing import override
 
-import httpx
-import respx
+import httpx2
 from pydantic import HttpUrl, SecretStr
 from typer.testing import CliRunner, Result
 
@@ -16,7 +15,8 @@ from app.features.channels.telegram.commands import cli
 from app.features.channels.telegram.config import TelegramChannelConfig
 from lib.command import CommandContract
 from lib.container import ContainerContract, ProviderContract
-from lib.http import HTTPClientContract, HTTPClientManager
+from lib.http import HTTPClientContract
+from tests.helpers.http import MockHTTP, Route
 
 runner = CliRunner()
 
@@ -27,15 +27,21 @@ _RESEARCH_API = 'https://api.telegram.org/botresearch-token'
 
 
 class FakeChannelsProvider(ProviderContract):
-    def __init__(self, config: HuginnConfig, registry: CommandRegistry) -> None:
+    def __init__(
+        self,
+        config: HuginnConfig,
+        registry: CommandRegistry,
+        http: MockHTTP,
+    ) -> None:
         self.config = config
         self.registry = registry
+        self.http = http
 
     @override
     def __call__(self, container: ContainerContract) -> None:
         container.bind(HuginnConfig, instance=self.config)
         container.bind(CommandRegistry, instance=self.registry)
-        container.bind(HTTPClientContract, instance=HTTPClientManager())
+        container.bind(HTTPClientContract, instance=self.http.manager())
 
 
 def telegram(
@@ -81,10 +87,14 @@ def registry() -> CommandRegistry:
     return built
 
 
-def invoke(arguments: list[str], configured: HuginnConfig | None = None) -> Result:
+def invoke(
+    http: MockHTTP,
+    arguments: list[str],
+    configured: HuginnConfig | None = None,
+) -> Result:
     container = App().build(
         CommandProvider(),
-        FakeChannelsProvider(configured or config(), registry()),
+        FakeChannelsProvider(configured or config(), registry(), http),
     )
     commands = container.resolve(CommandContract)
     commands.mount('telegram', cli)
@@ -92,18 +102,19 @@ def invoke(arguments: list[str], configured: HuginnConfig | None = None) -> Resu
     return runner.invoke(commands.app, ['telegram', *arguments])
 
 
-def accepting(url: str) -> respx.Route:
-    return respx.post(url).mock(
-        return_value=httpx.Response(200, json={'ok': True, 'result': True}),
+def accepting(http: MockHTTP, url: str) -> Route:
+    return http.post(url).mock(
+        return_value=httpx2.Response(200, json={'ok': True, 'result': True}),
     )
 
 
-@respx.mock
-def test_set_my_commands_publishes_the_registry_to_every_telegram_bot() -> None:
-    support = accepting(_SUPPORT_URL)
-    research = accepting(_RESEARCH_URL)
+def test_set_my_commands_publishes_the_registry_to_every_telegram_bot(
+    http: MockHTTP,
+) -> None:
+    support = accepting(http, _SUPPORT_URL)
+    research = accepting(http, _RESEARCH_URL)
 
-    result = invoke(['set-my-commands'])
+    result = invoke(http, ['set-my-commands'])
 
     # NOTE: the menu is the same everywhere because it comes from one registry; each bot
     # needs its own call because the token is per bot
@@ -113,24 +124,22 @@ def test_set_my_commands_publishes_the_registry_to_every_telegram_bot() -> None:
     assert 'support_bot: published 2 commands' in result.output
 
 
-@respx.mock
-def test_set_my_commands_can_publish_to_one_named_bot() -> None:
-    support = accepting(_SUPPORT_URL)
-    research = accepting(_RESEARCH_URL)
+def test_set_my_commands_can_publish_to_one_named_bot(http: MockHTTP) -> None:
+    support = accepting(http, _SUPPORT_URL)
+    research = accepting(http, _RESEARCH_URL)
 
-    result = invoke(['set-my-commands', 'support_bot'])
+    result = invoke(http, ['set-my-commands', 'support_bot'])
 
     assert result.exit_code == 0
     assert support.called
     assert not research.called
 
 
-@respx.mock
-def test_the_published_menu_is_the_registry_in_listing_order() -> None:
-    support = accepting(_SUPPORT_URL)
-    accepting(_RESEARCH_URL)
+def test_the_published_menu_is_the_registry_in_listing_order(http: MockHTTP) -> None:
+    support = accepting(http, _SUPPORT_URL)
+    accepting(http, _RESEARCH_URL)
 
-    invoke(['set-my-commands', 'support_bot'])
+    invoke(http, ['set-my-commands', 'support_bot'])
 
     assert support.calls.last.request.content == (
         b'{"commands":[{"command":"help","description":"List the commands."},'
@@ -138,21 +147,22 @@ def test_the_published_menu_is_the_registry_in_listing_order() -> None:
     )
 
 
-def test_an_unknown_channel_name_is_reported_without_calling_telegram() -> None:
-    result = invoke(['set-my-commands', 'nope_bot'])
+def test_an_unknown_channel_name_is_reported_without_calling_telegram(
+    http: MockHTTP,
+) -> None:
+    result = invoke(http, ['set-my-commands', 'nope_bot'])
 
     assert result.exit_code == 1
     assert 'nope_bot' in result.output
 
 
-@respx.mock
-def test_set_webhook_registers_the_configured_base_url_with_the_channel_secret() -> (
-    None
-):
-    support = accepting(f'{_SUPPORT_API}/setWebhook')
-    research = accepting(f'{_RESEARCH_API}/setWebhook')
+def test_set_webhook_registers_the_configured_base_url_with_the_channel_secret(
+    http: MockHTTP,
+) -> None:
+    support = accepting(http, f'{_SUPPORT_API}/setWebhook')
+    research = accepting(http, f'{_RESEARCH_API}/setWebhook')
 
-    result = invoke(['set-webhook'])
+    result = invoke(http, ['set-webhook'])
 
     # NOTE: the path is the ext's to know; the command only ever hands over a base URL,
     # which is what keeps the registered URL and the receiving route from drifting apart
@@ -169,11 +179,13 @@ def test_set_webhook_registers_the_configured_base_url_with_the_channel_secret()
     )
 
 
-@respx.mock
-def test_set_webhook_takes_the_url_and_updates_from_the_command_line() -> None:
-    support = accepting(f'{_SUPPORT_API}/setWebhook')
+def test_set_webhook_takes_the_url_and_updates_from_the_command_line(
+    http: MockHTTP,
+) -> None:
+    support = accepting(http, f'{_SUPPORT_API}/setWebhook')
 
     result = invoke(
+        http,
         [
             'set-webhook',
             'support_bot',
@@ -196,11 +208,11 @@ def test_set_webhook_takes_the_url_and_updates_from_the_command_line() -> None:
     }
 
 
-@respx.mock
-def test_set_webhook_needs_a_url_from_somewhere() -> None:
-    support = accepting(f'{_SUPPORT_API}/setWebhook')
+def test_set_webhook_needs_a_url_from_somewhere(http: MockHTTP) -> None:
+    support = accepting(http, f'{_SUPPORT_API}/setWebhook')
 
     result = invoke(
+        http,
         ['set-webhook', 'support_bot'],
         config(telegram('support-token', base_url=None)),
     )
@@ -210,11 +222,10 @@ def test_set_webhook_needs_a_url_from_somewhere() -> None:
     assert not support.called
 
 
-@respx.mock
-def test_delete_webhook_keeps_pending_updates_unless_asked() -> None:
-    support = accepting(f'{_SUPPORT_API}/deleteWebhook')
+def test_delete_webhook_keeps_pending_updates_unless_asked(http: MockHTTP) -> None:
+    support = accepting(http, f'{_SUPPORT_API}/deleteWebhook')
 
-    result = invoke(['delete-webhook', 'support_bot'])
+    result = invoke(http, ['delete-webhook', 'support_bot'])
 
     assert result.exit_code == 0
     assert json.loads(support.calls.last.request.content) == {
@@ -223,26 +234,27 @@ def test_delete_webhook_keeps_pending_updates_unless_asked() -> None:
     assert 'support_bot: unregistered' in result.output
 
 
-@respx.mock
-def test_delete_webhook_can_drop_the_queued_updates() -> None:
-    support = accepting(f'{_SUPPORT_API}/deleteWebhook')
+def test_delete_webhook_can_drop_the_queued_updates(http: MockHTTP) -> None:
+    support = accepting(http, f'{_SUPPORT_API}/deleteWebhook')
 
-    invoke(['delete-webhook', 'support_bot', '--drop-pending'])
+    invoke(http, ['delete-webhook', 'support_bot', '--drop-pending'])
 
     assert json.loads(support.calls.last.request.content) == {
         'drop_pending_updates': True,
     }
 
 
-def informing(url: str, result: dict[str, object]) -> respx.Route:
-    return respx.post(url).mock(
-        return_value=httpx.Response(200, json={'ok': True, 'result': result}),
+def informing(http: MockHTTP, url: str, result: dict[str, object]) -> Route:
+    return http.post(url).mock(
+        return_value=httpx2.Response(200, json={'ok': True, 'result': result}),
     )
 
 
-@respx.mock
-def test_webhook_info_prints_the_registration_and_its_last_failure() -> None:
+def test_webhook_info_prints_the_registration_and_its_last_failure(
+    http: MockHTTP,
+) -> None:
     informing(
+        http,
         f'{_SUPPORT_API}/getWebhookInfo',
         {
             'url': 'https://huginn.example.com/webhooks/telegram',
@@ -255,7 +267,7 @@ def test_webhook_info_prints_the_registration_and_its_last_failure() -> None:
         },
     )
 
-    result = invoke(['webhook-info', 'support_bot'])
+    result = invoke(http, ['webhook-info', 'support_bot'])
 
     assert result.exit_code == 0
     assert 'url: https://huginn.example.com/webhooks/telegram' in result.output
@@ -268,14 +280,14 @@ def test_webhook_info_prints_the_registration_and_its_last_failure() -> None:
     assert 'Wrong response from the webhook: 502' in result.output
 
 
-@respx.mock
-def test_webhook_info_says_so_when_nothing_is_registered() -> None:
+def test_webhook_info_says_so_when_nothing_is_registered(http: MockHTTP) -> None:
     informing(
+        http,
         f'{_SUPPORT_API}/getWebhookInfo',
         {'url': '', 'has_custom_certificate': False, 'pending_update_count': 0},
     )
 
-    result = invoke(['webhook-info', 'support_bot'])
+    result = invoke(http, ['webhook-info', 'support_bot'])
 
     assert result.exit_code == 0
     assert 'url: (unregistered)' in result.output

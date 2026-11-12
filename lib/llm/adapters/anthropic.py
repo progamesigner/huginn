@@ -4,6 +4,7 @@ from typing import Literal, cast
 
 from anthropic import AsyncAnthropic, omit
 from anthropic.types import (
+    AssistantMessageParam,
     Base64ImageSourceParam,
     Base64PDFSourceParam,
     CacheControlEphemeralParam,
@@ -17,6 +18,7 @@ from anthropic.types import (
     RawContentBlockStartEvent,
     RawMessageDeltaEvent,
     RawMessageStreamEvent,
+    SystemMessageParam,
     TextBlockParam,
     TextDelta,
     ThinkingBlockParam,
@@ -27,8 +29,9 @@ from anthropic.types import (
     ToolUnionParam,
     ToolUseBlock,
     ToolUseBlockParam,
+    UserMessageParam,
 )
-from httpx import Timeout
+from httpx2 import Timeout
 from pydantic import JsonValue
 
 from lib.llm.client import ProviderConfig
@@ -154,8 +157,17 @@ def build_messages(messages: tuple[Message, ...]) -> Iterator[MessageParam]:
         if not blocks:
             continue
 
-        role = 'user' if message.role == 'tool' else message.role
-        yield MessageParam(role=role, content=blocks)
+        match message.role:
+            case 'assistant':
+                yield AssistantMessageParam(role='assistant', content=blocks)
+            case 'system':
+                # NOTE: system messages carry only text segments
+                yield SystemMessageParam(
+                    role='system',
+                    content=cast(list[TextBlockParam], blocks),
+                )
+            case 'user' | 'tool':
+                yield UserMessageParam(role='user', content=blocks)
 
 
 def build_tools(tools: tuple[JsonValue, ...]) -> Iterator[ToolUnionParam]:

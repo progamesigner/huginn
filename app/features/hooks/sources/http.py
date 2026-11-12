@@ -1,7 +1,7 @@
 import asyncio
 from collections.abc import Mapping
 
-from httpx import URL
+from httpx2 import URL
 from pydantic import JsonValue
 
 from app.features.hooks.config import HTTPHookConfig

@@ -2,7 +2,7 @@ from abc import ABC, abstractmethod
 from collections.abc import Mapping
 from contextlib import AbstractAsyncContextManager
 
-from httpx import URL, AsyncClient
+from httpx2 import URL, AsyncClient
 
 
 class HTTPClientContract(ABC):

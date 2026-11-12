@@ -4,9 +4,8 @@ from contextlib import asynccontextmanager
 from typing import override
 from unittest.mock import AsyncMock, MagicMock
 
-import httpx
+import httpx2
 import pytest
-import respx
 from fastapi import FastAPI
 from pydantic import SecretStr
 
@@ -16,9 +15,11 @@ from app.features.channels.config import ChannelConfigList
 from app.features.channels.telegram.actor import TelegramChatActor
 from app.features.channels.telegram.config import TelegramChannelConfig
 from bin.server import build
+from lib.http import HTTPClientContract
 from lib.mcp import MCPClientContract
 from lib.redis import RedisContract
 from lib.router import RouterContract
+from tests.helpers.http import MockHTTP
 from tests.helpers.logging import recording
 
 _BASE_URL = 'https://api.telegram.org/botbot-token'
@@ -121,17 +122,19 @@ def make_redis(store: set[str], *, fail: bool = False) -> MagicMock:
 
 @asynccontextmanager
 async def webhook_client(
+    http: MockHTTP,
     config: HuginnConfig,
     redis: MagicMock,
     actor: TelegramChatActor,
-) -> AsyncIterator[httpx.AsyncClient]:
+) -> AsyncIterator[httpx2.AsyncClient]:
     # NOTE: the ack reaches the real client; the gateway suite owns its payload
-    respx.post(f'{_BASE_URL}/setMessageReaction').mock(
-        return_value=httpx.Response(200, json={'ok': True, 'result': True}),
+    http.post(f'{_BASE_URL}/setMessageReaction').mock(
+        return_value=httpx2.Response(200, json={'ok': True, 'result': True}),
     )
     application = build()
     with (
         application.use(HuginnConfig, config),
+        application.use(HTTPClientContract, http.manager()),
         application.use(MCPClientContract, MagicMock(spec=MCPClientContract)),
         application.use(RedisContract, redis),
         application.use(TelegramChatActor, actor),
@@ -139,32 +142,30 @@ async def webhook_client(
         app = application.resolve(RouterContract).app
         assert isinstance(app, FastAPI)
         async with app.router.lifespan_context(app):
-            transport = httpx.ASGITransport(app=app)
-            async with httpx.AsyncClient(
+            transport = httpx2.ASGITransport(app=app)
+            async with httpx2.AsyncClient(
                 transport=transport,
                 base_url='http://huginn',
             ) as client:
                 yield client
 
 
-@respx.mock
-async def test_rejects_missing_secret() -> None:
+async def test_rejects_missing_secret(http: MockHTTP) -> None:
     handler = RecordingActor()
     config = make_config({'support_bot': telegram('sekret')})
 
-    async with webhook_client(config, make_redis(set()), handler) as client:
+    async with webhook_client(http, config, make_redis(set()), handler) as client:
         response = await client.post(_PATH, json=update(7))
 
     assert response.status_code == 403
     assert handler.calls == []
 
 
-@respx.mock
-async def test_rejects_unknown_secret() -> None:
+async def test_rejects_unknown_secret(http: MockHTTP) -> None:
     handler = RecordingActor()
     config = make_config({'support_bot': telegram('sekret')})
 
-    async with webhook_client(config, make_redis(set()), handler) as client:
+    async with webhook_client(http, config, make_redis(set()), handler) as client:
         response = await client.post(
             _PATH,
             headers={_HEADER: 'wrong'},
@@ -175,13 +176,12 @@ async def test_rejects_unknown_secret() -> None:
     assert handler.calls == []
 
 
-@respx.mock
-async def test_accepts_and_dispatches_to_the_handler() -> None:
+async def test_accepts_and_dispatches_to_the_handler(http: MockHTTP) -> None:
     handler = RecordingActor()
     store = set()
     config = make_config({'support_bot': telegram('sekret')})
 
-    async with webhook_client(config, make_redis(store), handler) as client:
+    async with webhook_client(http, config, make_redis(store), handler) as client:
         response = await client.post(
             _PATH,
             headers={_HEADER: 'sekret'},
@@ -195,8 +195,7 @@ async def test_accepts_and_dispatches_to_the_handler() -> None:
     assert 'telegram:support_bot:7' in store
 
 
-@respx.mock
-async def test_routes_to_the_instance_matching_the_secret() -> None:
+async def test_routes_to_the_instance_matching_the_secret(http: MockHTTP) -> None:
     handler = RecordingActor()
     config = make_config(
         {
@@ -205,7 +204,7 @@ async def test_routes_to_the_instance_matching_the_secret() -> None:
         },
     )
 
-    async with webhook_client(config, make_redis(set()), handler) as client:
+    async with webhook_client(http, config, make_redis(set()), handler) as client:
         response = await client.post(
             _PATH,
             headers={_HEADER: 'research-secret'},
@@ -219,13 +218,12 @@ async def test_routes_to_the_instance_matching_the_secret() -> None:
     assert handler.calls == ['9']
 
 
-@respx.mock
-async def test_deduplicates_repeated_update_id() -> None:
+async def test_deduplicates_repeated_update_id(http: MockHTTP) -> None:
     handler = RecordingActor()
     store = set()
     config = make_config({'support_bot': telegram('sekret')})
 
-    async with webhook_client(config, make_redis(store), handler) as client:
+    async with webhook_client(http, config, make_redis(store), handler) as client:
         first = await client.post(
             _PATH,
             headers={_HEADER: 'sekret'},
@@ -246,12 +244,11 @@ async def test_deduplicates_repeated_update_id() -> None:
     assert handler.calls == ['7']
 
 
-@respx.mock
-async def test_returns_200_before_handler_completes() -> None:
+async def test_returns_200_before_handler_completes(http: MockHTTP) -> None:
     handler = RecordingActor(block=True)
     config = make_config({'support_bot': telegram('sekret')})
 
-    async with webhook_client(config, make_redis(set()), handler) as client:
+    async with webhook_client(http, config, make_redis(set()), handler) as client:
         response = await client.post(
             _PATH,
             headers={_HEADER: 'sekret'},
@@ -270,14 +267,15 @@ async def test_returns_200_before_handler_completes() -> None:
     assert handler.calls == ['7']
 
 
-@respx.mock
-async def test_shutdown_drains_the_turn_the_webhook_already_acknowledged() -> None:
+async def test_shutdown_drains_the_turn_the_webhook_already_acknowledged(
+    http: MockHTTP,
+) -> None:
     # NOTE: the 200 is out, so uvicorn no longer counts this work as in-flight; the
     # only thing that waits for it is the supervisor's drain on the way out
     handler = RecordingActor(delay=0.05)
     config = make_config({'support_bot': telegram('sekret')})
 
-    async with webhook_client(config, make_redis(set()), handler) as client:
+    async with webhook_client(http, config, make_redis(set()), handler) as client:
         response = await client.post(
             _PATH,
             headers={_HEADER: 'sekret'},
@@ -291,12 +289,16 @@ async def test_shutdown_drains_the_turn_the_webhook_already_acknowledged() -> No
     assert handler.finished.is_set()
 
 
-@respx.mock
-async def test_processes_when_dedupe_is_unavailable() -> None:
+async def test_processes_when_dedupe_is_unavailable(http: MockHTTP) -> None:
     handler = RecordingActor()
     config = make_config({'support_bot': telegram('sekret')})
 
-    async with webhook_client(config, make_redis(set(), fail=True), handler) as client:
+    async with webhook_client(
+        http,
+        config,
+        make_redis(set(), fail=True),
+        handler,
+    ) as client:
         response = await client.post(
             _PATH,
             headers={_HEADER: 'sekret'},
@@ -309,8 +311,8 @@ async def test_processes_when_dedupe_is_unavailable() -> None:
     assert handler.calls == ['7']
 
 
-@respx.mock
 async def test_the_log_carries_the_receipt_without_the_message(
+    http: MockHTTP,
     caplog: pytest.LogCaptureFixture,
 ) -> None:
     # NOTE: every line a person sends arrives here, so the receipt has to be findable --
@@ -319,7 +321,7 @@ async def test_the_log_carries_the_receipt_without_the_message(
     config = make_config({'support_bot': telegram('sekret')})
 
     with caplog.at_level('INFO'):
-        async with webhook_client(config, make_redis(set()), handler) as client:
+        async with webhook_client(http, config, make_redis(set()), handler) as client:
             with recording(caplog):
                 response = await client.post(
                     _PATH,
@@ -340,13 +342,14 @@ async def test_the_log_carries_the_receipt_without_the_message(
     assert 'sha256' in receipt
 
 
-@respx.mock
-async def test_acknowledges_but_discards_an_update_without_a_message() -> None:
+async def test_acknowledges_but_discards_an_update_without_a_message(
+    http: MockHTTP,
+) -> None:
     handler = RecordingActor()
     store = set()
     config = make_config({'support_bot': telegram('sekret')})
 
-    async with webhook_client(config, make_redis(store), handler) as client:
+    async with webhook_client(http, config, make_redis(store), handler) as client:
         response = await client.post(
             _PATH,
             headers={_HEADER: 'sekret'},

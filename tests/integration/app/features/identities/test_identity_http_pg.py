@@ -3,7 +3,7 @@ from datetime import timedelta
 from unittest.mock import MagicMock
 from uuid import uuid4
 
-import httpx
+import httpx2
 import pytest
 from fastapi import FastAPI
 
@@ -80,8 +80,8 @@ async def test_http_registration_display_name_link_and_chat_share_real_identity(
             assert isinstance(app, FastAPI)
             async with (
                 app.router.lifespan_context(app),
-                httpx.AsyncClient(
-                    transport=httpx.ASGITransport(app),
+                httpx2.AsyncClient(
+                    transport=httpx2.ASGITransport(app),
                     base_url='http://huginn',
                 ) as client,
             ):
