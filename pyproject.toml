@@ -14,7 +14,7 @@ dependencies = [
     "pydantic-settings==2.16.2",
     "python-multipart==0.0.33",
     "pyyaml==6.0.3",
-    "redis==7.1.0",
+    "redis==8.1.0",
     "sqlalchemy[asyncio]==2.1.8",
     "structlog==26.1.0",
     "telegramify-markdown==1.4.2",
