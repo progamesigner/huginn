@@ -28,7 +28,7 @@ anthropic = ["anthropic==0.116.0"]
 openai = ["openai==2.45.0"]
 documents = [
     "openpyxl==3.1.5",
-    "pypdf==6.21.4",
+    "pypdf==7.0.0",
     "python-docx==1.2.0",
 ]
 
