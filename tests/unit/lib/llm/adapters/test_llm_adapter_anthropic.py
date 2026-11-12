@@ -54,6 +54,14 @@ def test_build_messages_wraps_text_segment_in_text_block() -> None:
     ]
 
 
+def test_build_messages_keeps_system_messages_as_text() -> None:
+    messages = (Message(role='system', segments=(TextSegment(text='be brief'),)),)
+
+    assert list(build_messages(messages)) == [
+        {'role': 'system', 'content': [{'type': 'text', 'text': 'be brief'}]},
+    ]
+
+
 def test_build_messages_parses_tool_call_arguments_into_input() -> None:
     messages = (
         Message(
