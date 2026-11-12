@@ -203,7 +203,7 @@ class UpdateBriefTool(TypedTool[UpdateBriefParams]):
             )
             result = json.loads(raw)
             if not isinstance(result, dict):
-                raise ValueError('invalid update result')
+                raise TypeError('invalid update result')
             if result.get('code') == 'conflict' or result.get('conflict') is True:
                 status = 'conflict'
                 return 'brief update conflict: the file changed; no content was overwritten. Read it again before retrying.'
@@ -225,6 +225,7 @@ class UpdateBriefTool(TypedTool[UpdateBriefParams]):
             return 'brief update rejected by the memory service'
         except Exception:
             status = 'failed'
+            self.logger.warning('Brief update raised unexpectedly', exc_info=True)
             return 'brief update failed; do not assume the brief changed'
         finally:
             self.logger.info(
@@ -270,6 +271,7 @@ class BriefToolSource(ToolSource):
             self.logger.warning(
                 'Could not read the collaboration brief source=%s',
                 source,
+                exc_info=True,
             )
             return ToolHarvest(
                 context=(
@@ -313,6 +315,7 @@ class BriefToolSource(ToolSource):
             self.logger.warning(
                 'Could not check the versioned brief interface source=%s',
                 source,
+                exc_info=True,
             )
             return ToolHarvest(
                 context=(

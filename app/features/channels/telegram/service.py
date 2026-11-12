@@ -80,8 +80,8 @@ class TelegramMessageHandler(ChannelMessageHandlerContract):
     ) -> None:
         try:
             await gateway.abandon(message)
-        except Exception as error:
-            self.logger.error('Could not report the failed turn: %s', error)
+        except Exception:
+            self.logger.exception('Could not report the failed turn')
 
     async def _acknowledge(
         self,
@@ -92,7 +92,12 @@ class TelegramMessageHandler(ChannelMessageHandlerContract):
         try:
             await gateway.acknowledge(message)
         except Exception as error:
-            self.logger.warning('Could not acknowledge %s: %s', message.event, error)
+            self.logger.warning(
+                'Could not acknowledge %s: %s',
+                message.event,
+                error,
+                exc_info=True,
+            )
         else:
             self.logger.info(
                 'Acknowledged %s after %.3fs',
@@ -126,5 +131,9 @@ class TelegramMessageHandler(ChannelMessageHandlerContract):
                 return bool(await client.set(key, b'1', nx=True, ex=_DEDUPE_TTL))
         except Exception as error:
             # NOTE: dedupe is best-effort; availability beats exactly-once here
-            self.logger.warning('Dedupe unavailable; processing without it: %s', error)
+            self.logger.warning(
+                'Dedupe unavailable; processing without it: %s',
+                error,
+                exc_info=True,
+            )
             return True

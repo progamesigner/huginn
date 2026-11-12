@@ -1,3 +1,4 @@
+import asyncio
 from typing import Annotated, cast, override
 
 import pytest
@@ -49,6 +50,19 @@ class RecordingManager:
 
 class OtherManager(RecordingManager):
     pass
+
+
+class FailingDisposal(RecordingManager):
+    error: BaseException = RuntimeError('dispose failed')
+
+    @override
+    async def dispose(self) -> None:
+        await super().dispose()
+        raise self.error
+
+
+class OtherFailingDisposal(FailingDisposal):
+    error = ValueError('dispose failed too')
 
 
 class ExplodingManager(RecordingManager):
@@ -401,3 +415,62 @@ def test_to_copies_contributions() -> None:
 
     assert len(container.collect(Greeting)) == 1
     assert len(copied.collect(Greeting)) == 2
+
+
+async def test_a_failed_dispose_still_disposes_the_rest() -> None:
+    journal = []
+    container = Container()
+    container.bind(
+        RecordingManager,
+        factory=lambda _: RecordingManager(journal, 'a'),
+        shared=True,
+    )
+    container.bind(
+        FailingDisposal,
+        factory=lambda _: FailingDisposal(journal, 'b'),
+        shared=True,
+    )
+    container.resolve(RecordingManager)
+    container.resolve(FailingDisposal)
+
+    with pytest.raises(RuntimeError, match='dispose failed'):
+        await container.dispose()
+
+    assert journal == ['b:dispose', 'a:dispose']
+
+
+async def test_several_failed_disposals_raise_together() -> None:
+    journal = []
+    container = Container()
+    container.bind(
+        FailingDisposal,
+        factory=lambda _: FailingDisposal(journal, 'a'),
+        shared=True,
+    )
+    container.bind(
+        OtherFailingDisposal,
+        factory=lambda _: OtherFailingDisposal(journal, 'b'),
+        shared=True,
+    )
+    container.resolve(FailingDisposal)
+    container.resolve(OtherFailingDisposal)
+
+    with pytest.raises(ExceptionGroup) as caught:
+        await container.dispose()
+
+    assert [type(error) for error in caught.value.exceptions] == [
+        ValueError,
+        RuntimeError,
+    ]
+
+
+async def test_a_cancelled_dispose_is_not_collected() -> None:
+    class Cancelled(FailingDisposal):
+        error = asyncio.CancelledError()
+
+    container = Container()
+    container.bind(Cancelled, factory=lambda _: Cancelled([], 'a'), shared=True)
+    container.resolve(Cancelled)
+
+    with pytest.raises(asyncio.CancelledError):
+        await container.dispose()

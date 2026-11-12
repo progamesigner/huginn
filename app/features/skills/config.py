@@ -97,11 +97,13 @@ def _describe_skills(config: HuginnConfig) -> list[str]:
 def _validate_skill_refs(config: HuginnConfig) -> None:
     sources = effective_skills(config).named_sources
     for name, source in sources.items():
-        if isinstance(source, MCPSkillSourceConfig):
-            if source.server not in config.section(MCP_SERVERS).root:
-                raise UnknownMCPServerReferenceError(
-                    f'skills.sources.{name}.server: unknown mcp server {source.server!r}',
-                )
+        if (
+            isinstance(source, MCPSkillSourceConfig)
+            and source.server not in config.section(MCP_SERVERS).root
+        ):
+            raise UnknownMCPServerReferenceError(
+                f'skills.sources.{name}.server: unknown mcp server {source.server!r}',
+            )
     for agent_name, agent in config.section(AGENTS).root.items():
         name = agent.skills.source or 'default'
         if name in sources:

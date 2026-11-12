@@ -68,12 +68,14 @@ async def client_for(
     ):
         app = application.resolve(RouterContract).app
         assert isinstance(app, FastAPI)
-        async with app.router.lifespan_context(app):
-            async with httpx.AsyncClient(
+        async with (
+            app.router.lifespan_context(app),
+            httpx.AsyncClient(
                 transport=httpx.ASGITransport(app),
                 base_url='http://huginn',
-            ) as client:
-                yield client
+            ) as client,
+        ):
+            yield client
 
 
 @pytest.mark.parametrize(

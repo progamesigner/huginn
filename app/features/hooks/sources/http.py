@@ -16,18 +16,20 @@ async def read(
     bound: Mapping[str, JsonValue],
 ) -> str:
     async with asyncio.timeout(config.timeout):
-        async with http.connect(headers=config.headers) as client:
-            async with client.stream(
+        async with (
+            http.connect(headers=config.headers) as client,
+            client.stream(
                 config.method,
                 URL(str(config.url)).copy_merge_params(
                     {key: str(value) for key, value in bound.items()},
                 ),
                 timeout=config.timeout,
-            ) as response:
-                response.raise_for_status()
-                body = bytearray()
-                async for chunk in response.aiter_bytes():
-                    body.extend(chunk[: _LIMIT - len(body)])
-                    if len(body) == _LIMIT:
-                        break
-                return body.decode('utf-8', errors='replace')
+            ) as response,
+        ):
+            response.raise_for_status()
+            body = bytearray()
+            async for chunk in response.aiter_bytes():
+                body.extend(chunk[: _LIMIT - len(body)])
+                if len(body) == _LIMIT:
+                    break
+            return body.decode('utf-8', errors='replace')

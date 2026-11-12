@@ -70,11 +70,13 @@ class HookConfigList(RootModel[dict[str, HookConfig]]):
 def _validate_hooks(config: HuginnConfig) -> None:
     hooks = config.section(HOOKS).root
     for name, hook in hooks.items():
-        if isinstance(hook, MCPHookConfig):
-            if hook.server not in config.section(MCP_SERVERS).root:
-                raise UnknownMCPServerReferenceError(
-                    f'hooks.{name}.server: unknown mcp server {hook.server!r}',
-                )
+        if (
+            isinstance(hook, MCPHookConfig)
+            and hook.server not in config.section(MCP_SERVERS).root
+        ):
+            raise UnknownMCPServerReferenceError(
+                f'hooks.{name}.server: unknown mcp server {hook.server!r}',
+            )
     for name, agent in config.section(AGENTS).root.items():
         for hook in agent.hooks:
             if hook not in hooks:
