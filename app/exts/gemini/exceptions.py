@@ -1,0 +1,2 @@
+class GeminiGenerationError(Exception):
+    pass

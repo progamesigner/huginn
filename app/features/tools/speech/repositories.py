@@ -1,5 +1,6 @@
 from app.exts.speech.clients import SpeechClient
 from app.exts.speech.exceptions import SpeechSynthesisError
+from app.exts.speech.gemini import GeminiSpeechClient
 from app.features.tools.exceptions import ToolError
 from lib.http import HTTPClientContract
 
@@ -18,7 +19,8 @@ class SpeechRepository:
         text: str,
         voice: str,
     ) -> bytes:
-        client = SpeechClient(
+        client_type = GeminiSpeechClient if config.vendor == 'gemini' else SpeechClient
+        client = client_type(
             http=self.http,
             api_key=config.api_key,
             base_url=str(config.base_url),

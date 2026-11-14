@@ -148,3 +148,28 @@ async def test_a_voice_note_reaches_telegram_as_a_voice_bubble(http: MockHTTP) -
 
     assert voice.called
     assert not audio.called
+
+
+def test_gemini_speech_uses_google_defaults_and_requires_opus() -> None:
+    import pytest
+    from pydantic import ValidationError
+
+    from app.features.tools.speech.config import SpeechToolConfig
+
+    config = SpeechToolConfig(
+        kind='speech',
+        vendor='gemini',
+        model='test',
+        voice='Kore',
+        api_key=SecretStr('test'),
+    )
+    assert str(config.base_url) == 'https://generativelanguage.googleapis.com/'
+    with pytest.raises(ValidationError, match='opus'):
+        SpeechToolConfig(
+            kind='speech',
+            vendor='gemini',
+            model='test',
+            voice='Kore',
+            api_key=SecretStr('test'),
+            format='wav',
+        )

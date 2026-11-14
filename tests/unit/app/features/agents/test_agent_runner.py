@@ -1077,3 +1077,37 @@ async def test_run_shows_the_model_only_the_text_of_an_artifact_tool() -> None:
     result = tool_result(llm.requests[1].messages[-1])
     assert result.content == 'Drew a chart.'
     assert 'PNG' not in llm.requests[1].model_dump_json()
+
+
+async def test_tool_loop_preserves_opaque_thinking_data_for_the_next_model_call() -> (
+    None
+):
+    from lib.llm import ThinkingChunk, ThinkingSegment
+
+    opaque = {'vendor': 'gemini', 'part': {'text': '', 'thought_signature': 'c2lnbmVk'}}
+    llm = FakeLLM(
+        [
+            [
+                ThinkingChunk(text='', data=opaque),
+                ToolCallChunk(
+                    index=0,
+                    id='call_1',
+                    name='echo',
+                    arguments='{"text":"hi"}',
+                ),
+                FinishChunk(reason='tool_calls'),
+            ],
+            [TextChunk(text='done'), FinishChunk(reason='stop')],
+        ],
+    )
+    output = await AgentRunner(
+        llm,
+        make_toolset(),
+        ClockManager(),
+        logger=make_logger(),
+    ).run(make_turn(), discard())
+    assert output.text == 'done'
+    assistant = next(
+        message for message in llm.requests[1].messages if message.role == 'assistant'
+    )
+    assert assistant.segments[0] == ThinkingSegment(data=opaque)

@@ -231,3 +231,51 @@ async def test_download_accepts_an_image_at_the_limit(http: MockHTTP) -> None:
         == b'12345678'
     )
     assert stream.closed
+
+
+@pytest.mark.parametrize(
+    ('size', 'ratio'),
+    [('1024x1024', '1:1'), ('1536x1024', '3:2'), ('1024x1536', '2:3')],
+)
+async def test_gemini_images_map_sizes_to_aspect_ratio(
+    http: MockHTTP,
+    size: str,
+    ratio: str,
+) -> None:
+    from app.exts.images.gemini import GeminiImagesClient
+
+    route = http.post(f'{_BASE_URL}/v1beta/models/test:generateContent').mock(
+        return_value=httpx2.Response(
+            200,
+            json={
+                'candidates': [
+                    {
+                        'finishReason': 'STOP',
+                        'content': {
+                            'parts': [
+                                {
+                                    'inlineData': {
+                                        'mimeType': 'image/png',
+                                        'data': b64encode(_PNG).decode(),
+                                    },
+                                },
+                            ],
+                        },
+                    },
+                ],
+            },
+        ),
+    )
+    result = await GeminiImagesClient(
+        http.manager(),
+        SecretStr('test-key'),
+        _BASE_URL,
+        'test',
+    ).generate('duck', size)
+    assert result.data == _PNG
+    assert (
+        json.loads(route.calls.last.request.content)['generationConfig']['imageConfig'][
+            'aspectRatio'
+        ]
+        == ratio
+    )

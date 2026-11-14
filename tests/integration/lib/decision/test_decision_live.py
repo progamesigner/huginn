@@ -35,6 +35,7 @@ class LiveCredentials(BaseSettings):
     typesafe_api_key: Annotated[SecretStr | None, Field()] = None
     openrouter_api_key: Annotated[SecretStr | None, Field()] = None
     openai_api_key: Annotated[SecretStr | None, Field()] = None
+    gemini_api_key: Annotated[SecretStr | None, Field()] = None
     bifrost_api_key: Annotated[SecretStr | None, Field()] = None
     bifrost_base_url: Annotated[str | None, Field()] = None
 
@@ -42,6 +43,13 @@ class LiveCredentials(BaseSettings):
 def _provider(name: str) -> tuple[DecisionProviderConfig, str]:
     credentials = LiveCredentials()
     match name:
+        case 'gemini' if credentials.gemini_api_key is not None:
+            return DecisionProviderConfig(
+                name=name,
+                adapter='gemini',
+                api_key=credentials.gemini_api_key,
+                models=('gemini-decision-1',),
+            ), 'gemini-decision-1'
         case 'typesafe' if credentials.typesafe_api_key is not None:
             return DecisionProviderConfig(
                 name=name,
@@ -92,7 +100,7 @@ def _provider(name: str) -> tuple[DecisionProviderConfig, str]:
 
 @pytest.mark.parametrize(
     'name',
-    ['typesafe', 'openrouter', 'openai', 'bifrost', 'bifrost-openai'],
+    ['typesafe', 'openrouter', 'openai', 'bifrost', 'bifrost-openai', 'gemini'],
 )
 async def test_live_choice_picks_one_of_the_offered_options(name: str) -> None:
     provider, model = _provider(name)

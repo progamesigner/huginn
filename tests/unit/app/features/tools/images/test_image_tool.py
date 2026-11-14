@@ -3,7 +3,7 @@ from datetime import timedelta
 
 import httpx2
 import pytest
-from pydantic import SecretStr
+from pydantic import HttpUrl, SecretStr
 
 from app.exts.telegram.clients import TelegramClient
 from app.exts.telegram.gateways import TelegramReply
@@ -233,3 +233,20 @@ async def test_an_oversized_image_is_not_stored(http: MockHTTP, linked: bool) ->
         await tool.run(ImageParams(prompt='a duck'))
 
     assert blobs.blobs == {}
+
+
+def test_gemini_images_preserve_an_explicit_endpoint_and_warn_on_quality() -> None:
+    import pytest
+
+    from app.features.tools.images.config import ImageToolConfig
+
+    with pytest.warns(UserWarning, match='ignore quality'):
+        config = ImageToolConfig(
+            kind='images',
+            vendor='gemini',
+            model='test',
+            api_key=SecretStr('test'),
+            base_url=HttpUrl('https://gateway.example'),
+            quality='high',
+        )
+    assert str(config.base_url) == 'https://gateway.example/'

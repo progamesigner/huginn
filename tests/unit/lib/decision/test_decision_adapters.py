@@ -24,6 +24,7 @@ from lib.decision import (
 )
 from lib.decision.adapters.typesafe import TypeSafeAdapter
 from lib.http import HTTPClientContract
+from tests.helpers.http import MockHTTP as RoutedHTTP
 from tests.helpers.logging import make_logger
 
 FIXTURES = Path(__file__).parent / 'fixtures'
@@ -491,3 +492,54 @@ async def test_timeout_bounds_the_entire_gateway_call() -> None:
     adapter = TypeSafeAdapter(provider, SlowHTTP(lambda request: httpx2.Response(200)))
     with pytest.raises(DecisionTimeoutError):
         await asyncio.wait_for(adapter.decide(_request()), timeout=1)
+
+
+async def test_gemini_uses_google_auth_text_input_and_native_usage(
+    http: RoutedHTTP,
+) -> None:
+    from lib.decision.adapters.gemini import GeminiAdapter
+    from lib.decision.client import DecisionProviderConfig
+    from lib.decision.types import ChoiceQuestion, DecisionRequest
+
+    provider = DecisionProviderConfig(
+        name='google',
+        adapter='gemini',
+        api_key=SecretStr('test-google-key'),
+        models=('gemini-decision-1',),
+    )
+    route = http.post(provider.endpoint).mock(
+        return_value=httpx2.Response(
+            200,
+            json={
+                'answers': {
+                    'route': {
+                        'type': 'choice',
+                        'choice': 'a',
+                        'confidence': 0.9,
+                        'probabilities': {'a': 0.9, 'b': 0.1},
+                    },
+                },
+                'usage': {'total_input_tokens': 20, 'total_output_tokens': 0},
+            },
+        ),
+    )
+    result = await GeminiAdapter(provider, http.manager()).decide(
+        DecisionRequest(
+            model='gemini-decision-1',
+            state={'text': 'hello'},
+            questions={
+                'route': ChoiceQuestion(
+                    instructions='Choose',
+                    criteria={'a': 'one', 'b': 'two'},
+                ),
+            },
+        ),
+    )
+    assert result.model == 'gemini-decision-1'
+    assert result.answers['route'].choice == 'a'
+    assert result.usage is not None
+    assert result.usage.input_tokens == 20
+    request = route.calls.last.request
+    assert request.headers['x-goog-api-key'] == 'test-google-key'
+    assert 'authorization' not in request.headers
+    assert json.loads(request.content)['input'] == '{"text": "hello"}'

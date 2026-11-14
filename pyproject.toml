@@ -31,6 +31,9 @@ documents = [
     "pypdf==7.0.0",
     "python-docx==1.2.0",
 ]
+gemini = [
+    "google-genai==3.3.0",
+]
 
 [project.scripts]
 huginn = "bin.cli:main"
@@ -38,7 +41,7 @@ server = "bin.server:main"
 
 [dependency-groups]
 dev = [
-    "huginn[anthropic,openai]",
+    "huginn[anthropic,gemini,openai]",
     "huginn[documents]",
     "import-linter==2.16",
     "pre-commit==4.7.0",
