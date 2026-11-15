@@ -24,12 +24,12 @@ COPY --from=uv /uv /uvx /usr/local/bin/
 RUN --mount=type=cache,target=/root/.cache/uv \
     --mount=type=bind,source=uv.lock,target=uv.lock \
     --mount=type=bind,source=pyproject.toml,target=pyproject.toml \
-    uv sync --extra anthropic --extra documents --extra openai --no-install-project
+    uv sync --extra anthropic --extra documents --extra gemini --extra openai --no-install-project
 
 COPY . .
 
 RUN --mount=type=cache,target=/root/.cache/uv \
-    uv sync --extra anthropic --extra documents --extra openai
+    uv sync --extra anthropic --extra documents --extra gemini --extra openai
 
 # runtime
 FROM base AS runtime

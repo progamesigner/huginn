@@ -13,6 +13,7 @@ from lib.llm import (
     TextSegment,
 )
 from lib.llm.adapters.anthropic import AnthropicAdapter
+from lib.llm.adapters.gemini import GeminiAdapter
 from lib.llm.adapters.openai import OpenAIAdapter
 from lib.llm.client import LLMClient, ProviderConfig
 
@@ -39,6 +40,7 @@ class LiveCredentials(BaseSettings):
     model_config = SettingsConfigDict(env_file='.env', extra='ignore')
 
     openai_api_key: Annotated[SecretStr | None, Field()] = None
+    gemini_api_key: Annotated[SecretStr | None, Field()] = None
     anthropic_api_key: Annotated[SecretStr | None, Field()] = None
 
 
@@ -175,3 +177,36 @@ async def test_anthropic_native_completion_with_tools() -> None:
     )
 
     assert any(isinstance(chunk, FinishChunk) for chunk in chunks)
+
+
+async def test_gemini_native_completion() -> None:
+    key = LiveCredentials().gemini_api_key
+    if key is None:
+        pytest.skip('GEMINI_API_KEY not set')
+    http = HTTPClientManager()
+    try:
+        chunks = await complete(
+            GeminiAdapter(
+                ProviderConfig(
+                    name='google',
+                    adapter='gemini',
+                    api_key=key,
+                    models=('gemini-3.8-flash',),
+                ),
+                http,
+            ),
+            CompletionRequest(
+                model='gemini-3.8-flash',
+                messages=(
+                    Message(
+                        role='user',
+                        segments=(
+                            TextSegment(text='Reply with the single word: pong'),
+                        ),
+                    ),
+                ),
+            ),
+        )
+        assert any(isinstance(chunk, FinishChunk) for chunk in chunks)
+    finally:
+        await http.dispose()

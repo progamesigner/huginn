@@ -14,6 +14,10 @@ def build_adapter(provider: ProviderConfig, http: HTTPConnector) -> LLMClient:
                 from .adapters.anthropic import AnthropicAdapter
 
                 return AnthropicAdapter(provider, http)
+            case 'gemini':
+                from .adapters.gemini import GeminiAdapter
+
+                return GeminiAdapter(provider, http)
             case 'openai':
                 from .adapters.openai import OpenAIAdapter
 

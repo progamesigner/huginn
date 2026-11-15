@@ -154,6 +154,15 @@ def test_client_for_caches_adapter_per_provider() -> None:
             ),
             'claude-opus-4-8',
         ),
+        (
+            ProviderConfig(
+                name='google',
+                adapter='gemini',
+                api_key=SecretStr('secret'),
+                models=('gemini-test',),
+            ),
+            'gemini-test',
+        ),
     ],
 )
 def test_client_for_reports_missing_extra(
@@ -166,3 +175,16 @@ def test_client_for_reports_missing_extra(
 
     with pytest.raises(ModuleNotFoundError, match=rf'huginn\[{provider.adapter}\]'):
         manager.client_for(ModelRef(model=model))
+
+
+def test_manager_selects_the_native_gemini_adapter() -> None:
+    from lib.llm.adapters.gemini import GeminiAdapter
+
+    provider = ProviderConfig(
+        name='google',
+        adapter='gemini',
+        api_key=SecretStr('secret'),
+        models=('gemini-test',),
+    )
+    manager = LLMManager((provider,), HTTPClientManager(), logger=make_logger())
+    assert isinstance(manager.client_for(ModelRef(model='gemini-test')), GeminiAdapter)

@@ -12,7 +12,7 @@ from .types import (
     ModelRef,
 )
 
-type Adapter = Literal['openai', 'anthropic']
+type Adapter = Literal['openai', 'anthropic', 'gemini']
 
 
 class ProviderConfig(LLMValue):

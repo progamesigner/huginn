@@ -22,6 +22,7 @@ from lib.llm import (
     TextChunk,
     TextSegment,
     ThinkingChunk,
+    ThinkingSegment,
     ToolCallChunk,
     ToolCallSegment,
     ToolResultSegment,
@@ -135,10 +136,12 @@ class ToolCallBuilder:
 
 
 class TurnDraft:
+    thinking: list[ThinkingSegment]
     fragments: list[str]
     calls: dict[int, ToolCallBuilder]
 
     def __init__(self) -> None:
+        self.thinking = []
         self.fragments = []
         self.calls = {}
 
@@ -223,9 +226,13 @@ def _build_messages(turn: TurnInput, *, logger: Logger) -> Iterator[Message]:
             yield Message(role='user', segments=(header, *segments))
 
 
-def _assistant_message(text: str, tool_calls: tuple[ToolCallSegment, ...]) -> Message:
+def _assistant_message(
+    text: str,
+    tool_calls: tuple[ToolCallSegment, ...],
+    thinking: tuple[ThinkingSegment, ...] = (),
+) -> Message:
     segments = (TextSegment(text=text), *tool_calls) if text else tool_calls
-    return Message(role='assistant', segments=segments)
+    return Message(role='assistant', segments=(*thinking, *segments))
 
 
 def _tool_result_messages(results: tuple[ToolResultSegment, ...]) -> Iterator[Message]:
@@ -345,8 +352,8 @@ async def _consume(
                 if name is not None:
                     builder.name = name
                 builder.arguments += arguments
-            case ThinkingChunk():
-                pass
+            case ThinkingChunk(data=data) if data is not None:
+                draft.thinking.append(ThinkingSegment(data=data))
             case FinishChunk():
                 pass
 
@@ -452,7 +459,7 @@ class AgentRunner:
 
             text = draft.text
             steps.append(step)
-            history.append(_assistant_message(text, tool_calls))
+            history.append(_assistant_message(text, tool_calls, tuple(draft.thinking)))
             history.extend(_tool_result_messages(results))
 
         self.logger.warning(

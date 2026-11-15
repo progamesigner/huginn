@@ -81,6 +81,7 @@ class ToolCallChunk(LLMValue):
 
 
 class ThinkingChunk(LLMValue):
+    data: Annotated[JsonValue | None, Field()] = None
     text: Annotated[str, Field()]
 
 
