@@ -36,9 +36,7 @@ class HTTPDecisionAdapter(ABC):
         self.http = http
 
     async def decide(self, request: DecisionRequest) -> DecisionResult:
-        headers = {
-            'Authorization': f'Bearer {self.provider.api_key.get_secret_value()}',
-        }
+        headers = self.headers()
         # NOTE: httpx2 gives a base url a trailing slash, so the endpoint is split
         # rather than posted to as a whole
         endpoint = urlsplit(self.provider.endpoint)
@@ -83,6 +81,9 @@ class HTTPDecisionAdapter(ABC):
             ) from error
 
         return checked(request, result)
+
+    def headers(self) -> dict[str, str]:
+        return {'Authorization': f'Bearer {self.provider.api_key.get_secret_value()}'}
 
     @abstractmethod
     def encode(self, request: DecisionRequest) -> dict[str, JsonValue]: ...
