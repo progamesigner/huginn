@@ -5,7 +5,7 @@ requires-python = "==3.15.*"
 dependencies = [
     "alembic==1.20.1",
     "asyncpg==0.32.0",
-    "fastapi==0.162.2",
+    "fastapi==0.162.5",
     "h2==4.4.1",
     "httptools==0.9.0",
     "httpx2==2.16.0",
@@ -18,17 +18,17 @@ dependencies = [
     "sqlalchemy[asyncio]==2.1.8",
     "structlog==26.1.0",
     "telegramify-markdown==1.4.2",
-    "typer==0.28.0",
+    "typer==0.29.1",
     "uvicorn==0.54.0",
     "uvloop==0.23.0",
 ]
 
 [project.optional-dependencies]
-anthropic = ["anthropic==2.6.0"]
-openai = ["openai==3.46.0"]
+anthropic = ["anthropic==2.8.0"]
+openai = ["openai==3.49.0"]
 documents = [
     "openpyxl==3.1.5",
-    "pypdf==7.0.0",
+    "pypdf==7.0.1",
     "python-docx==1.2.0",
 ]
 gemini = [
