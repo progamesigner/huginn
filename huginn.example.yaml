@@ -36,6 +36,35 @@ providers:
     cache_control:
     - claude-sonnet-5
 
+# Native Gemini (install huginn[gemini] outside the supplied Docker image):
+# providers:
+#   google:
+#     adapter: gemini
+#     api_key: {value_from: {env: GEMINI_API_KEY}}
+#     models: [gemini-3.8-flash]
+#     vision: [gemini-3.8-flash]
+#     documents: [gemini-3.8-flash]
+#   google_decision:
+#     type: decision
+#     adapter: gemini
+#     api_key: {value_from: {env: GEMINI_API_KEY}}
+#     models: [gemini-decision-1]
+#
+# Add these entries under tools to use Gemini media generation:
+#   google_images:
+#     kind: images
+#     vendor: gemini
+#     model: gemini-nano-banana-2.1
+#     api_key: {value_from: {env: GEMINI_API_KEY}}
+#     size: 1536x1024
+#   google_speech:
+#     kind: speech
+#     vendor: gemini
+#     model: gemini-3.8-flash-tts
+#     voice: Kore
+#     api_key: {value_from: {env: GEMINI_API_KEY}}
+#     format: opus
+
 tools:
   read_document:
     kind: read_document

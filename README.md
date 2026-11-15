@@ -92,6 +92,27 @@ Huginn resolves both before Pydantic validation runs. A missing variable or file
 
 ### Choosing the LLM
 
+Native Gemini uses `adapter: gemini` and the Google GenAI SDK. Install `huginn[gemini]`
+when running outside the supplied Docker image. It supports streamed text, images and
+PDF inputs, function calls, structured output and thinking. Signed response parts are
+kept unchanged while the agent executes tools and returned on its next model call.
+Gemini uses implicit context caching; Huginn does not create explicit cache resources
+or translate `cache_control` markers into Google cache entries.
+
+Decision providers can also use `adapter: gemini` to call the Gemini Decisions API
+with choice questions and text state. This adapter uses REST and needs no SDK.
+Set `vendor: gemini` on an `images` or `speech` tool to use native media generation
+through `generateContent`. The tools default to Google's API host; an explicit
+`base_url` overrides it. The image sizes select aspect ratios (1:1, 3:2 or 2:3),
+not exact pixel dimensions. Gemini ignores image `quality` with a configuration warning.
+Speech accepts a Google voice name, supports `format: opus`, and converts mono 16-bit
+PCM or WAV to ogg/opus using ffmpeg. Gemini speech configuration fails at startup if
+ffmpeg or its libopus encoder is missing. The Docker image copies a pinned
+[static ffmpeg build](https://github.com/wader/static-ffmpeg) with libopus; its
+documentation and component versions live under `/usr/local/share/doc/ffmpeg`.
+Local installs need an ffmpeg build with libopus. See the commented examples in
+`huginn.example.yaml`; existing OpenAI tool settings keep their defaults.
+
 Which LLM answers is a `(provider, model)` pair. Huginn resolves it the same way everywhere a model can be named: `agents.<name>`, `defaults`, `channels.<name>.router`, and `api_keys.<name>.router`.
 
 - Naming a `model` alone means "whichever provider offers it". This was the behaviour before providers could be pinned.
