@@ -2,6 +2,7 @@ from dataclasses import dataclass
 
 from app.exts.images.clients import ImagesClient
 from app.exts.images.exceptions import ImageGenerationError
+from app.exts.images.gemini import GeminiImagesClient
 from app.features.tools.exceptions import ToolError
 from lib.http import HTTPClientContract
 from lib.media import sniff
@@ -28,7 +29,8 @@ class ImageRepository:
         prompt: str,
         size: str,
     ) -> GeneratedImage:
-        client = ImagesClient(
+        client_type = GeminiImagesClient if config.vendor == 'gemini' else ImagesClient
+        client = client_type(
             http=self.http,
             api_key=config.api_key,
             base_url=str(config.base_url),
