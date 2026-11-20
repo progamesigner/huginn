@@ -3,7 +3,7 @@ from pathlib import Path
 from typing import Annotated, Literal, override
 
 import pytest
-from pydantic import Field, HttpUrl, SecretStr, ValidationError
+from pydantic import Field, HttpUrl, JsonValue, SecretStr, ValidationError
 
 from app.core.config.exceptions import (
     InvalidValueReferenceError,
@@ -268,7 +268,7 @@ def test_resolve_value_from_rejects_unknown_shape() -> None:
 
 
 def test_resolve_references_walks_nested_structure() -> None:
-    raw = {
+    raw: JsonValue = {
         'defaults': {'model': '${AGENT_MODEL}'},
         'tools': {
             'websearch': {
@@ -304,7 +304,9 @@ def test_resolve_references_walks_nested_structure() -> None:
 
 
 def test_resolve_references_reports_field_path_for_missing_env() -> None:
-    raw = {'tools': {'websearch': {'api_key': {'value_from': {'env': 'FELO_API_KEY'}}}}}
+    raw: JsonValue = {
+        'tools': {'websearch': {'api_key': {'value_from': {'env': 'FELO_API_KEY'}}}},
+    }
 
     with pytest.raises(
         MissingEnvironmentVariableError,

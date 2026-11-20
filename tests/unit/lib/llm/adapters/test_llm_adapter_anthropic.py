@@ -19,7 +19,7 @@ from anthropic.types import (
 )
 from anthropic.types.raw_message_delta_event import Delta
 from httpx2 import Timeout
-from pydantic import SecretStr
+from pydantic import JsonValue, SecretStr
 
 from lib.http import HTTPClientManager
 from lib.llm import (
@@ -131,7 +131,11 @@ def test_build_messages_marks_failed_tool_result_as_error() -> None:
 
 
 def test_build_messages_roundtrips_opaque_thinking_block() -> None:
-    data = {'type': 'thinking', 'thinking': 'reasoning...', 'signature': 'sig'}
+    data: JsonValue = {
+        'type': 'thinking',
+        'thinking': 'reasoning...',
+        'signature': 'sig',
+    }
     messages = (Message(role='assistant', segments=(ThinkingSegment(data=data),)),)
 
     assert list(build_messages(messages)) == [{'role': 'assistant', 'content': [data]}]
@@ -236,7 +240,7 @@ def test_build_messages_marks_last_block_cacheable() -> None:
 
 
 def test_build_tools_unwraps_openai_shaped_function_schema() -> None:
-    tools = (
+    tools: tuple[JsonValue, ...] = (
         {
             'type': 'function',
             'function': {

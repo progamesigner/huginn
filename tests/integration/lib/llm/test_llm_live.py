@@ -1,7 +1,7 @@
 from typing import Annotated
 
 import pytest
-from pydantic import Field, SecretStr
+from pydantic import Field, JsonValue, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from lib.http import HTTPClientManager
@@ -22,7 +22,7 @@ pytestmark = pytest.mark.integration
 _OPENAI_MODEL = 'gpt-5-mini'
 _ANTHROPIC_MODEL = 'claude-haiku-4-5-20251001'
 
-_WEATHER_TOOL = {
+_WEATHER_TOOL: JsonValue = {
     'type': 'function',
     'function': {
         'name': 'get_weather',

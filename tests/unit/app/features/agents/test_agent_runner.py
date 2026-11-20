@@ -1085,7 +1085,10 @@ async def test_tool_loop_preserves_opaque_thinking_data_for_the_next_model_call(
 ):
     from lib.llm import ThinkingChunk, ThinkingSegment
 
-    opaque = {'vendor': 'gemini', 'part': {'text': '', 'thought_signature': 'c2lnbmVk'}}
+    opaque: JsonValue = {
+        'vendor': 'gemini',
+        'part': {'text': '', 'thought_signature': 'c2lnbmVk'},
+    }
     llm = FakeLLM(
         [
             [

@@ -1,5 +1,5 @@
 import pytest
-from pydantic import BaseModel, ValidationError, create_model
+from pydantic import BaseModel, JsonValue, ValidationError, create_model
 
 from lib.llm import (
     CompletionChunk,
@@ -52,7 +52,11 @@ def test_tool_result_segment_defaults_to_success() -> None:
 
 
 def test_thinking_segment_carries_opaque_data_for_roundtrip() -> None:
-    data = {'type': 'thinking', 'thinking': 'reasoning...', 'signature': 'abc'}
+    data: JsonValue = {
+        'type': 'thinking',
+        'thinking': 'reasoning...',
+        'signature': 'abc',
+    }
     segment = ThinkingSegment(data=data)
 
     assert segment.data == data

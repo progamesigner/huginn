@@ -63,7 +63,7 @@ def test_build_filters_to_the_allowlist() -> None:
 
 
 def test_schema_hides_injected_parameters() -> None:
-    schema = {
+    schema: JsonValue = {
         'type': 'object',
         'properties': {'query': {'type': 'string'}, 'user': {'type': 'string'}},
         'required': ['query', 'user'],
