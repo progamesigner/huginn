@@ -80,7 +80,7 @@ def _channel_kind(value: object) -> str | None:
 
 def _build_channels_config(registry: ChannelRegistry) -> type[BaseModel]:
     element = _channel_config_element(registry.config_models)
-    fields: dict[str, Any] = {'root': (dict.__class_getitem__((str, element)), ...)}
+    fields = dict[str, Any]({'root': (dict.__class_getitem__((str, element)), ...)})
     return create_model(
         'ChannelConfigList',
         __base__=ChannelConfigList,

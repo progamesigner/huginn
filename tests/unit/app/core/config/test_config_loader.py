@@ -268,18 +268,20 @@ def test_resolve_value_from_rejects_unknown_shape() -> None:
 
 
 def test_resolve_references_walks_nested_structure() -> None:
-    raw: JsonValue = {
-        'defaults': {'model': '${AGENT_MODEL}'},
-        'tools': {
-            'websearch': {
-                'kind': 'websearch',
-                'api_key': {'value_from': {'env': 'FELO_API_KEY'}},
+    raw = dict[str, JsonValue](
+        {
+            'defaults': {'model': '${AGENT_MODEL}'},
+            'tools': {
+                'websearch': {
+                    'kind': 'websearch',
+                    'api_key': {'value_from': {'env': 'FELO_API_KEY'}},
+                },
+            },
+            'agents': {
+                'scout': {'tools': [{'name': 'websearch'}]},
             },
         },
-        'agents': {
-            'scout': {'tools': [{'name': 'websearch'}]},
-        },
-    }
+    )
 
     resolved = _resolve_references(
         raw,
@@ -304,9 +306,13 @@ def test_resolve_references_walks_nested_structure() -> None:
 
 
 def test_resolve_references_reports_field_path_for_missing_env() -> None:
-    raw: JsonValue = {
-        'tools': {'websearch': {'api_key': {'value_from': {'env': 'FELO_API_KEY'}}}},
-    }
+    raw = dict[str, JsonValue](
+        {
+            'tools': {
+                'websearch': {'api_key': {'value_from': {'env': 'FELO_API_KEY'}}},
+            },
+        },
+    )
 
     with pytest.raises(
         MissingEnvironmentVariableError,

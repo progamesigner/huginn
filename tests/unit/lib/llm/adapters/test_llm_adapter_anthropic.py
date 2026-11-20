@@ -131,11 +131,13 @@ def test_build_messages_marks_failed_tool_result_as_error() -> None:
 
 
 def test_build_messages_roundtrips_opaque_thinking_block() -> None:
-    data: JsonValue = {
-        'type': 'thinking',
-        'thinking': 'reasoning...',
-        'signature': 'sig',
-    }
+    data = dict[str, JsonValue](
+        {
+            'type': 'thinking',
+            'thinking': 'reasoning...',
+            'signature': 'sig',
+        },
+    )
     messages = (Message(role='assistant', segments=(ThinkingSegment(data=data),)),)
 
     assert list(build_messages(messages)) == [{'role': 'assistant', 'content': [data]}]
@@ -240,7 +242,7 @@ def test_build_messages_marks_last_block_cacheable() -> None:
 
 
 def test_build_tools_unwraps_openai_shaped_function_schema() -> None:
-    tools: tuple[JsonValue, ...] = (
+    tool = dict[str, JsonValue](
         {
             'type': 'function',
             'function': {
@@ -250,6 +252,7 @@ def test_build_tools_unwraps_openai_shaped_function_schema() -> None:
             },
         },
     )
+    tools = tuple[JsonValue, ...]((tool,))
 
     assert list(build_tools(tools)) == [
         {

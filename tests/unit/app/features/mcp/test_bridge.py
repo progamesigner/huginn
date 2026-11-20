@@ -63,11 +63,13 @@ def test_build_filters_to_the_allowlist() -> None:
 
 
 def test_schema_hides_injected_parameters() -> None:
-    schema: JsonValue = {
-        'type': 'object',
-        'properties': {'query': {'type': 'string'}, 'user': {'type': 'string'}},
-        'required': ['query', 'user'],
-    }
+    schema = dict[str, JsonValue](
+        {
+            'type': 'object',
+            'properties': {'query': {'type': 'string'}, 'user': {'type': 'string'}},
+            'required': ['query', 'user'],
+        },
+    )
     tool = MCPTool(FakeClient(), 'memory', _info('recall', schema), {'user': 'swag'})
 
     result = tool.schema()

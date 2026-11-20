@@ -40,7 +40,7 @@ class ToolConfigList(RootModel[dict[str, ToolConfig]]):
 
 def _build_tools_config(registry: ToolRegistry) -> type[BaseModel]:
     element = _tool_config_element(registry.config_models)
-    fields: dict[str, Any] = {'root': (dict.__class_getitem__((str, element)), ...)}
+    fields = dict[str, Any]({'root': (dict.__class_getitem__((str, element)), ...)})
     return create_model(
         'ToolConfigList',
         __base__=ToolConfigList,
