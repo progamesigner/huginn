@@ -9,7 +9,8 @@ from lib.database import DatabaseDeclarativeBase
 
 
 class AppRecord(DatabaseDeclarativeBase):
-    __table__: ClassVar[Table]
+    # SQLAlchemy subclasses expose Table, while the base accepts any FromClause.
+    __table__: ClassVar[Table]  # ty: ignore[incompatible-mutable-override]
 
     __abstract__ = True
 
