@@ -114,7 +114,7 @@ class _Connection:
             return
 
         async with self.lock:
-            if self.connected:
+            if self.session is not None:
                 return
 
             loop = asyncio.get_running_loop()

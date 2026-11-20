@@ -108,7 +108,9 @@ async def test_list_tools_maps_to_our_types() -> None:
     echo = next(tool for tool in tools if tool.name == 'echo')
     assert echo.description == 'Echo the text back to the caller.'
     assert isinstance(echo.input_schema, dict)
-    assert 'text' in echo.input_schema['properties']
+    properties = echo.input_schema['properties']
+    assert isinstance(properties, dict)
+    assert 'text' in properties
 
 
 async def test_call_tool_returns_rendered_text() -> None:
@@ -329,7 +331,7 @@ def test_tool_errors_never_become_successful_text() -> None:
     with pytest.raises(MCPError, match='returned an error'):
         _render(
             CallToolResult(
-                isError=True,
+                is_error=True,
                 content=[TextContent(type='text', text='private')],
             ),
         )
@@ -342,7 +344,10 @@ def test_structured_only_tools_retain_their_payload() -> None:
 
     assert json.loads(
         _render(
-            CallToolResult(content=[], structuredContent={'rendered': 'whole context'}),
+            CallToolResult(
+                content=[],
+                structured_content={'rendered': 'whole context'},
+            ),
         ),
     ) == {'rendered': 'whole context'}
 
@@ -354,7 +359,7 @@ def test_structured_results_preserve_versions_without_changing_text_calls() -> N
 
     result = CallToolResult(
         content=[TextContent(type='text', text='brief body')],
-        structuredContent={'content': 'brief body', 'version': 'opaque'},
+        structured_content={'content': 'brief body', 'version': 'opaque'},
     )
     assert _render(result) == 'brief body'
     assert json.loads(_render(result, structured=True)) == {
@@ -371,9 +376,9 @@ def test_tool_errors_retain_only_the_structured_discriminator(structured: bool) 
     with pytest.raises(MCPToolError) as caught:
         _render(
             CallToolResult(
-                isError=True,
+                is_error=True,
                 content=[TextContent(type='text', text='private')],
-                structuredContent={'code': 'conflict', 'message': 'private'},
+                structured_content={'code': 'conflict', 'message': 'private'},
             ),
             structured=structured,
         )
