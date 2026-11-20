@@ -3,7 +3,7 @@ from abc import ABC, abstractmethod
 from collections.abc import AsyncIterator, Callable, Iterable, Sequence
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Literal, Protocol, override
+from typing import Literal, Protocol, cast, override
 
 from pydantic import BaseModel, ConfigDict, JsonValue
 
@@ -74,7 +74,7 @@ class TypedTool[P: ToolParams](Tool):
 
     @override
     def schema(self) -> JsonValue:
-        return self.params.model_json_schema()
+        return cast(JsonValue, self.params.model_json_schema())
 
 
 @dataclass(frozen=True)

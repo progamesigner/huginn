@@ -60,4 +60,9 @@ class ToolRegistry:
 
     def params_model(self, kind: str) -> type[BaseModel] | None:
         tool = self.tools.get(kind)
-        return getattr(tool, 'params', None) if tool is not None else None
+        params = getattr(tool, 'params', None) if tool is not None else None
+        return (
+            params
+            if isinstance(params, type) and issubclass(params, BaseModel)
+            else None
+        )

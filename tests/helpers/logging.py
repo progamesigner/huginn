@@ -1,7 +1,7 @@
 import logging
 from collections.abc import Generator, MutableMapping
 from contextlib import contextmanager
-from typing import Any, override
+from typing import Any, cast, override
 
 import pytest
 import structlog
@@ -46,8 +46,11 @@ def _to_stdlib(
 # NOTE: wraps a stdlib logger directly, so caplog sees the message whatever the global
 # structlog setup happens to be when the test runs
 def make_logger() -> Logger:
-    return structlog.wrap_logger(
-        logging.getLogger('tests'),
-        processors=[structlog.stdlib.PositionalArgumentsFormatter(), _to_stdlib],
-        wrapper_class=Logger,
+    return cast(
+        Logger,
+        structlog.wrap_logger(
+            logging.getLogger('tests'),
+            processors=[structlog.stdlib.PositionalArgumentsFormatter(), _to_stdlib],
+            wrapper_class=Logger,
+        ),
     )

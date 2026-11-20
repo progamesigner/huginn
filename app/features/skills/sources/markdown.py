@@ -1,4 +1,5 @@
 from collections.abc import Mapping
+from typing import cast
 
 import yaml
 
@@ -21,7 +22,7 @@ def _split(content: str) -> tuple[Mapping[str, object], str]:
         parsed = {}
     if not isinstance(parsed, dict):
         raise TypeError('skill frontmatter must be a mapping')
-    return parsed, ''.join(lines[end + 1 :]).lstrip('\r\n')
+    return cast(Mapping[str, object], parsed), ''.join(lines[end + 1 :]).lstrip('\r\n')
 
 
 def _name_from_path(path: str) -> str:

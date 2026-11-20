@@ -18,8 +18,8 @@ def _content(raw: str) -> str:
         if data.get('isError'):
             raise ValueError('hook tool failed')
         for key in ('rendered', 'content'):
-            if isinstance(data.get(key), str):
-                return data[key]
+            if isinstance(value := data.get(key), str):
+                return value
     raise ValueError('hook response must contain text')
 
 

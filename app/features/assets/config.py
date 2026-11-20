@@ -26,7 +26,11 @@ class AssetGlobs(ConfigValue):
         return self
 
     def for_kind(self, kind: AssetKind) -> str:
-        return getattr(self, kind)
+        return {
+            'skill': self.skill,
+            'command': self.command,
+            'subagent': self.subagent,
+        }[kind]
 
 
 class MCPAssetSourceConfig(InjectionConfig):

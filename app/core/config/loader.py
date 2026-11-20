@@ -3,6 +3,7 @@ import os
 import re
 from collections.abc import Mapping
 from pathlib import Path
+from typing import cast
 
 import yaml
 from pydantic import JsonValue
@@ -102,7 +103,7 @@ def _read_yaml(path: Path) -> JsonValue:
             f'config file {str(path)!r} does not exist',
         ) from error
 
-    return yaml.safe_load(text) or {}
+    return cast(JsonValue, yaml.safe_load(text)) or {}
 
 
 def _parse_sections(

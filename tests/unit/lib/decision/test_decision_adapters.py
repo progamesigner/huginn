@@ -3,7 +3,7 @@ import json
 from collections.abc import AsyncGenerator, Callable, Mapping
 from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import Literal, override
+from typing import Literal, cast, override
 
 import httpx2
 import pytest
@@ -33,7 +33,7 @@ type Handler = Callable[[httpx2.Request], httpx2.Response]
 
 
 def _fixture(name: str) -> dict[str, JsonValue]:
-    return json.loads((FIXTURES / name).read_text())
+    return cast(dict[str, JsonValue], json.loads((FIXTURES / name).read_text()))
 
 
 class MockHTTP(HTTPClientContract):
@@ -292,9 +292,9 @@ def _recorded_answer(route: Route) -> dict[str, JsonValue]:
     assert isinstance(payload, dict)
     match payload['answers']:
         case [dict() as answer]:
-            return answer
+            return cast(dict[str, JsonValue], answer)
         case {'agent': dict() as answer}:
-            return answer
+            return cast(dict[str, JsonValue], answer)
         case _:
             raise AssertionError(f'{route} fixture has no answer for agent')
 

@@ -1,3 +1,4 @@
+from typing import cast
 from uuid import UUID
 
 import pytest
@@ -62,7 +63,7 @@ def _drift(connection: Connection) -> list[object]:
         connection,
         opts={'version_table': _VERSION_TABLE, 'compare_server_default': True},
     )
-    return compare_metadata(context, AppRecord.metadata)
+    return cast(list[object], compare_metadata(context, AppRecord.metadata))
 
 
 def _migrate(connection: Connection, direction: str, revision: str) -> None:
