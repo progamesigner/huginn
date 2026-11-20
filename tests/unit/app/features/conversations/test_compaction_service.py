@@ -115,7 +115,9 @@ async def test_compact_persists_summary_turn_and_advances_boundary() -> None:
     output_schema = llm_client.requests[0].output_schema
     assert output_schema is not None
     assert output_schema.name == 'SummaryOutput'
-    required = cast(list[str], output_schema.json_schema['required'])
+    required = output_schema.json_schema['required']
+    assert isinstance(required, list)
+    assert all(isinstance(name, str) for name in required)
     assert set(required) >= {'key_facts', 'open_items'}
 
 

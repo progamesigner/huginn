@@ -164,8 +164,8 @@ def build_messages(
 
 def build_tools(tools: tuple[JsonValue, ...]) -> Iterator[FunctionToolParam]:
     for tool in tools:
-        entry = cast(dict[str, object], tool)
-        function = cast(dict[str, object], entry['function'])
+        entry = dict(cast(dict[str, JsonValue], tool))
+        function = dict(cast(dict[str, JsonValue], entry['function']))
         yield FunctionToolParam(
             type='function',
             name=cast(str, function['name']),
@@ -245,10 +245,7 @@ class OpenAIAdapter:
                 format={
                     'type': 'json_schema',
                     'name': request.output_schema.name,
-                    'schema': cast(
-                        dict[str, object],
-                        dict(request.output_schema.json_schema),
-                    ),
+                    'schema': dict(request.output_schema.json_schema),
                     'strict': True,
                 },
             )

@@ -221,7 +221,7 @@ def test_build_messages_preserves_order_across_messages() -> None:
         ),
     )
 
-    built = cast(list[dict[str, object]], list(build_messages(messages)))
+    built = [dict(entry) for entry in build_messages(messages)]
 
     assert [entry['type'] if 'type' in entry else entry['role'] for entry in built] == [
         'user',

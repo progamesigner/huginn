@@ -164,7 +164,7 @@ def build_messages(messages: tuple[Message, ...]) -> Iterator[MessageParam]:
                 # NOTE: system messages carry only text segments
                 yield SystemMessageParam(
                     role='system',
-                    content=cast(list[TextBlockParam], blocks),
+                    content=[block for block in blocks if block['type'] == 'text'],
                 )
             case 'user' | 'tool':
                 yield UserMessageParam(role='user', content=blocks)
@@ -177,7 +177,7 @@ def build_tools(tools: tuple[JsonValue, ...]) -> Iterator[ToolUnionParam]:
         yield ToolParam(
             name=cast(str, function['name']),
             description=cast(str, function.get('description', '')),
-            input_schema=cast(dict[str, object], function['parameters']),
+            input_schema=dict(cast(dict[str, JsonValue], function['parameters'])),
         )
 
 
@@ -233,7 +233,7 @@ class AnthropicAdapter:
         if request.output_schema is not None:
             output_format = JSONOutputFormatParam(
                 type='json_schema',
-                schema=cast(dict[str, object], dict(request.output_schema.json_schema)),
+                schema=dict(request.output_schema.json_schema),
             )
 
         output_config = omit

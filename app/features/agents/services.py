@@ -1,7 +1,7 @@
 import asyncio
 from base64 import b64encode
 from collections.abc import AsyncIterator, Iterator, Sequence
-from typing import cast, override
+from typing import override
 from uuid import uuid4
 
 from structlog.contextvars import bound_contextvars, get_contextvars
@@ -328,10 +328,9 @@ async def _execute_calls(
             )
             for call in calls
         ]
-    results, records = cast(
-        tuple[tuple[ToolResultSegment, ...], tuple[ToolExecution, ...]],
-        zip(*(task.result() for task in tasks), strict=True),
-    )
+    completed = [task.result() for task in tasks]
+    results = tuple(result for result, _ in completed)
+    records = tuple(record for _, record in completed)
     return results, Step(tools=records)
 
 
