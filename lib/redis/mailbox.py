@@ -5,7 +5,7 @@ from .lock import RedisLock
 from .scripts import CLAIM, DRAIN
 
 
-class RedisMailbox[T = bytes]:
+class RedisMailbox[T: bytes | bytearray | memoryview[int] | str | float = bytes]:
     lock: RedisLock
     queue: str
 

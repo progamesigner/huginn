@@ -9,7 +9,7 @@ from .exceptions import RedisError
 
 
 class RedisManager(RedisContract):
-    clients: dict[str | None, Redis[bytes]]
+    clients: dict[str | None, Redis]
     urls: dict[str | None, str]
 
     def __init__(self, urls: Mapping[str | None, str]) -> None:
@@ -21,7 +21,7 @@ class RedisManager(RedisContract):
 
     @asynccontextmanager
     @override
-    async def connect(self, alias: str | None = None) -> AsyncGenerator[Redis[bytes]]:
+    async def connect(self, alias: str | None = None) -> AsyncGenerator[Redis]:
         if alias not in self.clients:
             self.clients[alias] = Redis.from_url(self.url(alias))
 

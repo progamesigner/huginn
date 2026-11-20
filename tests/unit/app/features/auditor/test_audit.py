@@ -19,11 +19,11 @@ class FakeRedis(RedisContract):
                 yield key
 
         client.scan_iter = scan_iter
-        self.client = cast('Redis[bytes]', client)
+        self.client = cast('Redis', client)
 
     @asynccontextmanager
     @override
-    async def connect(self) -> AsyncGenerator[Redis[bytes]]:
+    async def connect(self) -> AsyncGenerator[Redis]:
         yield self.client
 
 
