@@ -214,7 +214,7 @@ class FakeSource(ToolSource):
 
 def offered(llm: FakeLLM) -> list[str]:
     return [
-        schema['function']['name']
+        name
         for schema in llm.requests[0].tools
         if isinstance(schema, dict) and isinstance(function := schema['function'], dict)
         for name in [function['name']]
