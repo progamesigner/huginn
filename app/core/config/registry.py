@@ -1,7 +1,7 @@
 from collections.abc import Callable, Iterable, Iterator
 from dataclasses import dataclass
 from functools import cached_property
-from typing import cast
+from typing import Generic, TypeVar, cast
 
 from pydantic import BaseModel, JsonValue
 
@@ -44,10 +44,14 @@ class SectionRegistry:
         return iter(self.specs.values())
 
 
+S_co = TypeVar('S_co', bound=BaseModel, covariant=True)
+
+
 @dataclass(frozen=True)
-class SectionSpec[S: BaseModel]:
+class SectionSpec(Generic[S_co]):  # noqa: UP046
+    # Explicit covariance lets frozen specs share a registry across model subclasses.
     key: str
-    model: type[S]
+    model: type[S_co]
     thunk: ModelThunk | None = None
     required: bool = False
     describe: SectionDescriber | None = None
