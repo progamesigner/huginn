@@ -1,4 +1,4 @@
-from collections.abc import AsyncIterator
+from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from typing import cast
@@ -219,7 +219,7 @@ async def test_lifespan_is_entered_and_exited() -> None:
     events = []
 
     @asynccontextmanager
-    async def lifespan(_: object) -> AsyncIterator[None]:
+    async def lifespan(_: object) -> AsyncGenerator[None]:
         events.append('enter')
         yield
         events.append('exit')

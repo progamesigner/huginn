@@ -1,6 +1,6 @@
 import asyncio
 import json
-from collections.abc import AsyncIterator, Callable, Mapping, Sequence
+from collections.abc import AsyncGenerator, Callable, Mapping, Sequence
 from contextlib import AbstractAsyncContextManager, asynccontextmanager, suppress
 from dataclasses import dataclass
 from typing import override
@@ -29,7 +29,7 @@ class MCPTransport:
 
 def streamable_http_connector(http: HTTPConnector) -> Connector:
     @asynccontextmanager
-    async def connect(server: MCPServer) -> AsyncIterator[ClientSession]:
+    async def connect(server: MCPServer) -> AsyncGenerator[ClientSession]:
         async with (
             http.connect(headers=server.headers) as client,
             streamable_http_client(server.url, http_client=client) as (read, write),

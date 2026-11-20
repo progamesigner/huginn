@@ -1,6 +1,6 @@
 import asyncio
 import json
-from collections.abc import AsyncIterator, Callable, Mapping
+from collections.abc import AsyncGenerator, Callable, Mapping
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Literal, override
@@ -50,7 +50,7 @@ class MockHTTP(HTTPClientContract):
         self,
         base_url: httpx2.URL | str = '',
         headers: Mapping[str, str] | None = None,
-    ) -> AsyncIterator[httpx2.AsyncClient]:
+    ) -> AsyncGenerator[httpx2.AsyncClient]:
         def record(request: httpx2.Request) -> httpx2.Response:
             self.requests.append(request)
             return self.handler(request)
@@ -477,7 +477,7 @@ async def test_timeout_bounds_the_entire_gateway_call() -> None:
             self,
             base_url: httpx2.URL | str = '',
             headers: Mapping[str, str] | None = None,
-        ) -> AsyncIterator[httpx2.AsyncClient]:
+        ) -> AsyncGenerator[httpx2.AsyncClient]:
             await asyncio.Event().wait()
             async with super().connect(base_url, headers) as client:
                 yield client

@@ -1,4 +1,4 @@
-from collections.abc import AsyncIterator
+from collections.abc import AsyncGenerator, AsyncIterator
 from contextlib import asynccontextmanager
 from typing import cast, override
 from unittest.mock import MagicMock
@@ -23,7 +23,7 @@ class FakeRedis(RedisContract):
 
     @asynccontextmanager
     @override
-    async def connect(self) -> AsyncIterator[Redis[bytes]]:
+    async def connect(self) -> AsyncGenerator[Redis[bytes]]:
         yield self.client
 
 

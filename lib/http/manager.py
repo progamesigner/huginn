@@ -1,4 +1,4 @@
-from collections.abc import AsyncIterator, Mapping
+from collections.abc import AsyncGenerator, Mapping
 from contextlib import asynccontextmanager
 from typing import override
 
@@ -52,7 +52,7 @@ class HTTPClientManager(HTTPClientContract):
         self,
         base_url: URL | str = '',
         headers: Mapping[str, str] | None = None,
-    ) -> AsyncIterator[AsyncClient]:
+    ) -> AsyncGenerator[AsyncClient]:
         # NOTE: clients are cheap facades over the shared pool
         yield AsyncClient(
             base_url=base_url,

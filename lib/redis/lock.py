@@ -1,6 +1,6 @@
 import asyncio
 import secrets
-from collections.abc import AsyncIterator
+from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 from datetime import timedelta
 
@@ -55,7 +55,7 @@ class RedisLock:
         return max(round(self.ttl / timedelta(milliseconds=1)), 1)
 
     @asynccontextmanager
-    async def renew(self) -> AsyncIterator[None]:
+    async def renew(self) -> AsyncGenerator[None]:
         watcher = asyncio.create_task(self._watch())
         try:
             yield

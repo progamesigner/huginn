@@ -3,7 +3,7 @@ import hashlib
 import json
 import re
 from collections import OrderedDict
-from collections.abc import AsyncIterator
+from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 from datetime import timedelta
 
@@ -131,7 +131,7 @@ class TelegramMenuService:
                 )
 
     @asynccontextmanager
-    async def _serial(self, key: MenuKey) -> AsyncIterator[None]:
+    async def _serial(self, key: MenuKey) -> AsyncGenerator[None]:
         lock, users = self.locks.get(key, (asyncio.Lock(), 0))
         self.locks[key] = (lock, users + 1)
         try:

@@ -1,4 +1,4 @@
-from collections.abc import AsyncIterator
+from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 from unittest.mock import AsyncMock, MagicMock
 from uuid import UUID
@@ -48,7 +48,7 @@ async def client_for(
     turns: StreamingTurns,
     resolver: MagicMock,
     management: MagicMock | None = None,
-) -> AsyncIterator[httpx2.AsyncClient]:
+) -> AsyncGenerator[httpx2.AsyncClient]:
     application = build()
     with (
         application.use(BlobServiceContract, MemoryBlobs()),

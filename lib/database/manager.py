@@ -1,4 +1,4 @@
-from collections.abc import AsyncIterator, Mapping
+from collections.abc import AsyncGenerator, Mapping
 from contextlib import asynccontextmanager
 from typing import override
 
@@ -29,7 +29,7 @@ class DatabaseManager(DatabaseContract):
 
     @asynccontextmanager
     @override
-    async def session(self, alias: str | None = None) -> AsyncIterator[AsyncSession]:
+    async def session(self, alias: str | None = None) -> AsyncGenerator[AsyncSession]:
         async with self._async_session(alias)() as session:
             yield session
 
@@ -38,7 +38,7 @@ class DatabaseManager(DatabaseContract):
     async def transaction(
         self,
         alias: str | None = None,
-    ) -> AsyncIterator[AsyncSession]:
+    ) -> AsyncGenerator[AsyncSession]:
         async with self.session(alias) as session, session.begin():
             yield session
 

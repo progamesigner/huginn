@@ -1,4 +1,4 @@
-from collections.abc import AsyncIterator
+from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 from typing import override
 
@@ -29,7 +29,7 @@ class RouterProvider(ProviderContract):
         develop = settings.running_in_mode('dev')
 
         @asynccontextmanager
-        async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+        async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
             app.state.container = container
             async with container:
                 yield

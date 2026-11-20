@@ -1,5 +1,5 @@
 import asyncio
-from collections.abc import AsyncIterator
+from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 
 import pytest
@@ -30,7 +30,7 @@ def _echo_server() -> mcpserver.MCPServer:
 
 def _memory_connector(server: mcpserver.MCPServer) -> Connector:
     @asynccontextmanager
-    async def connect(_: MCPServer) -> AsyncIterator[ClientSession]:
+    async def connect(_: MCPServer) -> AsyncGenerator[ClientSession]:
         async with Client(server) as client:
             yield client.session
 
@@ -50,7 +50,7 @@ class _FlakyConnector:
         self.tried = asyncio.Condition()
 
     @asynccontextmanager
-    async def __call__(self, _: MCPServer) -> AsyncIterator[ClientSession]:
+    async def __call__(self, _: MCPServer) -> AsyncGenerator[ClientSession]:
         async with self.tried:
             self.attempts += 1
             self.tried.notify_all()
@@ -79,13 +79,13 @@ async def _kill_session(manager: MCPManager) -> None:
 
 
 @asynccontextmanager
-async def _failing_connector(_: MCPServer) -> AsyncIterator[ClientSession]:
+async def _failing_connector(_: MCPServer) -> AsyncGenerator[ClientSession]:
     raise ConnectionError('connection refused')
     yield  # pragma: no cover
 
 
 @asynccontextmanager
-async def _group_failing_connector(_: MCPServer) -> AsyncIterator[ClientSession]:
+async def _group_failing_connector(_: MCPServer) -> AsyncGenerator[ClientSession]:
     raise ExceptionGroup(
         'unhandled errors in a TaskGroup',
         [ConnectionError('server responded with 404')],

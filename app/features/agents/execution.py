@@ -1,4 +1,4 @@
-from collections.abc import Iterator
+from collections.abc import Generator
 from contextlib import contextmanager
 from contextvars import ContextVar
 
@@ -15,7 +15,7 @@ def current_execution() -> ExecutionContext | None:
 
 
 @contextmanager
-def execution(context: ExecutionContext) -> Iterator[None]:
+def execution(context: ExecutionContext) -> Generator[None]:
     token = _CURRENT.set(context)
     try:
         yield

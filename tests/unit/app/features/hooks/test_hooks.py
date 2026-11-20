@@ -2,7 +2,7 @@ import asyncio
 import json
 import os
 import sys
-from collections.abc import AsyncIterator, Mapping
+from collections.abc import AsyncGenerator, Mapping
 from contextlib import asynccontextmanager
 from datetime import timedelta
 from pathlib import Path
@@ -108,7 +108,7 @@ class HTTP(HTTPClientContract):
         self,
         base_url: httpx2.URL | str = '',
         headers: Mapping[str, str] | None = None,
-    ) -> AsyncIterator[httpx2.AsyncClient]:
+    ) -> AsyncGenerator[httpx2.AsyncClient]:
         async with httpx2.AsyncClient(
             transport=httpx2.MockTransport(self.respond),
             headers=headers,

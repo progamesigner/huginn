@@ -1,5 +1,5 @@
 import asyncio
-from collections.abc import Callable, Iterator
+from collections.abc import Callable, Generator
 from contextlib import contextmanager
 from dataclasses import dataclass
 from inspect import Parameter, signature
@@ -150,7 +150,7 @@ class Container(ContainerContract):
 
     @contextmanager
     @override
-    def use[T](self, binding: type[T], value: T) -> Iterator[T]:
+    def use[T](self, binding: type[T], value: T) -> Generator[T]:
         # NOTE: for tests; do not overlap use() on the same binding across tasks
         replaced = binding in self.overrides
         previous = self.overrides.get(binding)

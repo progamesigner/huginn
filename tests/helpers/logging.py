@@ -1,5 +1,5 @@
 import logging
-from collections.abc import Iterator, MutableMapping
+from collections.abc import Generator, MutableMapping
 from contextlib import contextmanager
 from typing import Any, override
 
@@ -20,7 +20,7 @@ class _EventText(logging.Filter):
 
 
 @contextmanager
-def recording(caplog: pytest.LogCaptureFixture) -> Iterator[None]:
+def recording(caplog: pytest.LogCaptureFixture) -> Generator[None]:
     # NOTE: building the app configures logging, which drops the handler caplog installed
     # before the test started -- so it goes back on once the container is wired
     root = logging.getLogger()

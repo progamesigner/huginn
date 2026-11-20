@@ -1,4 +1,4 @@
-from collections.abc import AsyncIterator, Mapping
+from collections.abc import AsyncGenerator, Mapping
 from contextlib import asynccontextmanager
 from typing import override
 
@@ -21,7 +21,7 @@ class RedisManager(RedisContract):
 
     @asynccontextmanager
     @override
-    async def connect(self, alias: str | None = None) -> AsyncIterator[Redis[bytes]]:
+    async def connect(self, alias: str | None = None) -> AsyncGenerator[Redis[bytes]]:
         if alias not in self.clients:
             self.clients[alias] = Redis.from_url(self.url(alias))
 

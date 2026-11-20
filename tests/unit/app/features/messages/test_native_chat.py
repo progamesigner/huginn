@@ -1,6 +1,6 @@
 import asyncio
 import json
-from collections.abc import AsyncIterator, MutableMapping
+from collections.abc import AsyncGenerator, MutableMapping
 from contextlib import asynccontextmanager
 from typing import Any, cast, override
 from unittest.mock import MagicMock
@@ -138,7 +138,7 @@ async def chat_client(
     turns: TurnServiceContract,
     redis: MagicMock | None = None,
     blobs: BlobServiceContract | None = None,
-) -> AsyncIterator[httpx2.AsyncClient]:
+) -> AsyncGenerator[httpx2.AsyncClient]:
     application = build()
     with (
         application.use(BlobServiceContract, blobs or MemoryBlobs()),
@@ -162,7 +162,7 @@ async def chat_client(
 async def asgi_app(
     config: HuginnConfig,
     turns: TurnServiceContract,
-) -> AsyncIterator[FastAPI]:
+) -> AsyncGenerator[FastAPI]:
     application = build()
     with (
         application.use(BlobServiceContract, MemoryBlobs()),

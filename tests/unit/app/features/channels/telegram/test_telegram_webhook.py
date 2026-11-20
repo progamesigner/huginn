@@ -1,5 +1,5 @@
 import asyncio
-from collections.abc import AsyncIterator
+from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 from typing import override
 from unittest.mock import AsyncMock, MagicMock
@@ -126,7 +126,7 @@ async def webhook_client(
     config: HuginnConfig,
     redis: MagicMock,
     actor: TelegramChatActor,
-) -> AsyncIterator[httpx2.AsyncClient]:
+) -> AsyncGenerator[httpx2.AsyncClient]:
     # NOTE: the ack reaches the real client; the gateway suite owns its payload
     http.post(f'{_BASE_URL}/setMessageReaction').mock(
         return_value=httpx2.Response(200, json={'ok': True, 'result': True}),

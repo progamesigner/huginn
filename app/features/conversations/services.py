@@ -1,4 +1,4 @@
-from collections.abc import AsyncIterator, Collection, Sequence
+from collections.abc import AsyncGenerator, AsyncIterator, Collection, Sequence
 from contextlib import asynccontextmanager
 from datetime import datetime
 from typing import override
@@ -405,7 +405,7 @@ class ConversationTranscriptStore(TranscriptServiceContract):
         self,
         channel: str,
         chat: str,
-    ) -> AsyncIterator[ConversationTranscript]:
+    ) -> AsyncGenerator[ConversationTranscript]:
         async with self.database.transaction() as transaction:
             repository = self._repository(transaction)
             conversation = await repository.get_or_create(channel, chat)

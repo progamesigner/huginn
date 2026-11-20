@@ -1,5 +1,5 @@
 import json
-from collections.abc import AsyncIterator
+from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -47,7 +47,7 @@ def _echo_server() -> mcpserver.MCPServer:
 
 
 @asynccontextmanager
-async def _memory_connector(_: MCPServer) -> AsyncIterator[ClientSession]:
+async def _memory_connector(_: MCPServer) -> AsyncGenerator[ClientSession]:
     async with Client(_echo_server()) as client:
         yield client.session
 

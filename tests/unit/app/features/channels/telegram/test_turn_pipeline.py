@@ -1,6 +1,6 @@
 import asyncio
 import json
-from collections.abc import AsyncIterator
+from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 from typing import override
 from unittest.mock import AsyncMock, MagicMock
@@ -195,7 +195,7 @@ def message(message_id: int) -> httpx2.Response:
 async def pipeline(
     http: MockHTTP,
     turns: TurnServiceContract,
-) -> AsyncIterator[httpx2.AsyncClient]:
+) -> AsyncGenerator[httpx2.AsyncClient]:
     for method in ('setMyCommands', 'deleteMyCommands'):
         http.post(f'{_BASE_URL}/{method}').mock(
             return_value=httpx2.Response(200, json={'ok': True, 'result': True}),
