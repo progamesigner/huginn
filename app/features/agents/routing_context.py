@@ -18,7 +18,7 @@ def clip(text: str, limit: int) -> str:
 def prompt_text(prompt: TurnPrompt) -> str:
     parts = [prompt.text]
     for attachment in prompt.attachments:
-        if attachment.transcript:
+        if attachment.transcript is not None and bool(attachment.transcript):
             parts.append(attachment.transcript)
         parts.append(f'[{attachment.kind}: {attachment.name or attachment.hint}]')
     return '\n'.join(part for part in parts if part)
@@ -48,7 +48,9 @@ def routing_state(
     current = list[JsonValue](prompt_text(prompt) for prompt in context.current)
     state = dict[str, JsonValue](
         {
-            'summary': clip(context.summary, USER_BUDGET) if context.summary else None,
+            'summary': clip(context.summary, USER_BUDGET)
+            if (context.summary is not None and bool(context.summary))
+            else None,
             'previous_turns': previous,
             'current': current,
         },
@@ -75,7 +77,11 @@ def routing_state(
 
 def render_routing_state(context: RoutingContext, budget: int = ROUTING_BUDGET) -> str:
     # NOTE: a lone message with no history renders exactly as it did before
-    if not context.turns and not context.summary and len(context.current) == 1:
+    if (
+        not context.turns
+        and not (context.summary is not None and bool(context.summary))
+        and len(context.current) == 1
+    ):
         prompt = context.current[0]
         if not prompt.attachments:
             return prompt.text

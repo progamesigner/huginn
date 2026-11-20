@@ -152,7 +152,10 @@ class AssetSource:
                     arguments['include_version'] = True
         read = (
             self._client().call_tool_result
-            if arguments.get('include_version')
+            if (
+                arguments.get('include_version') is not None
+                and bool(arguments.get('include_version'))
+            )
             else self._client().call_tool
         )
         try:

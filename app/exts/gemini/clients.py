@@ -108,7 +108,10 @@ class GeminiClient:
             raise GeminiGenerationError(
                 'Gemini returned an invalid response',
             ) from error
-        if result.prompt_feedback and result.prompt_feedback.block_reason:
+        if result.prompt_feedback and (
+            result.prompt_feedback.block_reason is not None
+            and bool(result.prompt_feedback.block_reason)
+        ):
             raise GeminiGenerationError(
                 f'Gemini blocked the prompt ({result.prompt_feedback.block_reason})',
             )
@@ -119,7 +122,9 @@ class GeminiClient:
             )
         parts = candidate.content.parts if candidate and candidate.content else ()
         description = '\n'.join(
-            part.text for part in parts if part.text and not part.thought
+            part.text
+            for part in parts
+            if (part.text is not None and bool(part.text)) and not part.thought
         )
         for part in parts:
             inline = part.inline_data

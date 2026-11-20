@@ -57,7 +57,7 @@ class LocalMemory:
 @pytest.fixture
 async def memory(tmp_path: Path) -> AsyncIterator[LocalMemory]:
     configured = os.environ.get('MUNINN_TEST_BINARY')
-    if not configured:
+    if not (configured is not None and bool(configured)):
         pytest.skip('MUNINN_TEST_BINARY is required; no remote service fallback')
     binary = await asyncio.to_thread(Path(configured).resolve, strict=True)
     root = tmp_path / 'vault'

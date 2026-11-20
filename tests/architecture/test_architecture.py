@@ -97,8 +97,12 @@ def _import_targets(source: str, package: str) -> Iterator[str]:
             if node.level:
                 segments = package.split('.')
                 anchor = '.'.join(segments[: len(segments) - (node.level - 1)])
-                yield f'{anchor}.{node.module}' if node.module else anchor
-            elif node.module:
+                yield (
+                    f'{anchor}.{node.module}'
+                    if (node.module is not None and bool(node.module))
+                    else anchor
+                )
+            elif node.module is not None and bool(node.module):
                 yield node.module
 
 
@@ -496,7 +500,10 @@ def test_cross_feature_imports_follow_provider_dependencies() -> None:
         violations.extend(
             f'{relative}: {message}'
             for target in _import_targets(path.read_text(), package)
-            if (message := _cross_feature_violation(feature, target))
+            if (
+                (message := _cross_feature_violation(feature, target)) is not None
+                and bool(message)
+            )
         )
 
     assert not violations, 'cross-feature import violations:\n' + '\n'.join(violations)
@@ -813,7 +820,10 @@ def test_feature_and_ext_files_avoid_banned_names() -> None:
         message
         for root in (_features_dir(), _exts_dir())
         for path in sorted(root.rglob('*.py'))
-        if (message := _banned_name(path.relative_to(root)))
+        if (
+            (message := _banned_name(path.relative_to(root))) is not None
+            and bool(message)
+        )
     ]
 
     assert not violations, 'banned file names:\n' + '\n'.join(violations)

@@ -272,7 +272,7 @@ def validate_router_selection(
             raise MissingModelError(f'{base}.model: {error}') from error
         validate_selection(config, base, ref)
         return
-    if not model:
+    if not (model is not None and bool(model)):
         raise MissingModelError(f'{base}.model: decision routing requires a model')
     _validate_decision_candidates(config, base, allowed)
     _validate_decision_model(config, base, provider, model)

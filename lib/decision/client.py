@@ -28,7 +28,7 @@ class DecisionProviderConfig(DecisionValue):
 
     @model_validator(mode='after')
     def _addressable(self) -> Self:
-        if self.adapter == 'bifrost' and not self.url:
+        if self.adapter == 'bifrost' and not (self.url is not None and bool(self.url)):
             raise ValueError('the bifrost adapter needs a url')
         return self
 

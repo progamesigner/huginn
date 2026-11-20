@@ -58,8 +58,8 @@ def request(
             TurnPrompt(
                 text=text,
                 actor='alice',
-                account='1' if user else None,
-                handle='new-handle' if user else None,
+                account='1' if (user is not None and bool(user)) else None,
+                handle='new-handle' if (user is not None and bool(user)) else None,
                 memory_scope=user,
             ),
         ),
