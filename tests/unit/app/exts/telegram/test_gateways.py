@@ -157,20 +157,19 @@ def marks(route: Route) -> list[list[dict[str, object]]]:
     ]
 
 
-# NOTE: routes count calls without signalling them, so these yield to the writer until
-# the count moves; the bound turns a writer that never writes into a failure
+# NOTE: the bound turns a writer that never writes into a failure
 async def reached(route: Route, count: int) -> None:
     async with asyncio.timeout(1):
-        while route.call_count < count:  # noqa: ASYNC110
-            await asyncio.sleep(0)
+        await route.reached(count)
 
 
-# NOTE: the writer holds its lock until a write is fully accounted for, so waiting on
-# it too keeps the test from racing the bookkeeping that follows the request
+# NOTE: the writer holds its lock until a write is fully accounted for, so taking it
+# too keeps the test from racing the bookkeeping that follows the request
 async def written(reply: TelegramReply, route: Route, count: int) -> None:
     async with asyncio.timeout(1):
-        while route.call_count < count or reply.lock.locked():  # noqa: ASYNC110
-            await asyncio.sleep(0)
+        await route.reached(count)
+        async with reply.lock:
+            pass
 
 
 def drafted(http: MockHTTP) -> Route:

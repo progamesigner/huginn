@@ -1,3 +1,4 @@
+import asyncio
 from collections.abc import Awaitable, Callable, Iterator
 from dataclasses import dataclass, field
 from itertools import repeat
@@ -33,6 +34,7 @@ class Route:
     answers: Iterator[httpx2.Response | Exception] | None = None
     handler: Handler | None = None
     response: httpx2.Response | None = None
+    recorded: asyncio.Condition = field(default_factory=asyncio.Condition)
 
     @property
     def called(self) -> bool:
@@ -72,10 +74,19 @@ class Route:
         try:
             response = await self._answer(request)
         except BaseException:
-            self.calls.append(Call(request, None))
+            await self._record(Call(request, None))
             raise
-        self.calls.append(Call(request, response))
+        await self._record(Call(request, response))
         return response
+
+    async def reached(self, count: int) -> None:
+        async with self.recorded:
+            await self.recorded.wait_for(lambda: self.call_count >= count)
+
+    async def _record(self, call: Call) -> None:
+        async with self.recorded:
+            self.calls.append(call)
+            self.recorded.notify_all()
 
     async def _answer(self, request: httpx2.Request) -> httpx2.Response:
         if self.handler is not None:
