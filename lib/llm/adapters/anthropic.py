@@ -55,14 +55,16 @@ from lib.llm.types import (
 
 _DEFAULT_MAX_TOKENS = 8192
 
-_STOP_REASONS: dict[str, FinishReason] = {
-    'end_turn': 'stop',
-    'stop_sequence': 'stop',
-    'pause_turn': 'stop',
-    'max_tokens': 'length',
-    'tool_use': 'tool_calls',
-    'refusal': 'error',
-}
+_STOP_REASONS = dict[str, FinishReason](
+    {
+        'end_turn': 'stop',
+        'stop_sequence': 'stop',
+        'pause_turn': 'stop',
+        'max_tokens': 'length',
+        'tool_use': 'tool_calls',
+        'refusal': 'error',
+    },
+)
 
 type _Block = (
     TextBlockParam

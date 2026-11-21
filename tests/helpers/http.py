@@ -104,7 +104,7 @@ class MockHTTP:
     """Answers requests from registered routes; anything unregistered fails the test."""
 
     def __init__(self) -> None:
-        self.routes: list[Route] = []
+        self.routes = list[Route]()
         self.transport = httpx2.MockTransport(self._dispatch)
 
     def manager(self, timeout: float | None = None) -> HTTPClientManager:

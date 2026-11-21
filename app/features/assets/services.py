@@ -33,6 +33,9 @@ class Refresh:
 
 
 class AssetsService(AssetsServiceContract):
+    cache: dict[CacheKey, Inventory]
+    pending: dict[CacheKey, Refresh]
+
     def __init__(
         self,
         config: AssetsConfig,
@@ -49,8 +52,8 @@ class AssetsService(AssetsServiceContract):
             name: AssetSource(name, source, client, logger=logger)
             for name, source in config.sources.items()
         }
-        self.cache: dict[CacheKey, Inventory] = {}
-        self.pending: dict[CacheKey, Refresh] = {}
+        self.cache = {}
+        self.pending = {}
         self.generation = 0
 
     @override

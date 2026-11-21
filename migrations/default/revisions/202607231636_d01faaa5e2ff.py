@@ -1,5 +1,3 @@
-from collections.abc import Sequence
-
 import sqlalchemy as sa
 from alembic import op
 
@@ -7,10 +5,10 @@ from lib.database import Timestamp
 
 SCHEMA = 'public'
 
-revision: str = 'd01faaa5e2ff'
-down_revision: str | None = '7df29f4bcbb1'
-branch_labels: str | Sequence[str] | None = None
-depends_on: str | Sequence[str] | None = None
+revision = 'd01faaa5e2ff'
+down_revision = '7df29f4bcbb1'
+branch_labels = None
+depends_on = None
 
 _COLUMNS = (
     ('users', 'created_at'),

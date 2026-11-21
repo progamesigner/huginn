@@ -45,15 +45,17 @@ from lib.llm.adapters.openai import (
 )
 from lib.llm.client import ProviderConfig
 
-_TOOL: JsonValue = {
-    'type': 'function',
-    'function': {
-        'name': 'search',
-        'description': 'Search the web',
-        'parameters': {'type': 'object', 'properties': {}},
-        'strict': True,
+_TOOL = dict[str, JsonValue](
+    {
+        'type': 'function',
+        'function': {
+            'name': 'search',
+            'description': 'Search the web',
+            'parameters': {'type': 'object', 'properties': {}},
+            'strict': True,
+        },
     },
-}
+)
 
 
 def test_build_messages_flattens_text_segments_into_content() -> None:

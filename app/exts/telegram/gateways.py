@@ -43,7 +43,7 @@ _FAIL_NOTE = (
     '\n\nSomething went wrong before I could finish this reply. Please ask again.'
 )
 _UNSENT_NOTE = 'I made {name} but could not send it ({reason}).\n\n'
-_ENDING_NOTES: dict[TurnEnding, str] = {
+_ENDING_NOTES = {
     'timeout': '\n\nI ran out of time before finishing this. Ask me to continue.',
     'exhausted': '\n\nI used up every step I get for one reply. Ask me to continue.',
 }

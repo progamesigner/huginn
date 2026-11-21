@@ -22,9 +22,11 @@ from tests.unit.app.features.assets.test_assets_service import Memory
 
 
 class Templates(Memory):
+    target: str | None
+
     def __init__(self) -> None:
         super().__init__()
-        self.target: str | None = None
+        self.target = None
         self.command = 'review'
         self.template = 'Review $ARGUMENTS'
 

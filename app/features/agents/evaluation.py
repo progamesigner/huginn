@@ -10,7 +10,7 @@ from .router import Router, _prompt
 from .routing_context import render_routing_state
 
 type Variant = Literal['llm', 'llm+history', 'decision']
-VARIANTS: tuple[Variant, ...] = ('llm', 'llm+history', 'decision')
+VARIANTS = ('llm', 'llm+history', 'decision')
 
 
 class TokenPrices(EvalValue):

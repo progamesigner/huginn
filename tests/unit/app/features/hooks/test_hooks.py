@@ -52,7 +52,7 @@ from tests.unit.app.features.agents.test_turn_handler import (
 
 class Memory(MCPClientContract):
     def __init__(self) -> None:
-        self.calls: list[dict[str, JsonValue]] = []
+        self.calls = list[dict[str, JsonValue]]()
         self.fail = False
 
     @override
@@ -94,7 +94,7 @@ class HTTP(HTTPClientContract):
         self.status = status
         self.fail = fail
         self.body = body
-        self.requests: list[httpx2.Request] = []
+        self.requests = list[httpx2.Request]()
 
     def respond(self, request: httpx2.Request) -> httpx2.Response:
         self.requests.append(request)

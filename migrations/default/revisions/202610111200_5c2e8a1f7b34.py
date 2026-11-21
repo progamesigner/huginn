@@ -1,15 +1,13 @@
-from collections.abc import Sequence
-
 import sqlalchemy as sa
 from alembic import op
 from sqlalchemy import column
 
 SCHEMA = 'public'
 
-revision: str = '5c2e8a1f7b34'
-down_revision: str | None = '192ab5159074'
-branch_labels: str | Sequence[str] | None = None
-depends_on: str | Sequence[str] | None = None
+revision = '5c2e8a1f7b34'
+down_revision = '192ab5159074'
+branch_labels = None
+depends_on = None
 
 
 def upgrade() -> None:

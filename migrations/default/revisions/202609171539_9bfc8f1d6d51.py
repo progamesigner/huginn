@@ -6,10 +6,10 @@ from alembic import op
 
 SCHEMA = 'public'
 
-revision: str = '9bfc8f1d6d51'
-down_revision: str | None = '38d458bfb6ac'
-branch_labels: str | Sequence[str] | None = None
-depends_on: str | Sequence[str] | None = None
+revision = '9bfc8f1d6d51'
+down_revision = '38d458bfb6ac'
+branch_labels = None
+depends_on = None
 
 _UNIQUE = 'uq_conversations_channel'
 
@@ -60,7 +60,7 @@ def upgrade() -> None:
     rows = op.get_bind().execute(
         sa.select(ranked).where(ranked.c.id != ranked.c.survivor),
     )
-    merges: list[tuple[UUID, UUID]] = [(row.id, row.survivor) for row in rows]
+    merges = [(row.id, row.survivor) for row in rows]
     if merges:
         _merge(merges)
 

@@ -22,18 +22,20 @@ pytestmark = pytest.mark.integration
 _OPENAI_MODEL = 'gpt-5-mini'
 _ANTHROPIC_MODEL = 'claude-haiku-4-5-20251001'
 
-_WEATHER_TOOL: JsonValue = {
-    'type': 'function',
-    'function': {
-        'name': 'get_weather',
-        'description': "Get a city's current weather",
-        'parameters': {
-            'type': 'object',
-            'properties': {'city': {'type': 'string'}},
-            'required': ['city'],
+_WEATHER_TOOL = dict[str, JsonValue](
+    {
+        'type': 'function',
+        'function': {
+            'name': 'get_weather',
+            'description': "Get a city's current weather",
+            'parameters': {
+                'type': 'object',
+                'properties': {'city': {'type': 'string'}},
+                'required': ['city'],
+            },
         },
     },
-}
+)
 
 
 class LiveCredentials(BaseSettings):

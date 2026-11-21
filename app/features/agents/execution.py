@@ -4,7 +4,7 @@ from contextvars import ContextVar
 
 from .contracts import ExecutionContext
 
-_CURRENT: ContextVar[ExecutionContext | None] = ContextVar(
+_CURRENT = ContextVar[ExecutionContext | None](
     'agent_execution',
     default=None,
 )

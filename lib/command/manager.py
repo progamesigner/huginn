@@ -5,7 +5,7 @@ from typer import Context, Typer
 
 from .contracts import CommandContract, Resolver
 
-_container: ContextVar[Resolver | None] = ContextVar('container', default=None)
+_container = ContextVar[Resolver | None]('container', default=None)
 
 
 def _current() -> Resolver:

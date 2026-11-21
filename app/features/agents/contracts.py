@@ -204,7 +204,7 @@ class SubagentDefinition:
 class SubagentStream(TurnStream):
     # Children stay silent; only their files reach the parent turn.
     def __init__(self) -> None:
-        self.artifacts: list[ReplyArtifact] = []
+        self.artifacts = list[ReplyArtifact]()
 
     @override
     async def on_artifact(self, artifact: ReplyArtifact) -> None:

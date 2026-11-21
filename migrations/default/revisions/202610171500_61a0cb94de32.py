@@ -1,12 +1,10 @@
-from collections.abc import Sequence
-
 import sqlalchemy as sa
 from alembic import op
 
-revision: str = '61a0cb94de32'
-down_revision: str | None = '5c2e8a1f7b34'
-branch_labels: str | Sequence[str] | None = None
-depends_on: str | Sequence[str] | None = None
+revision = '61a0cb94de32'
+down_revision = '5c2e8a1f7b34'
+branch_labels = None
+depends_on = None
 
 _HANDLE = "handle = lower(btrim(handle)) AND handle ~ '^[a-z0-9._-]{1,64}$' AND handle NOT IN ('.', '..')"
 

@@ -45,12 +45,12 @@ class TelegramMenuService:
         self.identities = identities
         self.gateways = gateways
         self.logger = logger.bind(component='telegram-menu')
-        self.locks: dict[MenuKey, tuple[asyncio.Lock, int]] = {}
-        self.fingerprints: OrderedDict[MenuKey, str] = OrderedDict()
+        self.locks = dict[MenuKey, tuple[asyncio.Lock, int]]()
+        self.fingerprints = OrderedDict[MenuKey, str]()
         self.tasks = TaskSupervisor(logger=self.logger, grace=_DRAIN_GRACE)
         # Keys with a synchronization still waiting for its turn; that queued
         # run resolves identity afresh, so another request adds nothing.
-        self.pending: set[MenuKey] = set()
+        self.pending = set[MenuKey]()
         self.backoff = 0.5
 
     def schedule(

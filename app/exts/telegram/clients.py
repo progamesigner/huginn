@@ -21,7 +21,7 @@ from .types import (
 )
 
 MAX_ATTEMPTS = 3
-_UPLOAD_METHODS: dict[Upload, str] = {
+_UPLOAD_METHODS = {
     'audio': 'sendAudio',
     'document': 'sendDocument',
     'photo': 'sendPhoto',

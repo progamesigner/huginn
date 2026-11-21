@@ -9,7 +9,7 @@ from typing import Literal
 type DocumentFormat = Literal['csv', 'docx', 'md', 'xlsx']
 type Cell = str | int | float | bool | None
 
-_MIMES: dict[DocumentFormat, str] = {
+_MIMES = {
     'csv': 'text/csv',
     'docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
     'md': 'text/markdown',

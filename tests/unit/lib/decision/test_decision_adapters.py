@@ -68,32 +68,34 @@ type Route = Literal['bifrost', 'typesafe', 'openrouter', 'openai']
 # NOTE: OpenRouter speaks TypeSafe's own format, so it is the typesafe adapter pointed
 # at another url; Bifrost's native and OpenAI-compatible decision endpoints use their
 # respective adapters
-ROUTES: dict[Route, tuple[Adapter, str | None, str, str]] = {
-    'bifrost': (
-        'bifrost',
-        'http://bifrost:8080/v1/decisions',
-        'bifrost_choice.json',
-        'http://bifrost:8080/v1/decisions',
-    ),
-    'typesafe': (
-        'typesafe',
-        None,
-        'typesafe_choice.json',
-        'https://api.typesafe.ai/v1/systemone',
-    ),
-    'openrouter': (
-        'typesafe',
-        'https://openrouter.ai/api/alpha/decisions',
-        'openrouter_choice.json',
-        'https://openrouter.ai/api/alpha/decisions',
-    ),
-    'openai': (
-        'openai',
-        None,
-        'openai_choice.json',
-        'https://api.openai.com/v1/decisions',
-    ),
-}
+ROUTES = dict[Route, tuple[Adapter, str | None, str, str]](
+    {
+        'bifrost': (
+            'bifrost',
+            'http://bifrost:8080/v1/decisions',
+            'bifrost_choice.json',
+            'http://bifrost:8080/v1/decisions',
+        ),
+        'typesafe': (
+            'typesafe',
+            None,
+            'typesafe_choice.json',
+            'https://api.typesafe.ai/v1/systemone',
+        ),
+        'openrouter': (
+            'typesafe',
+            'https://openrouter.ai/api/alpha/decisions',
+            'openrouter_choice.json',
+            'https://openrouter.ai/api/alpha/decisions',
+        ),
+        'openai': (
+            'openai',
+            None,
+            'openai_choice.json',
+            'https://api.openai.com/v1/decisions',
+        ),
+    },
+)
 
 
 def _adapter(

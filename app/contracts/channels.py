@@ -1,5 +1,4 @@
 from abc import ABC, abstractmethod
-from collections.abc import Mapping
 from types import MappingProxyType
 from typing import Literal
 
@@ -7,7 +6,7 @@ from pydantic import BaseModel, ConfigDict, SecretStr
 
 type AttachmentKind = Literal['audio', 'document', 'image']
 type ArtifactKind = Literal['audio', 'document', 'image', 'video']
-ATTACHMENT_LIMITS: Mapping[AttachmentKind, int] = MappingProxyType(
+ATTACHMENT_LIMITS = MappingProxyType(
     {
         'image': 5 * 1024 * 1024,
         'audio': 10 * 1024 * 1024,

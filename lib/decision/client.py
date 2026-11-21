@@ -11,7 +11,7 @@ _DEFAULT_TIMEOUT = 5.0
 
 # NOTE: each format defaults to its vendor; anything else that speaks one, such as
 # OpenRouter for TypeSafe's or a Bifrost gateway for OpenAI's, is reached by url alone
-DEFAULT_URLS: dict[Adapter, str] = {
+DEFAULT_URLS = {
     'gemini': 'https://generativelanguage.googleapis.com/v1beta/decisions',
     'openai': 'https://api.openai.com/v1/decisions',
     'typesafe': 'https://api.typesafe.ai/v1/systemone',

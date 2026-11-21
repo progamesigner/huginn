@@ -6,10 +6,10 @@ from app.features.agents.contracts import ToolParams, ToolResult, TypedTool
 from app.features.tools.artifacts import ArtifactWriter
 from app.features.tools.exceptions import ToolError
 
-from .config import SpeechFormat, SpeechToolConfig
+from .config import SpeechToolConfig
 from .repositories import SpeechRepository
 
-_FORMATS: dict[SpeechFormat, tuple[str, str]] = {
+_FORMATS = {
     'aac': ('audio/aac', 'aac'),
     'flac': ('audio/flac', 'flac'),
     'mp3': ('audio/mpeg', 'mp3'),

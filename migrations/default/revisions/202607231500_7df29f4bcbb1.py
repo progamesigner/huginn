@@ -1,5 +1,3 @@
-from collections.abc import Sequence
-
 import sqlalchemy as sa
 from alembic import op
 
@@ -7,10 +5,10 @@ from lib.database import GUID
 
 SCHEMA = 'public'
 
-revision: str = '7df29f4bcbb1'
-down_revision: str | None = '6b4de18291a7'
-branch_labels: str | Sequence[str] | None = None
-depends_on: str | Sequence[str] | None = None
+revision = '7df29f4bcbb1'
+down_revision = '6b4de18291a7'
+branch_labels = None
+depends_on = None
 
 
 def upgrade() -> None:

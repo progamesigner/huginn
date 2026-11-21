@@ -77,7 +77,7 @@ class SkillRepository:
 class SkillRepositories:
     def __init__(self, factory: Callable[[str], SkillRepository]) -> None:
         self.factory = factory
-        self.repositories: dict[str, SkillRepository] = {}
+        self.repositories = dict[str, SkillRepository]()
 
     def get(self, name: str) -> SkillRepository:
         if name not in self.repositories:

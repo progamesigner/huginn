@@ -37,6 +37,8 @@ class _Cached:
 
 
 class ConfiguredHookSource(HookSource):
+    cache: dict[_Key, _Cached]
+
     def __init__(
         self,
         configs: Mapping[str, HookConfig],
@@ -51,7 +53,7 @@ class ConfiguredHookSource(HookSource):
         self.http = http_client
         self.clock = clock
         self.logger = logger.bind(component='hooks')
-        self.cache: dict[_Key, _Cached] = {}
+        self.cache = {}
         self.lock = asyncio.Lock()
 
     @override

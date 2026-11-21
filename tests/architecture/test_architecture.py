@@ -332,25 +332,25 @@ def _reaches_the_app(source: str, package: str) -> Iterator[str]:
             yield f'{target}: a contract must not import the app whose boundary it declares'
 
 
-# A signature declares types; a function body lets ty infer them. An annotation on a
-# local is either redundant with what the signature already says or a sign the value is
-# being built in a shape ty cannot follow -- both are worth rewriting rather than
-# annotating. Class bodies and module level are the opposite case: there the annotation
-# IS the declaration, so only function bodies are checked.
-def _annotated_locals(source: str) -> Iterator[str]:
-    def visit(node: ast.AST, *, in_function: bool) -> Iterator[str]:
+# A signature declares types; an assignment lets ty infer them. An annotated assignment
+# is either redundant with what ty already infers or a sign the value is built in a
+# shape ty cannot follow -- build it through a typed constructor such as
+# `dict[str, JsonValue](...)` instead. Only a class body declares its fields this way.
+def _annotated_assignments(source: str) -> Iterator[str]:
+    def visit(node: ast.AST, *, in_class: bool) -> Iterator[str]:
         for child in ast.iter_child_nodes(node):
             match child:
-                case ast.AnnAssign(target=ast.Name(id=name)) if in_function:
+                case ast.AnnAssign(target=target) if not in_class:
+                    name = ast.unparse(target)
                     yield f'line {child.lineno}: {name} is annotated; let ty infer it'
-                case ast.FunctionDef() | ast.AsyncFunctionDef():
-                    yield from visit(child, in_function=True)
                 case ast.ClassDef():
-                    yield from visit(child, in_function=False)
+                    yield from visit(child, in_class=True)
+                case ast.FunctionDef() | ast.AsyncFunctionDef() | ast.Lambda():
+                    yield from visit(child, in_class=False)
                 case _:
-                    yield from visit(child, in_function=in_function)
+                    yield from visit(child, in_class=in_class)
 
-    yield from visit(ast.parse(source), in_function=False)
+    yield from visit(ast.parse(source), in_class=False)
 
 
 def _attribute_reads(source: str) -> Iterator[tuple[str, str]]:
@@ -454,32 +454,36 @@ def test_init_reexport_check_flags_logic_and_absolute_imports() -> None:
     assert not _init_reexport_only('value = compute()\n')
 
 
-def test_function_bodies_leave_local_types_to_inference() -> None:
+def test_assignments_leave_types_to_inference() -> None:
     roots = (*(_source_root(package) for package in ROOT_PACKAGES), _tests_dir())
     offenders = [
         f'{path}: {message}'
         for root in roots
         for path in sorted(root.rglob('*.py'))
-        for message in _annotated_locals(path.read_text(encoding='utf-8'))
+        for message in _annotated_assignments(path.read_text(encoding='utf-8'))
     ]
 
-    assert not offenders, 'annotate the signature, not the local:\n' + '\n'.join(
+    assert not offenders, 'annotate the signature, not the assignment:\n' + '\n'.join(
         offenders,
     )
 
 
-def test_annotated_local_check_reads_the_scope_not_the_syntax() -> None:
+def test_annotated_assignment_check_reads_the_scope_not_the_syntax() -> None:
     def flagged(source: str) -> bool:
-        return bool(list(_annotated_locals(source)))
+        return bool(list(_annotated_assignments(source)))
 
-    assert not flagged('value: int = 1\n')
     assert not flagged('class A:\n    value: int = 1\n')
+    assert not flagged('class A:\n    value: int | None\n')
     assert not flagged('def f() -> None:\n    class A:\n        value: int = 1\n')
     assert not flagged('def f(value: int = 1) -> None:\n    pass\n')
 
     assert flagged('def f() -> None:\n    value: int = 1\n')
     assert flagged('async def f() -> None:\n    value: list[int] = []\n')
     assert flagged('class A:\n    def f(self) -> None:\n        value: int = 1\n')
+    assert flagged('class A:\n    def f(self) -> None:\n        self.value: int = 1\n')
+    assert flagged('def f() -> None:\n    value: int\n')
+    assert flagged('value: int\n')
+    assert flagged('value: int = 1\n')
 
 
 def test_cross_feature_imports_follow_provider_dependencies() -> None:

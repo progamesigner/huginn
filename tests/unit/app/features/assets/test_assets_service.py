@@ -22,10 +22,12 @@ from tests.helpers.logging import make_logger
 
 
 class Memory(MCPClientContract):
+    gate: asyncio.Event | None
+
     def __init__(self) -> None:
         self.calls = list[tuple[str, dict[str, JsonValue]]]()
         self.body = 'initial'
-        self.gate: asyncio.Event | None = None
+        self.gate = None
 
     @override
     async def call_tool(

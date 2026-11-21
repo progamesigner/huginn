@@ -1,5 +1,3 @@
-from collections.abc import Sequence
-
 import sqlalchemy as sa
 from alembic import op
 from sqlalchemy import column
@@ -8,10 +6,10 @@ from lib.database import GUID, Timestamp
 
 SCHEMA = 'public'
 
-revision: str = '38d458bfb6ac'
-down_revision: str | None = 'd125346e2b9c'
-branch_labels: str | Sequence[str] | None = None
-depends_on: str | Sequence[str] | None = None
+revision = '38d458bfb6ac'
+down_revision = 'd125346e2b9c'
+branch_labels = None
+depends_on = None
 
 _KINDS = ('audio', 'image', 'summary', 'text', 'tool_call', 'tool_result')
 _KINDS_BEFORE = ('summary', 'text', 'tool_call', 'tool_result')
