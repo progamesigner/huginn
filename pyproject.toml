@@ -157,9 +157,3 @@ quote-style = "single"
 [tool.ty.rules]
 all = "error"
 truthiness-test-of-none-union = "ignore"
-
-# SQLAlchemy factories return Any parameters for declarative mapped attributes.
-[[tool.ty.overrides]]
-include = ["app/core/records.py", "app/features/blobs/sources/sqlalchemy.py", "app/features/conversations/sources/sqlalchemy.py", "app/features/identities/sources/sqlalchemy.py"]
-[tool.ty.overrides.rules]
-unsound-assignment = "ignore"

@@ -1,4 +1,5 @@
 from datetime import datetime
+from typing import Annotated, cast
 from uuid import UUID
 
 from pydantic import JsonValue
@@ -13,7 +14,7 @@ from sqlalchemy import (
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.records import AppRecord, TimestampRecordMixin
-from lib.database import Timestamp
+from lib.database import Json, Timestamp
 
 # NOTE: pydantic's JsonValue admits None, so SQLAlchemy infers a nullable column from
 # the annotation alone; every JSON column here is NOT NULL and has to say so
@@ -30,9 +31,9 @@ class UserRecord(TimestampRecordMixin, AppRecord):
         ),
     )
 
-    handle: Mapped[str] = mapped_column(unique=True)
-    display_name: Mapped[str] = mapped_column()
-    memory_scope: Mapped[str] = mapped_column(unique=True)
+    handle: Mapped[Annotated[str, mapped_column(unique=True)]]
+    display_name: Mapped[str]
+    memory_scope: Mapped[Annotated[str, mapped_column(unique=True)]]
 
 
 class ExternalIdentityRecord(AppRecord):
@@ -42,21 +43,36 @@ class ExternalIdentityRecord(AppRecord):
         Index('ix_external_identities_user_provider', 'user_id', 'provider'),
     )
 
-    user_id: Mapped[UUID] = mapped_column(
-        ForeignKey(UserRecord.id, ondelete='CASCADE'),
-    )
-    provider: Mapped[str] = mapped_column()
-    realm: Mapped[str] = mapped_column()
-    external_user_id: Mapped[str] = mapped_column()
-    profile: Mapped[JsonValue] = mapped_column(
-        nullable=False,
-        server_default=_EMPTY_JSON,
-    )
-    linked_at: Mapped[datetime] = mapped_column(server_default=func.now())
-    updated_at: Mapped[datetime] = mapped_column(
-        server_default=func.now(),
-        onupdate=func.now(),
-    )
+    user_id: Mapped[
+        Annotated[
+            UUID,
+            mapped_column(
+                ForeignKey(UserRecord.id, ondelete='CASCADE'),
+            ),
+        ]
+    ]
+    provider: Mapped[str]
+    realm: Mapped[str]
+    external_user_id: Mapped[str]
+    profile: Mapped[
+        Annotated[
+            JsonValue,
+            mapped_column(
+                nullable=False,
+                server_default=_EMPTY_JSON,
+            ),
+        ]
+    ]
+    linked_at: Mapped[Annotated[datetime, mapped_column(server_default=func.now())]]
+    updated_at: Mapped[
+        Annotated[
+            datetime,
+            mapped_column(
+                server_default=func.now(),
+                onupdate=func.now(),
+            ),
+        ]
+    ]
 
 
 class IdentityAuditEventRecord(AppRecord):
@@ -65,18 +81,23 @@ class IdentityAuditEventRecord(AppRecord):
         Index('ix_identity_audit_events_user_occurred', 'user_id', 'occurred_at'),
     )
 
-    event_type: Mapped[str] = mapped_column()
-    user_id: Mapped[UUID | None] = mapped_column(
-        ForeignKey(UserRecord.id, ondelete='SET NULL'),
-    )
-    external_identity_id: Mapped[UUID | None] = mapped_column()
-    provider: Mapped[str] = mapped_column()
-    realm: Mapped[str] = mapped_column()
-    occurred_at: Mapped[datetime] = mapped_column(server_default=func.now())
-    metadata_: Mapped[JsonValue] = mapped_column(
-        'metadata',
-        nullable=False,
-        server_default=_EMPTY_JSON,
+    event_type: Mapped[str]
+    user_id: Mapped[
+        Annotated[
+            UUID | None,
+            mapped_column(
+                ForeignKey(UserRecord.id, ondelete='SET NULL'),
+            ),
+        ]
+    ]
+    external_identity_id: Mapped[UUID | None]
+    provider: Mapped[str]
+    realm: Mapped[str]
+    occurred_at: Mapped[Annotated[datetime, mapped_column(server_default=func.now())]]
+    # NOTE: Annotated drops a column name, and declarative classes reserve `metadata`
+    metadata_ = cast(
+        'Mapped[JsonValue]',
+        mapped_column('metadata', Json, nullable=False, server_default=_EMPTY_JSON),
     )
 
 
@@ -91,18 +112,23 @@ class IdentityLinkInviteRecord(AppRecord):
         Index('ix_identity_link_invites_user_created', 'user_id', 'created_at'),
     )
 
-    user_id: Mapped[UUID | None] = mapped_column(
-        ForeignKey(UserRecord.id, ondelete='CASCADE'),
-    )
-    provider: Mapped[str] = mapped_column()
-    realm: Mapped[str] = mapped_column()
-    token_digest: Mapped[bytes] = mapped_column()
-    expires_at: Mapped[datetime] = mapped_column(Timestamp())
-    consumed_at: Mapped[datetime | None] = mapped_column(Timestamp())
-    revoked_at: Mapped[datetime | None] = mapped_column(Timestamp())
-    created_at: Mapped[datetime] = mapped_column(server_default=func.now())
-    created_by: Mapped[str] = mapped_column()
-    kind: Mapped[str] = mapped_column(server_default='link')
-    memory_scope: Mapped[str | None] = mapped_column()
-    reserved_handle: Mapped[str | None] = mapped_column()
-    pending_external_user_id: Mapped[str | None] = mapped_column()
+    user_id: Mapped[
+        Annotated[
+            UUID | None,
+            mapped_column(
+                ForeignKey(UserRecord.id, ondelete='CASCADE'),
+            ),
+        ]
+    ]
+    provider: Mapped[str]
+    realm: Mapped[str]
+    token_digest: Mapped[bytes]
+    expires_at: Mapped[Annotated[datetime, mapped_column(Timestamp())]]
+    consumed_at: Mapped[Annotated[datetime | None, mapped_column(Timestamp())]]
+    revoked_at: Mapped[Annotated[datetime | None, mapped_column(Timestamp())]]
+    created_at: Mapped[Annotated[datetime, mapped_column(server_default=func.now())]]
+    created_by: Mapped[str]
+    kind: Mapped[Annotated[str, mapped_column(server_default='link')]]
+    memory_scope: Mapped[str | None]
+    reserved_handle: Mapped[str | None]
+    pending_external_user_id: Mapped[str | None]
