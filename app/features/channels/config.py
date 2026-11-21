@@ -2,6 +2,7 @@ from collections.abc import Callable, Iterator, Mapping
 from dataclasses import replace
 from functools import reduce
 from operator import or_
+from types import GenericAlias
 from typing import Annotated, Any, Literal, cast
 
 from pydantic import (
@@ -80,7 +81,8 @@ def _channel_kind(value: object) -> str | None:
 
 def _build_channels_config(registry: ChannelRegistry) -> type[BaseModel]:
     element = _channel_config_element(registry.config_models)
-    fields = dict[str, Any]({'root': (dict.__class_getitem__((str, element)), ...)})
+    # ty reads create_model keywords as type expressions; this field type exists only at runtime
+    fields = dict[str, Any]({'root': (GenericAlias(dict, (str, element)), ...)})
     return create_model(
         'ChannelConfigList',
         __base__=ChannelConfigList,

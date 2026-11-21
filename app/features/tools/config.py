@@ -2,6 +2,7 @@ from collections.abc import Callable, Iterator, Mapping
 from dataclasses import replace
 from functools import reduce
 from operator import or_
+from types import GenericAlias
 from typing import Annotated, Any
 
 from pydantic import (
@@ -40,7 +41,8 @@ class ToolConfigList(RootModel[dict[str, ToolConfig]]):
 
 def _build_tools_config(registry: ToolRegistry) -> type[BaseModel]:
     element = _tool_config_element(registry.config_models)
-    fields = dict[str, Any]({'root': (dict.__class_getitem__((str, element)), ...)})
+    # ty reads create_model keywords as type expressions; this field type exists only at runtime
+    fields = dict[str, Any]({'root': (GenericAlias(dict, (str, element)), ...)})
     return create_model(
         'ToolConfigList',
         __base__=ToolConfigList,
