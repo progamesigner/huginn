@@ -185,12 +185,7 @@ def report(
             / len(group),
             'fallback_reasons': dict(
                 Counter(
-                    result.fallback_reason
-                    for result in group
-                    if (
-                        result.fallback_reason is not None
-                        and bool(result.fallback_reason)
-                    )
+                    result.fallback_reason for result in group if result.fallback_reason
                 ),
             ),
             'latency_ms': {

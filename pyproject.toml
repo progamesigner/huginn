@@ -149,6 +149,7 @@ quote-style = "single"
 
 [tool.ty.rules]
 all = "error"
+truthiness-test-of-none-union = "ignore"
 
 # SQLAlchemy factories return Any parameters for declarative mapped attributes.
 [[tool.ty.overrides]]

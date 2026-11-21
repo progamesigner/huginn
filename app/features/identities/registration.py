@@ -183,10 +183,7 @@ class RegistrationService:
             name = registration_handle(handle)
             if invite.reserved_handle is not None and name != invite.reserved_handle:
                 return Err(InvalidIdentityLinkError('handle_mismatch'))
-            if (
-                not (display_name is not None and bool(display_name))
-                or not display_name.strip()
-            ):
+            if not display_name or not display_name.strip():
                 display_name = name
             if len(display_name) > 128:
                 raise ValueError('display name too long')

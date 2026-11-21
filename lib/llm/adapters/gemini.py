@@ -187,11 +187,8 @@ class GeminiAdapter:
                     config=build_config(request),
                 )
                 async for event in events:
-                    if not (event.candidates is not None and bool(event.candidates)):
-                        if event.prompt_feedback and (
-                            event.prompt_feedback.block_reason is not None
-                            and bool(event.prompt_feedback.block_reason)
-                        ):
+                    if not event.candidates:
+                        if event.prompt_feedback and event.prompt_feedback.block_reason:
                             yield FinishChunk(reason='error')
                             finished = True
                         continue
@@ -201,7 +198,7 @@ class GeminiAdapter:
                     ):
                         if part.function_call:
                             call = part.function_call
-                            if not (call.name is not None and bool(call.name)):
+                            if not call.name:
                                 raise ValueError(
                                     'Gemini returned an unnamed function call',
                                 )
@@ -217,8 +214,8 @@ class GeminiAdapter:
                             )
                             index += 1
                             called = True
-                        elif part.text is not None and bool(part.text):
-                            if part.thought is not None and bool(part.thought):
+                        elif part.text:
+                            if part.thought:
                                 yield ThinkingChunk(text=part.text)
                             else:
                                 yield TextChunk(text=part.text)
@@ -232,9 +229,7 @@ class GeminiAdapter:
                                 ),
                             },
                         )
-                    if candidate.finish_reason is not None and bool(
-                        candidate.finish_reason,
-                    ):
+                    if candidate.finish_reason:
                         reason = candidate.finish_reason.value
                         yield FinishChunk(
                             reason=(

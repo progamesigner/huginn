@@ -85,8 +85,7 @@ async def evaluate(
                     engine=variant,
                     **fields,
                     effective_agent=decision.choice
-                    if decision.fallback_reason is None
-                    and (decision.choice is not None and bool(decision.choice))
+                    if decision.fallback_reason is None and decision.choice
                     else sample.fallback,
                     estimated_cost_usd=cost,
                     usage_basis=basis,

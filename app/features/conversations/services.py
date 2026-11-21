@@ -349,11 +349,7 @@ class ConversationTranscriptStore(TranscriptServiceContract):
                 return (), None
             turns = await repository.load_routing_turns(conversation, limit)
             payload = await repository.load_current_summary(conversation)
-            summary = (
-                payload.get('summary')
-                if (payload is not None and bool(payload))
-                else None
-            )
+            summary = payload.get('summary') if payload else None
         return tuple(routing_turn(turn) for turn in turns), (
             summary if isinstance(summary, str) else None
         )

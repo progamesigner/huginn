@@ -226,8 +226,7 @@ class Router:
         )
         chosen = (
             decision.choice
-            if decision.fallback_reason is None
-            and (decision.choice is not None and bool(decision.choice))
+            if decision.fallback_reason is None and decision.choice
             else selection.fallback
         )
         if selection.shadow is not None and self.shadows is not None:
@@ -327,7 +326,7 @@ class Router:
             ref = resolve_selection(selection.provider, selection.model, self.defaults)
             result = RoutingDecision(
                 choice,
-                None if (choice is not None and bool(choice)) else 'invalid_choice',
+                None if choice else 'invalid_choice',
                 model=ref.model,
             )
         return replace(result, elapsed_ms=(perf_counter() - started) * 1000)

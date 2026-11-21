@@ -145,9 +145,7 @@ def resolve_bindings(
         # memory binding while preserving handle for non-memory arguments.
         if key == 'user' and source == 'handle':
             value = scope.memory_scope or scope.handle
-        if not (value is not None and bool(value)) or not _SAFE_BOUND_VALUE.fullmatch(
-            value,
-        ):
+        if not value or not _SAFE_BOUND_VALUE.fullmatch(value):
             return None
         resolved[key] = value
     return resolved

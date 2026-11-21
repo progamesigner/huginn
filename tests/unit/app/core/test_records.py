@@ -30,9 +30,5 @@ def test_timestamp_mixin_adds_app_controlled_columns() -> None:
     assert columns.created_at.server_default is None
     assert columns.updated_at.server_default is None
     assert columns.updated_at.onupdate is None
-    assert not (
-        columns.created_at.nullable is not None and bool(columns.created_at.nullable)
-    )
-    assert not (
-        columns.updated_at.nullable is not None and bool(columns.updated_at.nullable)
-    )
+    assert not columns.created_at.nullable
+    assert not columns.updated_at.nullable

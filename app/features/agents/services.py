@@ -611,7 +611,7 @@ class TurnHandler(TurnServiceContract):
                     missing_hooks = []
                     for source in self.hooks.sources():
                         harvest = await source.collect(agent.config, scope)
-                        if harvest.content is not None and bool(harvest.content):
+                        if harvest.content:
                             extra.append(harvest.content)
                         missing_hooks.extend(harvest.unreachable)
                     context.tools = tools.tools

@@ -815,8 +815,7 @@ async def test_run_binds_turn_id_during_tool_execution() -> None:
 
     await runner.run(make_turn(), discard())
 
-    assert probe.seen.get('turn_id') is not None
-    assert bool(probe.seen.get('turn_id'))
+    assert probe.seen.get('turn_id')
     assert 'turn_id' not in get_contextvars()
 
 

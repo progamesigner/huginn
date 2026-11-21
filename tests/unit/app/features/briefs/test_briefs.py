@@ -69,20 +69,8 @@ class VersionedMemory(Memory):
             expected = arguments.get('expected_version')
             if (
                 previous is not None
-                and (
-                    previous[1] != expected
-                    or (
-                        arguments.get('expected_absent') is not None
-                        and bool(arguments.get('expected_absent'))
-                    )
-                )
-            ) or (
-                previous is None
-                and not (
-                    arguments.get('expected_absent') is not None
-                    and bool(arguments.get('expected_absent'))
-                )
-            ):
+                and (previous[1] != expected or arguments.get('expected_absent'))
+            ) or (previous is None and not arguments.get('expected_absent')):
                 return '{"code":"conflict"}'
             version = f'v{int(previous[1][1:]) + 1}' if previous else 'v1'
             self.docs[user] = (str(arguments['content']), version)

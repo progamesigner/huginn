@@ -112,7 +112,7 @@ class Commands(ScopedCommandsServiceContract):
         self.scopes.append(prompt.memory_scope)
         return (
             (CommandInfo('personal', self.description),)
-            if (prompt.account is not None and bool(prompt.account)) and self.allowed
+            if prompt.account and self.allowed
             else ()
         )
 

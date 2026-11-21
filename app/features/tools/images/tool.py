@@ -62,7 +62,7 @@ class ImageTool(TypedTool[ImageParams]):
         )
         revised = (
             f' The generator read the request as: {image.revised_prompt}'
-            if (image.revised_prompt is not None and bool(image.revised_prompt))
+            if image.revised_prompt
             else ''
         )
         return ToolResult(

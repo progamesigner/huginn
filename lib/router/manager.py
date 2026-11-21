@@ -51,11 +51,7 @@ class RouterManager(RouterContract):
         self.application = None
         self.debug = debug
         self.docs = docs
-        self.exception_handlers = (
-            dict(exception_handlers)
-            if (exception_handlers is not None and bool(exception_handlers))
-            else {}
-        )
+        self.exception_handlers = dict(exception_handlers) if exception_handlers else {}
         self.lifespan = lifespan
         self.middlewares = tuple(middlewares)
         self.routers = []
