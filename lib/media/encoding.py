@@ -9,7 +9,7 @@ def opus_encoder() -> str:
     executable = shutil.which('ffmpeg')
     if executable is None:
         raise ValueError('Gemini speech requires ffmpeg with the libopus encoder')
-    result = subprocess.run(  # noqa: S603
+    result = subprocess.run(
         [executable, '-hide_banner', '-encoders'],
         capture_output=True,
         timeout=5,

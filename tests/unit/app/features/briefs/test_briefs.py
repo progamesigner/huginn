@@ -144,8 +144,8 @@ async def test_fresh_reads_and_explicit_updates_use_resolved_memory_binding() ->
     [
         ('Let us discuss the brief.', 'user'),
         ('Do not update AGENTS.md.', 'user'),
-        ('先不更新 AGENTS.md，只討論內容。', 'user'),  # noqa: RUF001
-        ('AGENTS.md 的 update 功能怎麼運作？', 'user'),  # noqa: RUF001
+        ('先不更新 AGENTS.md，只討論內容。', 'user'),
+        ('AGENTS.md 的 update 功能怎麼運作？', 'user'),
         ('If needed, update AGENTS.md.', 'user'),
         ('Give me a brief update on the deploy.', 'user'),
         ('幫我更新簡報第三頁', 'user'),
@@ -364,9 +364,9 @@ async def test_brief_changes_leave_the_static_cache_prefix_identical() -> None:
         ("Please don't ever let anyone update AGENTS.md", None),
         ('No one should update AGENTS.md', None),
         ('我不希望你在今天的這次對話中更新 AGENTS.md', None),
-        ('不要更新 AGENTS.md，記錄在別的筆記就好', None),  # noqa: RUF001
+        ('不要更新 AGENTS.md，記錄在別的筆記就好', None),
         ("Please don't update AGENTS.md, record it elsewhere", None),
-        ('AGENTS.md 先不動，我記錄在 HEARTBEAT', None),  # noqa: RUF001
+        ('AGENTS.md 先不動，我記錄在 HEARTBEAT', None),
         ('Avoid updating AGENTS.md; add it to notes', None),
         ('暫緩更新 AGENTS.md', None),
         ('等等再更新 AGENTS.md', None),
@@ -383,7 +383,7 @@ async def test_brief_changes_leave_the_static_cache_prefix_identical() -> None:
             'Never update AGENTS.md. We record decisions in notes.',
             'AGENTS.md. We record',
         ),
-        ('先不更新 AGENTS.md，只討論內容。', '更新 AGENTS.md'),  # noqa: RUF001
+        ('先不更新 AGENTS.md，只討論內容。', '更新 AGENTS.md'),
         ('請不要更新 AGENTS.md', '更新 AGENTS.md'),
     ],
 )
@@ -400,14 +400,14 @@ def test_negated_reported_and_conditional_sentences_do_not_authorize(
 @pytest.mark.parametrize(
     ('text', 'quote'),
     [
-        ('請更新 AGENTS.md：不要自動部署。', None),  # noqa: RUF001
-        ('記住：不要再用 tabs。請把這條加到 AGENTS.md', '請把這條加到 AGENTS.md'),  # noqa: RUF001
+        ('請更新 AGENTS.md：不要自動部署。', None),
+        ('記住：不要再用 tabs。請把這條加到 AGENTS.md', '請把這條加到 AGENTS.md'),
         ('請把這個決定寫進協作簡報', None),
-        ('不錯，請更新 AGENTS.md', None),  # noqa: RUF001
-        ('可以幫我更新 AGENTS.md 嗎？', None),  # noqa: RUF001
+        ('不錯，請更新 AGENTS.md', None),
+        ('可以幫我更新 AGENTS.md 嗎？', None),
         ('Can you update AGENTS.md with the decision?', None),
-        ('更新 AGENTS.md，記錄如何部署', None),  # noqa: RUF001
-        ('更新 AGENTS.md，以後不要再自動部署', None),  # noqa: RUF001
+        ('更新 AGENTS.md，記錄如何部署', None),
+        ('更新 AGENTS.md，以後不要再自動部署', None),
         ('把「不要用簡體」記錄到 AGENTS.md', None),
         ('在 AGENTS.md 特別記錄部署流程', None),
         ('把我說的部署流程寫到 AGENTS.md', None),

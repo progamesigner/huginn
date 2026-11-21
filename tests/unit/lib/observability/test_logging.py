@@ -102,7 +102,7 @@ def test_create_logger_returns_bound_logger() -> None:
     assert isinstance(create_logger('app').bind(), Logger)
 
 
-_BOT_TOKEN = '123456789:AAHdqTcvCH1vGWJxfSeofSAs0K5PALDsaw4'  # noqa: S105
+_BOT_TOKEN = '123456789:AAHdqTcvCH1vGWJxfSeofSAs0K5PALDsaw4'
 
 
 def test_httpx_request_lines_hide_the_telegram_bot_token(

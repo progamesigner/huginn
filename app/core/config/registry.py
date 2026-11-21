@@ -48,8 +48,7 @@ S_co = TypeVar('S_co', bound=BaseModel, covariant=True)
 
 
 @dataclass(frozen=True)
-class SectionSpec(Generic[S_co]):  # noqa: UP046
-    # Explicit covariance lets frozen specs share a registry across model subclasses.
+class SectionSpec(Generic[S_co]):
     key: str
     model: type[S_co]
     thunk: ModelThunk | None = None

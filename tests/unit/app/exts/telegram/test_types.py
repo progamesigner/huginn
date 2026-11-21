@@ -1,3 +1,4 @@
+from dataclasses import fields
 from datetime import timedelta
 
 import pytest
@@ -216,9 +217,10 @@ def test_select_photo_without_photos() -> None:
     assert select_photo(()) is None
 
 
-def test_specs_are_frozen_so_a_consumer_cannot_rewrite_a_vendor_fact() -> None:
+@pytest.mark.parametrize('name', [spec.name for spec in fields(WEBHOOK)])
+def test_specs_are_frozen_so_a_consumer_cannot_rewrite_a_vendor_fact(name: str) -> None:
     with pytest.raises(AttributeError):
-        WEBHOOK.ack_status = 204  # ty: ignore[invalid-assignment]
+        setattr(WEBHOOK, name, getattr(WEBHOOK, name))
 
 
 def test_webhook_spec_carries_no_behaviour() -> None:

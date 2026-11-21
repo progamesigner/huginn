@@ -53,7 +53,7 @@ def dependencies() -> tuple[MagicMock, MagicMock]:
     service = MagicMock()
     service.issue_invite = AsyncMock(
         return_value=IssuedIdentityLinkInvite(
-            token='opaque-token',  # noqa: S106
+            token='opaque-token',
             short_code='ABCD-EFGH-IJKL-MNOP-QRST-UVWX-YZ12-3456',
             expires_at=datetime(2026, 1, 1, tzinfo=UTC),
         ),

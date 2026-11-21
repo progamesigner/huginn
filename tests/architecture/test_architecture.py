@@ -1,6 +1,9 @@
 import ast
 import asyncio
 import inspect
+import io
+import re
+import tokenize
 from collections.abc import Iterable, Iterator, Sequence
 from dataclasses import dataclass, fields, is_dataclass
 from datetime import timedelta
@@ -466,6 +469,40 @@ def test_assignments_leave_types_to_inference() -> None:
     assert not offenders, 'annotate the signature, not the assignment:\n' + '\n'.join(
         offenders,
     )
+
+
+# NOTE: a rule that does not fit a file is configured in pyproject.toml with its reason,
+# so a suppression never hides in a comment beside the code it silences
+_SUPPRESSION = re.compile(r'#\s*(noqa\b|(ty|type|pyright)\s*:\s*ignore\b)')
+
+
+def _suppressions(source: str) -> Iterator[str]:
+    for token in tokenize.generate_tokens(io.StringIO(source).readline):
+        if token.type == tokenize.COMMENT and _SUPPRESSION.search(token.string):
+            yield f'line {token.start[0]}: {token.string}'
+
+
+def test_source_carries_no_suppression_comments() -> None:
+    roots = (*(_source_root(package) for package in ROOT_PACKAGES), _tests_dir())
+    offenders = [
+        f'{path}: {message}'
+        for root in roots
+        for path in sorted(root.rglob('*.py'))
+        for message in _suppressions(path.read_text(encoding='utf-8'))
+    ]
+
+    assert not offenders, 'fix the code or configure the rule:\n' + '\n'.join(offenders)
+
+
+def test_suppression_check_reads_comments_not_strings() -> None:
+    def flagged(source: str) -> bool:
+        return bool(list(_suppressions(source)))
+
+    assert flagged('value = 1  # noqa: E501\n')
+    assert flagged('value = 1  # ty: ignore[invalid-assignment]\n')
+    assert flagged('value = 1  # type: ignore\n')
+    assert not flagged("value = '# noqa'\n")
+    assert not flagged('value = 1  # ignore the first value\n')
 
 
 def test_annotated_assignment_check_reads_the_scope_not_the_syntax() -> None:

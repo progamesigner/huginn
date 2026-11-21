@@ -137,12 +137,19 @@ extend-select = [
     "TID",   # flake8-tidy-imports
     "UP",    # pyupgrade
 ]
+# Traditional Chinese text uses full-width punctuation
+allowed-confusables = ["，", "：", "？"]
 
 [tool.ruff.lint.flake8-tidy-imports]
 banned-api."__future__".msg = "__future__ has no valid use since Python 3.14 (PEP 649 replaced annotations)"
 
 [tool.ruff.lint.per-file-ignores]
-"tests/**" = ["S101"]
+# pytest checks results with bare assert statements and fixtures carry fake credentials
+"tests/**" = ["S101", "S105", "S106"]
+# ty infers a PEP 695 frozen dataclass as invariant; specs need explicit covariance
+"app/core/config/registry.py" = ["UP046"]
+# the encoder probe runs the ffmpeg that shutil.which found, with fixed arguments
+"lib/media/encoding.py" = ["S603"]
 
 [tool.ruff.format]
 quote-style = "single"
