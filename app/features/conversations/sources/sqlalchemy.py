@@ -21,7 +21,20 @@ _EMPTY_JSON = text("'{}'::jsonb")
 
 class ConversationRecord(TimestampRecordMixin, AppRecord):
     __tablename__ = 'conversations'
-    __table_args__ = (UniqueConstraint('channel', 'chat_id'),)
+    __table_args__ = (
+        UniqueConstraint('channel', 'chat_id'),
+        # NOTE: turns is declared below and points back here, so these name it as a string
+        ForeignKeyConstraint(
+            ['summarized_through_turn_id'],
+            ['turns.id'],
+            ondelete='SET NULL',
+        ),
+        ForeignKeyConstraint(
+            ['reset_through_turn_id'],
+            ['turns.id'],
+            ondelete='SET NULL',
+        ),
+    )
 
     channel: Mapped[str] = mapped_column()
     chat_id: Mapped[str] = mapped_column()
@@ -34,7 +47,9 @@ class TurnRecord(AppRecord):
     __tablename__ = 'turns'
     __table_args__ = (Index('ix_turns_conversation_id', 'conversation_id', 'id'),)
 
-    conversation_id: Mapped[UUID] = mapped_column()
+    conversation_id: Mapped[UUID] = mapped_column(
+        ForeignKey(ConversationRecord.id, ondelete='CASCADE'),
+    )
     agent: Mapped[str] = mapped_column()
     usage: Mapped[JsonValue] = mapped_column(nullable=False, server_default=_EMPTY_JSON)
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())
@@ -75,28 +90,3 @@ class PartRecord(AppRecord):
     role: Mapped[str] = mapped_column()
     kind: Mapped[str] = mapped_column()
     payload: Mapped[JsonValue] = mapped_column(nullable=False)
-
-
-ConversationRecord.__table__.append_constraint(
-    ForeignKeyConstraint(
-        [ConversationRecord.summarized_through_turn_id],
-        [TurnRecord.id],
-        ondelete='SET NULL',
-    ),
-)
-
-ConversationRecord.__table__.append_constraint(
-    ForeignKeyConstraint(
-        [ConversationRecord.reset_through_turn_id],
-        [TurnRecord.id],
-        ondelete='SET NULL',
-    ),
-)
-
-TurnRecord.__table__.append_constraint(
-    ForeignKeyConstraint(
-        [TurnRecord.conversation_id],
-        [ConversationRecord.id],
-        ondelete='CASCADE',
-    ),
-)
