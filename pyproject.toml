@@ -5,34 +5,34 @@ requires-python = "==3.15.*"
 dependencies = [
     "alembic==1.20.1",
     "asyncpg==0.32.0",
-    "fastapi==0.162.5",
+    "fastapi==0.165.0",
     "h2==4.4.1",
     "httptools==0.9.0",
-    "httpx2==2.16.0",
+    "httpx2==2.16.2",
     "mcp==2.3.0",
-    "pydantic==2.14.3",
-    "pydantic-settings==2.16.2",
-    "python-multipart==0.0.33",
+    "pydantic==2.14.4",
+    "pydantic-settings==2.16.3",
+    "python-multipart==0.0.34",
     "pyyaml==6.0.3",
     "redis==8.1.0",
-    "sqlalchemy[asyncio]==2.1.8",
+    "sqlalchemy[asyncio]==2.1.9",
     "structlog==26.1.0",
     "telegramify-markdown==1.4.2",
-    "typer==0.29.1",
+    "typer==0.29.2",
     "uvicorn==0.54.0",
     "uvloop==0.23.0",
 ]
 
 [project.optional-dependencies]
-anthropic = ["anthropic==2.8.0"]
-openai = ["openai==3.49.0"]
+anthropic = ["anthropic==2.10.0"]
+openai = ["openai==3.55.1"]
 documents = [
     "openpyxl==3.1.5",
-    "pypdf==7.0.1",
+    "pypdf==7.1.1",
     "python-docx==1.2.0",
 ]
 gemini = [
-    "google-genai==3.3.0",
+    "google-genai==3.6.1",
 ]
 
 [project.scripts]
@@ -43,10 +43,10 @@ server = "bin.server:main"
 dev = [
     "huginn[anthropic,gemini,openai]",
     "huginn[documents]",
-    "import-linter==2.16",
+    "import-linter==2.17",
     "pre-commit==4.7.0",
     "pytest==9.2.0",
-    "pytest-asyncio==1.4.1.post1",
+    "pytest-asyncio==1.5.0",
     "ruff==0.17.4",
     "testcontainers==4.15.0",
     "ty==0.0.105",
